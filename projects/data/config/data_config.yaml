@@ -1,0 +1,21 @@
+# Configuración del Data Manager
+data_sources:
+  primary: yfinance
+  fallback: csv_local
+
+data_storage:
+  cache_enabled: true
+  data_directory: data
+  cache_expiry_days: 7
+
+data_quality:
+  min_data_days: 756  # 3 años
+  max_missing_data_pct: 5.0
+  outlier_threshold: 3.0
+
+download_settings:
+  max_retries: 3
+  retry_delay_seconds: 2
+  request_timeout: 30
+
+logging_level: WARNING

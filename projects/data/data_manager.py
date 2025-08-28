@@ -1,0 +1,658 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from typing import List, Optional, Tuple, Dict, Union
+from datetime import datetime, timedelta
+import warnings
+import logging
+from pathlib import Path
+import json
+import time
+
+class DataManager:
+    """
+    Sistema de gestión de datos completamente configurable.
+    Sin hardcodeo - todo se configura desde archivos externos.
+    """
+    
+    def __init__(self, config_file: str = "config/data_config.yaml", test_mode: bool = False, test_dir: str = None):
+        """
+        Inicializa el Data Manager desde configuración externa.
+        
+        Args:
+            config_file: Ruta al archivo de configuración
+            test_mode: Si está en modo prueba, usa directorios locales
+            test_dir: Directorio de prueba (solo si test_mode=True)
+        """
+        self.config = self._load_config(config_file)
+        self._setup_from_config()
+        
+        # Configurar logging completamente silencioso
+        logging.basicConfig(level=logging.ERROR)
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.ERROR)
+        
+        # Modo prueba: usar directorios locales
+        if test_mode and test_dir:
+            self.test_dir = Path(test_dir)
+            self.plots_dir = self.test_dir / "plots"
+            self.cache_dir = self.test_dir / "cache"
+            
+            # Crear directorios si no existen
+            self.plots_dir.mkdir(exist_ok=True)
+            self.cache_dir.mkdir(exist_ok=True)
+            
+            # Sobrescribir directorio de datos para pruebas
+            self.data_dir = self.test_dir
+    
+    def _load_config(self, config_file: str) -> Dict:
+        """Carga la configuración desde archivo YAML."""
+        config_path = Path(config_file)
+        
+        if not config_path.exists():
+            # Crear configuración por defecto si no existe
+            self._create_default_config(config_path)
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                if config_file.endswith('.yaml') or config_file.endswith('.yml'):
+                    try:
+                        import yaml
+                        return yaml.safe_load(f)
+                    except ImportError:
+                        print("⚠️ PyYAML no instalado, usando configuración por defecto")
+                        return self._get_default_config()
+                else:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error cargando configuración: {e}")
+            return self._get_default_config()
+    
+    def _create_default_config(self, config_path: Path):
+        """Crea archivo de configuración por defecto."""
+        config_path.parent.mkdir(exist_ok=True)
+        
+        default_config = self._get_default_config()
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            if config_path.suffix in ['.yaml', '.yml']:
+                try:
+                    import yaml
+                    yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True)
+                except ImportError:
+                    json.dump(default_config, f, indent=2, ensure_ascii=False)
+            else:
+                json.dump(default_config, f, indent=2, ensure_ascii=False)
+        
+        print(f"✅ Archivo de configuración creado: {config_path}")
+    
+    def _get_default_config(self) -> Dict:
+        """Retorna configuración por defecto."""
+        return {
+            'data_sources': {
+                'primary': 'yfinance',
+                'fallback': 'csv_local'
+            },
+            'data_storage': {
+                'cache_enabled': True,
+                'data_directory': 'data',
+                'cache_expiry_days': 7
+            },
+            'data_quality': {
+                'min_data_days': 252 * 3,
+                'max_missing_data_pct': 5.0,
+                'outlier_threshold': 3.0
+            },
+            'download_settings': {
+                'max_retries': 3,
+                'retry_delay_seconds': 2,
+                'request_timeout': 30
+            },
+            'logging_level': 'INFO'
+        }
+    
+    def _setup_from_config(self):
+        """Configura el Data Manager desde la configuración cargada."""
+        config = self.config
+        
+        # Configuración de almacenamiento
+        storage_config = config.get('data_storage', {})
+        data_dir = storage_config.get('data_directory', 'data')
+        
+        # Si es una ruta relativa, construir desde la ubicación del DataManager
+        if not Path(data_dir).is_absolute():
+            self.data_dir = Path(__file__).parent / data_dir
+        else:
+            self.data_dir = Path(data_dir)
+            
+        self.data_dir.mkdir(exist_ok=True)
+        self.cache_enabled = storage_config.get('cache_enabled', True)
+        self.cache_expiry_days = storage_config.get('cache_expiry_days', 7)
+        
+        # Configuración de calidad
+        quality_config = config.get('data_quality', {})
+        self.min_data_days = quality_config.get('min_data_days', 252 * 3)
+        self.max_missing_data_pct = quality_config.get('max_missing_data_pct', 5.0)
+        self.outlier_threshold = quality_config.get('outlier_threshold', 3.0)
+        
+        # Configuración de descarga
+        download_config = config.get('download_settings', {})
+        self.max_retries = download_config.get('max_retries', 3)
+        self.retry_delay = download_config.get('retry_delay_seconds', 2)
+        self.timeout = download_config.get('request_timeout', 30)
+    
+    def load_universe_from_file(self, file_path: str) -> List[str]:
+        """Carga lista de símbolos desde archivo."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                # Separar por líneas y limpiar
+                symbols = [line.strip() for line in content.split('\n') if line.strip()]
+                return symbols
+        except Exception as e:
+            self.logger.error(f"Error cargando universo desde {file_path}: {e}")
+            return []
+    
+    def download_market_data(self, 
+                           symbols: Union[List[str], str], 
+                           start_date: str = None,
+                           end_date: str = None,
+                           force_refresh: bool = False) -> pd.DataFrame:
+        """
+        Descarga datos de mercado.
+        
+        Args:
+            symbols: Lista de símbolos o ruta a archivo de universo
+            start_date: Fecha de inicio (YYYY-MM-DD)
+            end_date: Fecha de fin (YYYY-MM-DD)
+            force_refresh: Forzar descarga nueva
+            
+        Returns:
+            DataFrame con precios
+        """
+        # Si symbols es un string, asumir que es un archivo
+        if isinstance(symbols, str):
+            # Construir ruta relativa desde la ubicación del DataManager
+            if not Path(symbols).is_absolute():
+                symbols = str(Path(__file__).parent / symbols)
+            symbols = self.load_universe_from_file(symbols)
+        
+        if start_date is None:
+            # Por defecto: 10 años hacia atrás desde hoy
+            start_date = (datetime.now() - timedelta(days=10*365)).strftime("%Y-%m-%d")
+        if end_date is None:
+            # Por defecto: hoy
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # self.logger.info(f"📥 Descargando {len(symbols)} símbolos")
+        
+        # Verificar caché
+        if self.cache_enabled and not force_refresh:
+            cached_data = self._load_from_cache(symbols, start_date, end_date)
+            if cached_data is not None:
+                return cached_data
+        
+        # Descargar datos
+        data = {}
+        failed_symbols = []
+        
+        for symbol in symbols:
+            try:
+                ticker_data = self._download_single_symbol(symbol, start_date, end_date)
+                
+                if ticker_data is not None:
+                    data[symbol] = ticker_data
+                else:
+                    failed_symbols.append(symbol)
+                    
+            except Exception as e:
+                failed_symbols.append(symbol)
+        
+        if not data:
+            raise ValueError(f"No se pudieron descargar datos. Fallidos: {failed_symbols}")
+        
+        # Crear DataFrame y limpieza con interpolación
+        df = pd.DataFrame(data)
+        
+        # Interpolación inteligente: preservar más datos
+        initial_rows = len(df)
+        
+        # Eliminar solo filas completamente vacías
+        df = df.dropna(how='all')
+        
+        # Interpolación lineal para gaps pequeños (hasta 5 días)
+        df = df.interpolate(method='linear', limit=5)
+        
+        # Forward fill para gaps restantes (hasta 10 días)
+        df = df.ffill(limit=10)
+        
+        # Backward fill para gaps al inicio
+        df = df.bfill(limit=5)
+        
+        # Solo eliminar filas con demasiados NaN (más del 20% de activos)
+        max_missing = len(df.columns) * 0.2
+        df = df.dropna(thresh=len(df.columns) - max_missing)
+        
+        # Guardar en caché
+        if self.cache_enabled:
+            self._save_to_cache(df, symbols, start_date, end_date)
+        
+        return df
+    
+    def download_market_data_grouped(self, 
+                                   symbols: Union[List[str], str], 
+                                   target_years: int = 10,
+                                   force_refresh: bool = False) -> Dict[str, pd.DataFrame]:
+        """
+        Descarga datos de mercado agrupando activos por disponibilidad histórica.
+        
+        Args:
+            symbols: Lista de símbolos o ruta a archivo de universo
+            target_years: Años objetivo para datos históricos
+            force_refresh: Forzar descarga nueva
+            
+        Returns:
+            Diccionario con DataFrames agrupados por disponibilidad
+        """
+        # Si symbols es un string, asumir que es un archivo
+        if isinstance(symbols, str):
+            if not Path(symbols).is_absolute():
+                symbols = str(Path(__file__).parent / symbols)
+            symbols = self.load_universe_from_file(symbols)
+        
+        # Fecha objetivo: target_years hacia atrás
+        target_start = (datetime.now() - timedelta(days=target_years*365)).strftime("%Y-%m-%d")
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        
+        self.logger.info(f"🎯 Objetivo: {target_years} años desde {target_start}")
+        
+        # Probar disponibilidad de cada símbolo
+        availability_info = {}
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                # Probar con fecha muy antigua para ver qué hay disponible
+                test_data = ticker.history(start="2010-01-01", end=end_date)
+                
+                if not test_data.empty:
+                    actual_start = test_data.index[0].strftime('%Y-%m-%d')
+                    actual_end = test_data.index[-1].strftime('%Y-%m-%d')
+                    days_available = len(test_data)
+                    
+                    availability_info[symbol] = {
+                        'start_date': actual_start,
+                        'end_date': actual_end,
+                        'days_available': days_available,
+                        'has_target_years': days_available >= target_years * 252  # 252 días de trading por año
+                    }
+                else:
+                    availability_info[symbol] = {'error': 'Sin datos'}
+                    
+            except Exception as e:
+                availability_info[symbol] = {'error': str(e)}
+        
+        # Agrupar símbolos por disponibilidad
+        long_history = []  # 10+ años
+        medium_history = []  # 5-10 años  
+        short_history = []   # <5 años
+        failed_symbols = []
+        
+        for symbol, info in availability_info.items():
+            if 'error' in info:
+                failed_symbols.append(symbol)
+            elif info['has_target_years']:
+                long_history.append(symbol)
+            elif info['days_available'] >= 5 * 252:
+                medium_history.append(symbol)
+            else:
+                short_history.append(symbol)
+        
+        # Descargar datos para cada grupo
+        results = {}
+        
+        if long_history:
+            results['long_history'] = self.download_market_data(
+                symbols=long_history, 
+                start_date=target_start, 
+                end_date=end_date,
+                force_refresh=force_refresh
+            )
+        
+        if medium_history:
+            # Usar 5 años para este grupo
+            medium_start = (datetime.now() - timedelta(days=5*365)).strftime("%Y-%m-%d")
+            results['medium_history'] = self.download_market_data(
+                symbols=medium_history, 
+                start_date=medium_start, 
+                end_date=end_date,
+                force_refresh=force_refresh
+            )
+        
+        if short_history:
+            # Usar 2 años para este grupo
+            short_start = (datetime.now() - timedelta(days=2*365)).strftime("%Y-%m-%d")
+            results['short_history'] = self.download_market_data(
+                symbols=short_history, 
+                start_date=short_start, 
+                end_date=end_date,
+                force_refresh=force_refresh
+            )
+        
+        if failed_symbols:
+            results['failed'] = failed_symbols
+        
+        return results
+    
+    def _download_single_symbol(self, symbol: str, start_date: str, end_date: str) -> Optional[pd.Series]:
+        """Descarga datos para un símbolo individual."""
+        for attempt in range(self.max_retries):
+            try:
+                ticker = yf.Ticker(symbol)
+                ticker_data = ticker.history(start=start_date, end=end_date)
+                
+                if not ticker_data.empty:
+                    # Priorizar 'Close' ya que 'Adj Close' no siempre está disponible
+                    if 'Close' in ticker_data.columns:
+                        return ticker_data['Close']
+                    elif 'Adj Close' in ticker_data.columns:
+                        return ticker_data['Adj Close']
+                
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                    
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    raise e
+        
+        return None
+    
+    def _load_from_cache(self, symbols: List[str], start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+        """Carga datos desde caché."""
+        if not self.cache_enabled:
+            return None
+        
+        # Usar directorio de caché de prueba si está disponible
+        cache_dir = getattr(self, 'cache_dir', self.data_dir)
+        
+        # Buscar archivos de caché que coincidan con el período
+        cache_pattern = f"cache_{start_date}_{end_date}_*_assets*.csv"
+        cache_files = list(cache_dir.glob(cache_pattern))
+        
+        if cache_files:
+            # Tomar el archivo más reciente
+            latest_cache = max(cache_files, key=lambda x: x.stat().st_mtime)
+            
+            # Verificar expiración
+            file_age = datetime.now() - datetime.fromtimestamp(latest_cache.stat().st_mtime)
+            if file_age.days <= self.cache_expiry_days:
+                try:
+                    df = pd.read_csv(latest_cache, index_col=0, parse_dates=True)
+                    
+                    # Verificar que todos los símbolos solicitados estén en el caché
+                    available_symbols = set(df.columns)
+                    requested_symbols = set(symbols)
+                    
+                    if requested_symbols.issubset(available_symbols):
+                        # Filtrar solo los símbolos solicitados
+                        filtered_df = df[list(requested_symbols)]
+                        self.logger.info(f"✅ Datos cargados desde caché: {len(requested_symbols)} símbolos")
+                        return filtered_df
+                    else:
+                        missing_symbols = requested_symbols - available_symbols
+                        self.logger.info(f"⚠️ Caché incompleto, faltan: {missing_symbols}")
+                        
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Error leyendo caché: {e}")
+        
+        return None
+    
+    def _save_to_cache(self, df: pd.DataFrame, symbols: List[str], start_date: str, end_date: str):
+        """Guarda datos en caché."""
+        if not self.cache_enabled:
+            return
+        
+        try:
+            # Usar directorio de caché de prueba si está disponible
+            cache_dir = getattr(self, 'cache_dir', self.data_dir)
+            
+            # Crear nombre de archivo con timestamp para evitar conflictos
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            cache_file = cache_dir / f"cache_{start_date}_{end_date}_{len(symbols)}_assets_{timestamp}.csv"
+            
+            # Guardar datos
+            df.to_csv(cache_file)
+            
+            # Limpiar archivos de caché antiguos (mantener solo los últimos 5)
+            self._cleanup_old_cache_files(start_date, end_date)
+            
+        except Exception as e:
+            pass  # Silenciar errores de caché
+    
+    def _cleanup_old_cache_files(self, start_date: str, end_date: str):
+        """Limpia archivos de caché antiguos, manteniendo solo los últimos 5."""
+        try:
+            # Usar directorio de caché de prueba si está disponible
+            cache_dir = getattr(self, 'cache_dir', self.data_dir)
+            
+            cache_pattern = f"cache_{start_date}_{end_date}_*_assets*.csv"
+            cache_files = list(cache_dir.glob(cache_pattern))
+            
+            if len(cache_files) > 5:
+                # Ordenar por fecha de modificación y eliminar los más antiguos
+                cache_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                files_to_delete = cache_files[5:]
+                
+                for old_file in files_to_delete:
+                    old_file.unlink()
+                    
+        except Exception as e:
+            pass  # Silenciar errores de limpieza
+    
+    def plot_price_history(self, prices: pd.DataFrame, symbols: List[str] = None, 
+                          save_plot: bool = True, show_plot: bool = False) -> str:
+        """
+        Genera gráfico de precios normalizados para comparar activos.
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            from matplotlib import rcParams
+            
+            # Configurar estilo profesional
+            rcParams['figure.figsize'] = (16, 10)
+            rcParams['font.size'] = 12
+            rcParams['axes.grid'] = True
+            rcParams['grid.alpha'] = 0.4
+            
+            # Filtrar símbolos si se especifican
+            if symbols is not None and len(symbols) > 0:
+                plot_data = prices[symbols]
+            else:
+                plot_data = prices
+            
+            # Crear figura con solo 1 gráfico
+            fig, ax = plt.subplots(1, 1, figsize=(16, 10))
+            
+            # Calcular precios normalizados (base 100) - NO retornos
+            normalized_prices = (plot_data / plot_data.iloc[0]) * 100
+            
+            # Colores más contrastantes
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+                     '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+                     '#aec7e8', '#ffbb78', '#98df8a', '#ff9896']
+            
+            # Graficar cada activo
+            for i, symbol in enumerate(normalized_prices.columns):
+                color = colors[i % len(colors)]
+                ax.plot(normalized_prices.index, normalized_prices[symbol], 
+                       label=symbol, linewidth=2.5, color=color)
+            
+            # Configurar título y etiquetas
+            ax.set_title('Precios Normalizados (Base 100) - COMPARACIÓN', 
+                        fontsize=18, fontweight='bold', pad=20)
+            ax.set_ylabel('Precio Normalizado (Base 100)', fontsize=14)
+            ax.set_xlabel('Fecha', fontsize=14)
+            
+            # Configurar leyenda
+            ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', 
+                     fontsize=11, framealpha=0.9)
+            
+            # Configurar grid
+            ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.8)
+            
+            # Línea de referencia en 100
+            ax.axhline(y=100, color='black', linestyle='--', alpha=0.7, linewidth=1.5)
+            
+            # Formatear eje X
+            ax.xaxis.set_major_locator(mdates.YearLocator(1))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            
+            # Ajustar layout
+            plt.tight_layout()
+            
+            # Guardar gráfico
+            if save_plot:
+                if hasattr(self, 'plots_dir'):
+                    plots_dir = self.plots_dir
+                else:
+                    plots_dir = self.data_dir / 'plots'
+                    plots_dir.mkdir(exist_ok=True)
+                
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"prices_normalized_{timestamp}.png"
+                filepath = plots_dir / filename
+                
+                plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                
+                if show_plot:
+                    plt.show()
+                else:
+                    plt.close()
+                
+                return str(filepath)
+            
+            elif show_plot:
+                plt.show()
+                return ""
+            
+            else:
+                plt.close()
+                return ""
+                
+        except ImportError:
+            return ""
+        except Exception as e:
+            return ""
+    
+    def plot_individual_assets(self, prices: pd.DataFrame, symbols: List[str] = None,
+                              save_plots: bool = True, show_plots: bool = False) -> List[str]:
+        """
+        Genera gráficos individuales para cada activo.
+        
+        Args:
+            prices: DataFrame con precios históricos
+            symbols: Lista de símbolos a graficar (si None, grafica todos)
+            save_plots: Si guardar los gráficos como imágenes
+            show_plots: Si mostrar los gráficos en pantalla
+            
+        Returns:
+            Lista de rutas de archivos guardados
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            from matplotlib import rcParams
+            
+            # Configurar estilo
+            rcParams['figure.figsize'] = (12, 6)
+            rcParams['font.size'] = 10
+            rcParams['axes.grid'] = True
+            rcParams['grid.alpha'] = 0.3
+            
+            # Filtrar símbolos
+            if symbols is not None and len(symbols) > 0:
+                plot_data = prices[symbols]
+            else:
+                plot_data = prices
+            
+            saved_files = []
+            
+            for symbol in plot_data.columns:
+                # Crear figura
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+                
+                # Gráfico 1: Precio histórico
+                ax1.plot(plot_data.index, plot_data[symbol], color='blue', linewidth=2)
+                ax1.set_title(f'{symbol} - Precio Histórico', fontsize=14, fontweight='bold')
+                ax1.set_ylabel('Precio ($)', fontsize=12)
+                ax1.grid(True, alpha=0.3)
+                
+                # Formatear eje X
+                ax1.xaxis.set_major_locator(mdates.YearLocator(1))
+                ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+                
+                # Gráfico 2: Retornos diarios
+                returns = plot_data[symbol].pct_change().dropna()
+                ax2.bar(returns.index, returns * 100, color='green', alpha=0.7, width=1)
+                ax2.set_title(f'{symbol} - Retornos Diarios (%)', fontsize=14, fontweight='bold')
+                ax2.set_ylabel('Retorno (%)', fontsize=12)
+                ax2.set_xlabel('Fecha', fontsize=12)
+                ax2.grid(True, alpha=0.3)
+                ax2.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+                
+                # Formatear eje X
+                ax2.xaxis.set_major_locator(mdates.YearLocator(1))
+                ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+                
+                plt.tight_layout()
+                
+                # Guardar gráfico
+                if save_plots:
+                    # Usar directorio de plots de prueba si está disponible, sino crear uno
+                    if hasattr(self, 'plots_dir'):
+                        plots_dir = self.plots_dir
+                    else:
+                        plots_dir = self.data_dir / 'plots'
+                        plots_dir.mkdir(exist_ok=True)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"{symbol}_analysis_{timestamp}.png"
+                    filepath = plots_dir / filename
+                    
+                    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                    saved_files.append(str(filepath))
+                    
+                    if show_plots:
+                        plt.show()
+                    else:
+                        plt.close()
+                
+                elif show_plots:
+                    plt.show()
+                    plt.close()
+                
+                else:
+                    plt.close()
+            
+            return saved_files
+            
+        except ImportError:
+            return []
+        except Exception as e:
+            return []
+
+
+if __name__ == "__main__":
+    # Script de prueba simple
+    print("📊 Data Manager - Sistema Simple")
+    print("=" * 40)
+    
+    # Crear instancia
+    dm = DataManager()
+    
+    # Probar funcionalidad básica
+    print("✅ Sistema inicializado")
+    print(f"📁 Directorio: {dm.data_dir}")
+    print(f"⚙️ Caché: {'Sí' if dm.cache_enabled else 'No'}")
