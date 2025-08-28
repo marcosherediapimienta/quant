@@ -1,7 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Union
+from typing import List, Optional, Tuple, Dict, Union, Any
 from datetime import datetime, timedelta
 import warnings
 import logging
@@ -27,10 +27,12 @@ class DataManager:
         self.config = self._load_config(config_file)
         self._setup_from_config()
         
-        # Configurar logging completamente silencioso
-        logging.basicConfig(level=logging.ERROR)
+        # Configurar logging dinámico desde configuración
+        log_level = self.config.get('logging_level', 'INFO')
+        level = getattr(logging, log_level.upper(), logging.INFO)
+        logging.basicConfig(level=level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.ERROR)
+        self.logger.setLevel(level)
         
         # Modo prueba: usar directorios locales
         if test_mode and test_dir:
@@ -45,7 +47,7 @@ class DataManager:
             # Sobrescribir directorio de datos para pruebas
             self.data_dir = self.test_dir
     
-    def _load_config(self, config_file: str) -> Dict:
+    def _load_config(self, config_file: str) -> Dict[str, Any]:
         """Carga la configuración desde archivo YAML."""
         config_path = Path(config_file)
         
@@ -86,7 +88,7 @@ class DataManager:
         
         print(f"✅ Archivo de configuración creado: {config_path}")
     
-    def _get_default_config(self) -> Dict:
+    def _get_default_config(self) -> Dict[str, Any]:
         """Retorna configuración por defecto."""
         return {
             'data_sources': {
@@ -142,21 +144,66 @@ class DataManager:
         self.timeout = download_config.get('request_timeout', 30)
     
     def load_universe_from_file(self, file_path: str) -> List[str]:
-        """Carga lista de símbolos desde archivo."""
+        """
+        Carga lista de símbolos desde archivo CSV o TXT.
+        
+        Args:
+            file_path: Ruta al archivo con símbolos
+            
+        Returns:
+            Lista de símbolos
+        """
+        file_path = Path(file_path)
+        
+        if not file_path.exists():
+            self.logger.error(f"Archivo no encontrado: {file_path}")
+            return []
+        
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                # Separar por líneas y limpiar
-                symbols = [line.strip() for line in content.split('\n') if line.strip()]
-                return symbols
+            if file_path.suffix.lower() == '.csv':
+                # Leer CSV - buscar columna con símbolos
+                df = pd.read_csv(file_path)
+                
+                # Buscar columnas posibles para símbolos
+                possible_cols = ['symbol', 'ticker', 'Symbol', 'Ticker', 'SYMBOL', 'TICKER']
+                symbol_col = None
+                
+                for col in possible_cols:
+                    if col in df.columns:
+                        symbol_col = col
+                        break
+                
+                if symbol_col is None:
+                    # Si no encuentra columna específica, usar la primera columna
+                    symbol_col = df.columns[0]
+                    self.logger.warning(f"No se encontró columna de símbolos, usando: {symbol_col}")
+                
+                symbols = df[symbol_col].astype(str).str.strip().tolist()
+                
+            elif file_path.suffix.lower() == '.txt':
+                # Leer TXT línea por línea
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    symbols = [line.strip() for line in f if line.strip()]
+                    
+            else:
+                self.logger.error(f"Formato de archivo no soportado: {file_path.suffix}")
+                return []
+            
+            # Filtrar símbolos vacíos y duplicados
+            symbols = [s for s in symbols if s and s.upper() != 'NAN']
+            symbols = list(dict.fromkeys(symbols))  # Eliminar duplicados manteniendo orden
+            
+            self.logger.info(f"📋 Cargados {len(symbols)} símbolos desde {file_path.name}")
+            return symbols
+            
         except Exception as e:
             self.logger.error(f"Error cargando universo desde {file_path}: {e}")
             return []
     
     def download_market_data(self, 
                            symbols: Union[List[str], str], 
-                           start_date: str = None,
-                           end_date: str = None,
+                           start_date: Optional[str] = None,
+                           end_date: Optional[str] = None,
                            force_refresh: bool = False) -> pd.DataFrame:
         """
         Descarga datos de mercado.
@@ -184,7 +231,7 @@ class DataManager:
             # Por defecto: hoy
             end_date = datetime.now().strftime("%Y-%m-%d")
         
-        # self.logger.info(f"📥 Descargando {len(symbols)} símbolos")
+        self.logger.info(f"📥 Descargando {len(symbols)} símbolos")
         
         # Verificar caché
         if self.cache_enabled and not force_refresh:
@@ -192,21 +239,68 @@ class DataManager:
             if cached_data is not None:
                 return cached_data
         
-        # Descargar datos
+        # Descargar datos - intentar descarga masiva primero
         data = {}
         failed_symbols = []
         
-        for symbol in symbols:
-            try:
-                ticker_data = self._download_single_symbol(symbol, start_date, end_date)
-                
-                if ticker_data is not None:
-                    data[symbol] = ticker_data
+        # Intentar descarga masiva con yfinance.download
+        try:
+            self.logger.debug("Intentando descarga masiva con yfinance.download...")
+            bulk_data = yf.download(symbols, start=start_date, end=end_date, group_by='ticker', 
+                                   auto_adjust=True, prepost=True, threads=True)
+            
+            # Procesar datos descargados en masa
+            if not bulk_data.empty:
+                if len(symbols) == 1:
+                    # Un solo símbolo
+                    symbol = symbols[0]
+                    if 'Close' in bulk_data.columns:
+                        data[symbol] = bulk_data['Close']
+                    elif 'Adj Close' in bulk_data.columns:
+                        data[symbol] = bulk_data['Adj Close']
                 else:
-                    failed_symbols.append(symbol)
+                    # Múltiples símbolos
+                    for symbol in symbols:
+                        try:
+                            if symbol in bulk_data.columns.get_level_values(0):
+                                symbol_data = bulk_data[symbol]
+                                if 'Close' in symbol_data.columns:
+                                    data[symbol] = symbol_data['Close']
+                                elif 'Adj Close' in symbol_data.columns:
+                                    data[symbol] = symbol_data['Adj Close']
+                            else:
+                                failed_symbols.append(symbol)
+                        except Exception:
+                            failed_symbols.append(symbol)
+                            
+                self.logger.info(f"✅ Descarga masiva exitosa: {len(data)} símbolos")
+            else:
+                self.logger.warning("Descarga masiva falló, usando descarga individual")
+                failed_symbols = symbols.copy()
+                
+        except Exception as e:
+            self.logger.warning(f"Descarga masiva falló: {e}, usando descarga individual")
+            failed_symbols = symbols.copy()
+        
+        # Fallback: descarga individual para símbolos fallidos
+        if failed_symbols:
+            self.logger.info(f"🔄 Descarga individual para {len(failed_symbols)} símbolos fallidos")
+            remaining_failed = []
+            
+            for symbol in failed_symbols:
+                try:
+                    ticker_data = self._download_single_symbol(symbol, start_date, end_date)
                     
-            except Exception as e:
-                failed_symbols.append(symbol)
+                    if ticker_data is not None:
+                        data[symbol] = ticker_data
+                    else:
+                        remaining_failed.append(symbol)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error descargando {symbol}: {e}")
+                    remaining_failed.append(symbol)
+            
+            failed_symbols = remaining_failed
         
         if not data:
             raise ValueError(f"No se pudieron descargar datos. Fallidos: {failed_symbols}")
@@ -229,9 +323,13 @@ class DataManager:
         # Backward fill para gaps al inicio
         df = df.bfill(limit=5)
         
+        # Eliminar columnas completamente vacías después de interpolación
+        df = df.dropna(axis=1, how='all')
+        
         # Solo eliminar filas con demasiados NaN (más del 20% de activos)
-        max_missing = len(df.columns) * 0.2
-        df = df.dropna(thresh=len(df.columns) - max_missing)
+        if len(df.columns) > 0:
+            max_missing = len(df.columns) * 0.2
+            df = df.dropna(thresh=len(df.columns) - max_missing)
         
         # Guardar en caché
         if self.cache_enabled:
@@ -242,7 +340,7 @@ class DataManager:
     def download_market_data_grouped(self, 
                                    symbols: Union[List[str], str], 
                                    target_years: int = 10,
-                                   force_refresh: bool = False) -> Dict[str, pd.DataFrame]:
+                                   force_refresh: bool = False) -> Dict[str, Union[pd.DataFrame, List[str]]]:
         """
         Descarga datos de mercado agrupando activos por disponibilidad histórica.
         
@@ -388,14 +486,22 @@ class DataManager:
             file_age = datetime.now() - datetime.fromtimestamp(latest_cache.stat().st_mtime)
             if file_age.days <= self.cache_expiry_days:
                 try:
-                    df = pd.read_csv(latest_cache, index_col=0, parse_dates=True)
+                    # Optimización: cargar solo las columnas necesarias más el índice
+                    available_cols = pd.read_csv(latest_cache, nrows=0).columns.tolist()
+                    requested_symbols_list = list(symbols)
+                    cols_to_load = [col for col in requested_symbols_list if col in available_cols]
+                    
+                    if cols_to_load:
+                        df = pd.read_csv(latest_cache, index_col=0, parse_dates=True, usecols=[0] + cols_to_load)
+                    else:
+                        df = pd.read_csv(latest_cache, index_col=0, parse_dates=True)
                     
                     # Verificar que todos los símbolos solicitados estén en el caché
                     available_symbols = set(df.columns)
                     requested_symbols = set(symbols)
                     
                     if requested_symbols.issubset(available_symbols):
-                        # Filtrar solo los símbolos solicitados
+                        # Filtrar solo los símbolos solicitados usando usecols optimizado
                         filtered_df = df[list(requested_symbols)]
                         self.logger.info(f"✅ Datos cargados desde caché: {len(requested_symbols)} símbolos")
                         return filtered_df
@@ -450,8 +556,8 @@ class DataManager:
         except Exception as e:
             pass  # Silenciar errores de limpieza
     
-    def plot_price_history(self, prices: pd.DataFrame, symbols: List[str] = None, 
-                          save_plot: bool = True, show_plot: bool = False) -> str:
+    def plot_price_history(self, prices: pd.DataFrame, symbols: Optional[List[str]] = None, 
+                          save_plot: bool = True, show_plot: bool = False, log_scale: bool = False) -> str:
         """
         Genera gráfico de precios normalizados para comparar activos.
         """
@@ -489,10 +595,17 @@ class DataManager:
                 ax.plot(normalized_prices.index, normalized_prices[symbol], 
                        label=symbol, linewidth=2.5, color=color)
             
+            # Configurar escala logarítmica si se solicita
+            if log_scale:
+                ax.set_yscale('log')
+                ax.set_ylabel('Precio Normalizado - Escala Log', fontsize=14)
+            else:
+                ax.set_ylabel('Precio Normalizado', fontsize=14)
+            
             # Configurar título y etiquetas
-            ax.set_title('Precios Normalizados (Base 100) - COMPARACIÓN', 
+            scale_text = ' - ESCALA LOGARÍTMICA' if log_scale else ''
+            ax.set_title(f'Precios Normalizados{scale_text}', 
                         fontsize=18, fontweight='bold', pad=20)
-            ax.set_ylabel('Precio Normalizado (Base 100)', fontsize=14)
             ax.set_xlabel('Fecha', fontsize=14)
             
             # Configurar leyenda
@@ -546,7 +659,7 @@ class DataManager:
         except Exception as e:
             return ""
     
-    def plot_individual_assets(self, prices: pd.DataFrame, symbols: List[str] = None,
+    def plot_individual_assets(self, prices: pd.DataFrame, symbols: Optional[List[str]] = None,
                               save_plots: bool = True, show_plots: bool = False) -> List[str]:
         """
         Genera gráficos individuales para cada activo.
