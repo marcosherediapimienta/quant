@@ -369,19 +369,23 @@ class DataManager:
         for symbol in symbols:
             try:
                 ticker = yf.Ticker(symbol)
-                # Probar con fecha muy antigua para ver qué hay disponible
-                test_data = ticker.history(start="2010-01-01", end=end_date)
+                # Probar con fecha MUY antigua para ver qué hay disponible
+                test_data = ticker.history(start="1900-01-01", end=end_date)
                 
                 if not test_data.empty:
                     actual_start = test_data.index[0].strftime('%Y-%m-%d')
                     actual_end = test_data.index[-1].strftime('%Y-%m-%d')
                     days_available = len(test_data)
                     
+                    # Calcular años reales disponibles
+                    years_available = days_available / 252
+                    
                     availability_info[symbol] = {
                         'start_date': actual_start,
                         'end_date': actual_end,
                         'days_available': days_available,
-                        'has_target_years': days_available >= target_years * 252  # 252 días de trading por año
+                        'years_available': years_available,
+                        'has_target_years': years_available >= target_years
                     }
                 else:
                     availability_info[symbol] = {'error': 'Sin datos'}
@@ -390,17 +394,17 @@ class DataManager:
                 availability_info[symbol] = {'error': str(e)}
         
         # Agrupar símbolos por disponibilidad
-        long_history = []  # 10+ años
-        medium_history = []  # 5-10 años  
-        short_history = []   # <5 años
+        long_history = []  # 8+ años
+        medium_history = []  # 3-8 años  
+        short_history = []   # <3 años
         failed_symbols = []
         
         for symbol, info in availability_info.items():
             if 'error' in info:
                 failed_symbols.append(symbol)
-            elif info['has_target_years']:
+            elif info['years_available'] >= target_years:
                 long_history.append(symbol)
-            elif info['days_available'] >= 5 * 252:
+            elif info['years_available'] >= 3:  # 3+ años para historia media
                 medium_history.append(symbol)
             else:
                 short_history.append(symbol)
@@ -439,7 +443,103 @@ class DataManager:
         if failed_symbols:
             results['failed'] = failed_symbols
         
+        # Agregar información de fechas individuales para cada grupo
+        results['availability_info'] = availability_info
+        
         return results
+    
+    def process_and_display_groups(self, grouped_data: Dict[str, Union[pd.DataFrame, List[str]]], 
+                                 target_years: int = 10) -> List[str]:
+        """
+        Procesa y muestra los grupos de datos agrupados por disponibilidad.
+        
+        Args:
+            grouped_data: Resultado de download_market_data_grouped
+            target_years: Años objetivo para la descarga
+            
+        Returns:
+            Lista de rutas de gráficos generados
+        """
+        all_plots = []
+        availability_info = grouped_data.get('availability_info', {})
+        
+        # Mapeo de grupos con descripciones
+        group_info = {
+            'long_history': f'LARGA HISTORIA (≥{target_years} años)',
+            'medium_history': 'HISTORIA MEDIA (3-8 años)',
+            'short_history': 'HISTORIA CORTA (<3 años)'
+        }
+        
+        for group_key, description in group_info.items():
+            if group_key in grouped_data and isinstance(grouped_data[group_key], pd.DataFrame):
+                prices = grouped_data[group_key]
+                print(f"\n📊 GRUPO DE {description}:")
+                print(f"   📈 {len(prices.columns)} símbolos")
+                
+                # Mostrar fechas individuales
+                print(f"   📅 FECHAS INDIVIDUALES:")
+                for symbol in prices.columns:
+                    if symbol in availability_info and 'start_date' in availability_info[symbol]:
+                        start_date = availability_info[symbol]['start_date']
+                        end_date = availability_info[symbol]['end_date']
+                        years = availability_info[symbol].get('years_available', 0)
+                        print(f"      {symbol:>8}: {start_date} → {end_date} ({years:.1f} años)")
+                
+                # Mostrar precios actuales vs históricos
+                print(f"\n💰 PRECIOS ACTUALES vs HISTÓRICOS:")
+                current_prices = prices.iloc[-1]
+                
+                for symbol in prices.columns:
+                    current = current_prices[symbol]
+                    symbol_data = prices[symbol].dropna()
+                    historical = symbol_data.iloc[0] if len(symbol_data) > 0 else np.nan
+                    
+                    current_str = f'${current:>10.2f}' if pd.notna(current) else 'N/A'
+                    historical_str = f'${historical:>10.2f}' if pd.notna(historical) else 'N/A'
+                    
+                    print(f"   {symbol:>8}: {current_str:>12} ({historical_str:>12})")
+                
+                # Generar gráficos
+                plot_path = self.plot_price_history(prices=prices, save_plot=True, show_plot=False)
+                if plot_path:
+                    all_plots.append(plot_path)
+                
+                individual_plots = self.plot_individual_assets(
+                    prices=prices, 
+                    symbols=prices.columns, 
+                    save_plots=True, 
+                    show_plots=False
+                )
+                all_plots.extend(individual_plots)
+        
+        # Gestionar símbolos fallidos
+        failed_symbols = grouped_data.get('failed', [])
+        if failed_symbols:
+            print(f"\n❌ SÍMBOLOS FALLIDOS ({len(failed_symbols)} total):")
+            for symbol in failed_symbols:
+                print(f"   ❌ {symbol}")
+        
+        return all_plots
+    
+    @staticmethod
+    def parse_arguments():
+        """Parsea argumentos de línea de comandos."""
+        import argparse
+        parser = argparse.ArgumentParser(
+            description='Prueba del DataManager con agrupación por disponibilidad'
+        )
+        parser.add_argument(
+            '--force-refresh', 
+            action='store_true',
+            help='Fuerza la actualización de datos (ignora cache)'
+        )
+        parser.add_argument(
+            '--years', 
+            type=int, 
+            default=10,
+            help='Número de años objetivo para la descarga (por defecto: 10)'
+        )
+        return parser.parse_args()
     
     def _download_single_symbol(self, symbol: str, start_date: str, end_date: str) -> Optional[pd.Series]:
         """Descarga datos para un símbolo individual."""
@@ -693,31 +793,19 @@ class DataManager:
             saved_files = []
             
             for symbol in plot_data.columns:
-                # Crear figura
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+                # Crear figura con un solo gráfico
+                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
                 
-                # Gráfico 1: Precio histórico
-                ax1.plot(plot_data.index, plot_data[symbol], color='blue', linewidth=2)
-                ax1.set_title(f'{symbol} - Precio Histórico', fontsize=14, fontweight='bold')
-                ax1.set_ylabel('Precio ($)', fontsize=12)
-                ax1.grid(True, alpha=0.3)
-                
-                # Formatear eje X
-                ax1.xaxis.set_major_locator(mdates.YearLocator(1))
-                ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-                
-                # Gráfico 2: Retornos diarios
-                returns = plot_data[symbol].pct_change().dropna()
-                ax2.bar(returns.index, returns * 100, color='green', alpha=0.7, width=1)
-                ax2.set_title(f'{symbol} - Retornos Diarios (%)', fontsize=14, fontweight='bold')
-                ax2.set_ylabel('Retorno (%)', fontsize=12)
-                ax2.set_xlabel('Fecha', fontsize=12)
-                ax2.grid(True, alpha=0.3)
-                ax2.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+                # Gráfico: Precio histórico
+                ax.plot(plot_data.index, plot_data[symbol], color='blue', linewidth=2)
+                ax.set_title(f'{symbol} - Precio Histórico', fontsize=14, fontweight='bold')
+                ax.set_ylabel('Precio ($)', fontsize=12)
+                ax.set_xlabel('Fecha', fontsize=12)
+                ax.grid(True, alpha=0.3)
                 
                 # Formatear eje X
-                ax2.xaxis.set_major_locator(mdates.YearLocator(1))
-                ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+                ax.xaxis.set_major_locator(mdates.YearLocator(1))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
                 
                 plt.tight_layout()
                 
