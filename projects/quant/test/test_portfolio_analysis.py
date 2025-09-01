@@ -219,8 +219,7 @@ def test_portfolio_analysis():
                 try:
                     info_ratio = information_ratio(
                         simple_returns[symbol], 
-                        simple_returns[benchmark_symbol], 
-                        rf_series
+                        simple_returns[benchmark_symbol]
                     )
                     print(f"   {symbol} vs {benchmark_symbol}: {info_ratio:.2f}")
                 except Exception as e:

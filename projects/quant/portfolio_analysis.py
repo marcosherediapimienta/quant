@@ -10,14 +10,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as stats
-from scipy.stats import jarque_bera, normaltest
+from scipy.stats import jarque_bera
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import acorr_ljungbox
-from statsmodels.tsa.stattools import acf, pacf
+from statsmodels.tsa.stattools import acf
 import warnings
-from typing import Union, List, Dict, Tuple, Optional
+from typing import Union, List, Dict, Tuple, Optional, Any, Literal
 import sys
 import os
+import logging
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 # Importar DataManager - ajustar el path según la estructura del proyecto
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'data'))
@@ -169,7 +173,7 @@ def descriptive_stats(returns: pd.Series) -> pd.Series:
 
 
 def calculate_percentiles(returns: pd.DataFrame, 
-                         percentiles: List[float] = [1, 5, 25, 50, 75, 95, 99]) -> pd.DataFrame:
+                         percentiles: Optional[List[float]] = None) -> pd.DataFrame:
     """
     Calcula percentiles de retornos para múltiples activos.
     
@@ -177,8 +181,8 @@ def calculate_percentiles(returns: pd.DataFrame,
     ----------
     returns : pd.DataFrame
         DataFrame con retornos de múltiples activos.
-    percentiles : List[float], default [1, 5, 25, 50, 75, 95, 99]
-        Lista de percentiles a calcular.
+    percentiles : Optional[List[float]], default None
+        Lista de percentiles a calcular. Si es None, usa [1, 5, 25, 50, 75, 95, 99].
     
     Returns
     -------
@@ -197,6 +201,9 @@ def calculate_percentiles(returns: pd.DataFrame,
     >>> percs.loc[50, 'AAPL']  # Mediana de AAPL
     0.01
     """
+    if percentiles is None:
+        percentiles = [1, 5, 25, 50, 75, 95, 99]
+    
     if returns.empty:
         raise ValueError("El DataFrame de retornos está vacío")
     
@@ -220,7 +227,8 @@ def calculate_percentiles(returns: pd.DataFrame,
 # 3. VOLATILIDAD
 # ============================================================================
 
-def historical_volatility(returns: pd.Series, window: int = 252, annualize: bool = True) -> float:
+def historical_volatility(returns: pd.Series, window: int = 252, annualize: bool = True, 
+                         periods_per_year: int = 252) -> float:
     """
     Calcula la volatilidad histórica de una serie de retornos.
     
@@ -231,7 +239,9 @@ def historical_volatility(returns: pd.Series, window: int = 252, annualize: bool
     window : int, default 252
         Número de observaciones para el cálculo (252 días bursátiles = 1 año).
     annualize : bool, default True
-        Si anualizar la volatilidad (multiplicar por sqrt(252)).
+        Si anualizar la volatilidad (multiplicar por sqrt(periods_per_year)).
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
@@ -248,6 +258,9 @@ def historical_volatility(returns: pd.Series, window: int = 252, annualize: bool
     >>> returns = pd.Series(np.random.normal(0, 0.02, 300))
     >>> vol = historical_volatility(returns)
     >>> vol > 0
+    True
+    >>> vol_monthly = historical_volatility(returns, annualize=True, periods_per_year=12)
+    >>> vol_monthly > vol
     True
     """
     if returns.empty:
@@ -266,12 +279,13 @@ def historical_volatility(returns: pd.Series, window: int = 252, annualize: bool
     
     # Anualizar si se solicita
     if annualize:
-        volatility *= np.sqrt(252)
+        volatility *= np.sqrt(periods_per_year)
     
     return volatility
 
 
-def rolling_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
+def rolling_volatility(returns: pd.Series, window: int = 30, annualize: bool = False, 
+                      periods_per_year: int = 252) -> pd.Series:
     """
     Calcula la volatilidad móvil de una serie de retornos.
     
@@ -281,6 +295,10 @@ def rolling_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
         Serie de retornos de un activo.
     window : int, default 30
         Ventana móvil para el cálculo de volatilidad.
+    annualize : bool, default False
+        Si anualizar la volatilidad (multiplicar por sqrt(periods_per_year)).
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
@@ -298,6 +316,9 @@ def rolling_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
     >>> rolling_vol = rolling_volatility(returns, window=20)
     >>> len(rolling_vol.dropna()) == len(returns) - 19
     True
+    >>> rolling_vol_annual = rolling_volatility(returns, window=20, annualize=True, periods_per_year=12)
+    >>> rolling_vol_annual.mean() > rolling_vol.mean()
+    True
     """
     if returns.empty:
         raise ValueError("La serie de retornos está vacía")
@@ -305,12 +326,49 @@ def rolling_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
     # Calcular volatilidad móvil
     rolling_vol = returns.rolling(window=window).std()
     
+    # Anualizar si se solicita
+    if annualize:
+        rolling_vol *= np.sqrt(periods_per_year)
+    
     return rolling_vol
 
 
 # ============================================================================
 # 4. RISK-FREE RATE
 # ============================================================================
+
+def _annual_to_periodic(r_annual: pd.Series, period: str, periods_per_year: int = 252) -> pd.Series:
+    """
+    Convierte tasa anual a tasa periódica usando conversión compuesta.
+    
+    Parameters
+    ----------
+    r_annual : pd.Series
+        Serie de tasas anuales (en decimal).
+    period : str
+        Periodo objetivo: "daily", "weekly", "monthly".
+    periods_per_year : int, default 252
+        Número de periodos por año para conversión diaria.
+    
+    Returns
+    -------
+    pd.Series
+        Serie con tasas periódicas convertidas.
+        
+    Raises
+    ------
+    ValueError
+        Si el periodo no es soportado.
+    """
+    if period == "daily":
+        return (1 + r_annual)**(1/periods_per_year) - 1
+    elif period == "weekly":
+        return (1 + r_annual)**(1/52) - 1
+    elif period == "monthly":
+        return (1 + r_annual)**(1/12) - 1
+    else:
+        raise ValueError(f"Periodo no soportado: {period}")
+
 
 def get_risk_free_series(dm: DataManager, start_date: str, end_date: str, 
                         period: str = "daily") -> pd.Series:
@@ -360,39 +418,34 @@ def get_risk_free_series(dm: DataManager, start_date: str, end_date: str,
                 
                 if not data.empty and 'Close' in data.columns:
                     rf_data = data['Close']
-                    print(f"✅ Tasa libre de riesgo descargada usando {symbol}")
+                    logger.info(f"Tasa libre de riesgo descargada usando {symbol}")
                     break
                     
             except Exception as e:
-                print(f"⚠️ Error con {symbol}: {str(e)}")
+                logger.warning(f"Error con {symbol}: {str(e)}")
                 continue
         
         # Si falló la descarga directa, intentar con DataManager
         if rf_data is None and dm is not None:
             try:
-                print("🔄 Intentando descarga con DataManager...")
+                logger.info("Intentando descarga con DataManager...")
                 dm_data = dm.download_market_data(['^IRX'], start_date=start_date, end_date=end_date)
                 if not dm_data.empty and '^IRX' in dm_data.columns:
                     rf_data = dm_data['^IRX']
-                    print("✅ Tasa libre de riesgo descargada con DataManager")
+                    logger.info("Tasa libre de riesgo descargada con DataManager")
             except Exception as e:
-                print(f"⚠️ Error con DataManager: {str(e)}")
+                logger.warning(f"Error con DataManager: {str(e)}")
         
         # Si todo falló, usar tasa fija
         if rf_data is None:
-            print("⚠️ No se pudo descargar tasa libre de riesgo, usando tasa fija del 2% anual")
+            logger.warning("No se pudo descargar tasa libre de riesgo, usando tasa fija del 2% anual")
             # Crear serie con fechas del periodo solicitado
             date_range = pd.date_range(start=start_date, end=end_date, freq='D')
             fixed_rate = 0.02  # 2% anual
             
-            if period == "daily":
-                rf_data = pd.Series(fixed_rate / 252, index=date_range)
-            elif period == "weekly":
-                rf_data = pd.Series(fixed_rate / 52, index=date_range)
-            elif period == "monthly":
-                rf_data = pd.Series(fixed_rate / 12, index=date_range)
-            else:
-                raise ValueError(f"Periodo no soportado: {period}")
+            # Usar función auxiliar para conversión
+            rf_data = pd.Series(fixed_rate, index=date_range)
+            rf_data = _annual_to_periodic(rf_data, period)
             
             return rf_data
         
@@ -406,17 +459,8 @@ def get_risk_free_series(dm: DataManager, start_date: str, end_date: str,
         # Convertir de % a decimal y luego a retorno por periodo
         rf_annual = rf_annual / 100  # De % a decimal
         
-        if period == "daily":
-            # Convertir de tasa anual a retorno diario
-            rf_period = rf_annual / 252
-        elif period == "weekly":
-            # Convertir de tasa anual a retorno semanal
-            rf_period = rf_annual / 52
-        elif period == "monthly":
-            # Convertir de tasa anual a retorno mensual
-            rf_period = rf_annual / 12
-        else:
-            raise ValueError(f"Periodo no soportado: {period}")
+        # Usar función auxiliar para conversión compuesta
+        rf_period = _annual_to_periodic(rf_annual, period)
         
         # Forward fill para alinear con fechas de trading
         rf_period = rf_period.ffill()
@@ -429,7 +473,7 @@ def get_risk_free_series(dm: DataManager, start_date: str, end_date: str,
         
     except Exception as e:
         # Fallback: crear serie con tasa fija
-        print(f"⚠️ Error en descarga: {str(e)}. Usando tasa fija del 2% anual")
+        logger.warning(f"Error en descarga: {str(e)}. Usando tasa fija del 2% anual")
         date_range = pd.date_range(start=start_date, end=end_date, freq='D')
         fixed_rate = 0.02  # 2% anual
         
@@ -446,26 +490,91 @@ def get_risk_free_series(dm: DataManager, start_date: str, end_date: str,
 
 
 # ============================================================================
+# FUNCIONES AUXILIARES PARA ALINEACIÓN Y RF
+# ============================================================================
+
+def create_aligned_risk_free_rate(returns_index: pd.DatetimeIndex, 
+                                 annual_rate: float = 0.02,
+                                 periods_per_year: int = 252) -> pd.Series:
+    """
+    Crea una serie de tasa libre de riesgo que se alinea perfectamente con el índice de retornos.
+    
+    Parameters
+    ----------
+    returns_index : pd.DatetimeIndex
+        Índice de fechas de los retornos.
+    annual_rate : float, default 0.02
+        Tasa libre de riesgo anual (2% por defecto).
+    periods_per_year : int, default 252
+        Número de periodos por año.
+    
+    Returns
+    -------
+    pd.Series
+        Serie de tasa libre de riesgo alineada con las fechas de retornos.
+        
+    Examples
+    --------
+    >>> returns = pd.Series([0.01, 0.02], index=pd.date_range('2020-01-01', periods=2))
+    >>> rf = create_aligned_risk_free_rate(returns.index, annual_rate=0.025)
+    >>> len(rf) == len(returns)
+    True
+    """
+    # Normalizar el índice de fechas
+    normalized_index = returns_index.copy()
+    
+    if not isinstance(normalized_index, pd.DatetimeIndex):
+        normalized_index = pd.to_datetime(normalized_index)
+    
+    # Normalizar zona horaria
+    if normalized_index.tz is not None:
+        normalized_index = normalized_index.tz_convert('UTC').tz_localize(None)
+    
+    # Redondear a días completos
+    normalized_index = normalized_index.normalize()
+    
+    # Calcular tasa por periodo
+    rate_per_period = annual_rate / periods_per_year
+    
+    # Crear serie con tasa constante
+    rf_series = pd.Series(rate_per_period, index=normalized_index)
+    
+    return rf_series
+
+
+# ============================================================================
 # FUNCIÓN AUXILIAR PARA ALINEACIÓN DE FECHAS
 # ============================================================================
 
-def _align_series_by_date(series1: pd.Series, series2: pd.Series) -> Tuple[pd.Series, pd.Series]:
+def _align_series_by_date(series1: pd.Series, series2: pd.Series, 
+                         allow_ffill_rf: bool = True) -> Tuple[pd.Series, pd.Series]:
     """
     Función auxiliar para alinear dos series por fechas.
+    
+    IMPORTANTE: Por defecto permite forward fill para tasa libre de riesgo (allow_ffill_rf=True).
+    Esto resuelve problemas comunes de alineación de fechas entre retornos y RF.
     
     Parameters
     ----------
     series1 : pd.Series
-        Primera serie.
+        Primera serie (generalmente retornos de activos).
     series2 : pd.Series
-        Segunda serie.
+        Segunda serie (generalmente tasa libre de riesgo).
+    allow_ffill_rf : bool, default True
+        Si permitir forward fill para series de tasa libre de riesgo.
+        Recomendado para resolver problemas de alineación.
     
     Returns
     -------
     Tuple[pd.Series, pd.Series]
         Tupla con las series alineadas.
+        
+    Raises
+    ------
+    ValueError
+        Si no se pueden alinear las series por fechas.
     """
-    # Convertir índices a DatetimeIndex si no lo son y normalizar zonas horarias
+    # Convertir índices a DatetimeIndex si no lo son
     if not isinstance(series1.index, pd.DatetimeIndex):
         series1.index = pd.to_datetime(series1.index)
     if not isinstance(series2.index, pd.DatetimeIndex):
@@ -477,17 +586,30 @@ def _align_series_by_date(series1: pd.Series, series2: pd.Series) -> Tuple[pd.Se
     if series2.index.tz is not None:
         series2.index = series2.index.tz_convert('UTC').tz_localize(None)
     
-    # Alinear series por fechas
+    # Redondear todas las fechas a días completos (00:00:00) para mejor alineación
+    series1.index = series1.index.normalize()
+    series2.index = series2.index.normalize()
+    
+    # Intentar alineación directa primero
     aligned_data = pd.concat([series1, series2], axis=1, join='inner').dropna()
     
-    # Si no hay fechas comunes, intentar alineación alternativa
-    if aligned_data.empty:
-        # Reindexar segunda serie a las fechas de la primera
+    # Si no hay fechas comunes y se permite ffill
+    if aligned_data.empty and allow_ffill_rf:
+        # Usar forward fill para alinear la segunda serie con la primera
         series2_aligned = series2.reindex(series1.index, method='ffill')
+        
+        # Verificar que hay datos válidos después del forward fill
+        if series2_aligned.isna().all():
+            # Si todo es NaN, usar backward fill
+            series2_aligned = series2.reindex(series1.index, method='bfill')
+        
+        # Crear DataFrame alineado
         aligned_data = pd.concat([series1, series2_aligned], axis=1, join='inner').dropna()
         
         if aligned_data.empty:
-            raise ValueError("No se pueden alinear las series por fechas")
+            raise ValueError("No se pueden alinear las series por fechas incluso con forward/backward fill")
+    elif aligned_data.empty:
+        raise ValueError("No hay fechas comunes entre las series. Considere usar reindex/ffill explícitamente.")
     
     return aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
 
@@ -496,7 +618,7 @@ def _align_series_by_date(series1: pd.Series, series2: pd.Series) -> Tuple[pd.Se
 # 5. RATIOS DE PERFORMANCE
 # ============================================================================
 
-def sharpe_ratio(returns: pd.Series, rf: pd.Series) -> float:
+def sharpe_ratio(returns: pd.Series, rf: pd.Series, periods_per_year: int = 252) -> float:
     """
     Calcula el ratio de Sharpe.
     
@@ -508,11 +630,13 @@ def sharpe_ratio(returns: pd.Series, rf: pd.Series) -> float:
         Serie de retornos del activo/cartera.
     rf : pd.Series
         Serie de tasa libre de riesgo.
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
     float
-        Ratio de Sharpe.
+        Ratio de Sharpe anualizado.
         
     Raises
     ------
@@ -526,13 +650,16 @@ def sharpe_ratio(returns: pd.Series, rf: pd.Series) -> float:
     >>> sr = sharpe_ratio(returns, rf)
     >>> isinstance(sr, float)
     True
+    >>> sr_monthly = sharpe_ratio(returns, rf, periods_per_year=12)
+    >>> sr_monthly > sr
+    True
     """
     if returns.empty or rf.empty:
         raise ValueError("Las series de retornos o tasa libre de riesgo están vacías")
     
-    # Usar función auxiliar para alinear series
+    # Usar función auxiliar para alinear series (con forward fill habilitado por defecto)
     try:
-        aligned_returns, aligned_rf = _align_series_by_date(returns, rf)
+        aligned_returns, aligned_rf = _align_series_by_date(returns, rf, allow_ffill_rf=True)
     except ValueError as e:
         raise ValueError(f"Error alineando series para Sharpe ratio: {str(e)}")
     
@@ -545,15 +672,17 @@ def sharpe_ratio(returns: pd.Series, rf: pd.Series) -> float:
     
     sharpe = excess_returns.mean() / excess_returns.std()
     
-    # Anualizar (multiplicar por sqrt(252) para retornos diarios)
-    return sharpe * np.sqrt(252)
+    # Anualizar usando periods_per_year
+    return sharpe * np.sqrt(periods_per_year)
 
 
-def sortino_ratio(returns: pd.Series, rf: pd.Series) -> float:
+def sortino_ratio(returns: pd.Series, rf: pd.Series, periods_per_year: int = 252) -> float:
     """
-    Calcula el ratio de Sortino.
+    Calcula el ratio de Sortino usando la definición estándar.
     
     Sortino Ratio = (E[R_p] - E[R_f]) / σ_downside
+    
+    Donde σ_downside es la desviación estándar de los retornos por debajo de la tasa libre de riesgo.
     
     Parameters
     ----------
@@ -561,11 +690,13 @@ def sortino_ratio(returns: pd.Series, rf: pd.Series) -> float:
         Serie de retornos del activo/cartera.
     rf : pd.Series
         Serie de tasa libre de riesgo.
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
     float
-        Ratio de Sortino.
+        Ratio de Sortino anualizado. Retorna np.inf si no hay downside deviation.
         
     Raises
     ------
@@ -579,41 +710,47 @@ def sortino_ratio(returns: pd.Series, rf: pd.Series) -> float:
     >>> sr = sortino_ratio(returns, rf)
     >>> isinstance(sr, float)
     True
+    >>> # Caso sin downside deviation
+    >>> returns_positive = pd.Series([0.01, 0.02, 0.03])
+    >>> sr_no_downside = sortino_ratio(returns_positive, rf)
+    >>> np.isinf(sr_no_downside)
+    True
     """
     if returns.empty or rf.empty:
         raise ValueError("Las series de retornos o tasa libre de riesgo están vacías")
     
-    # Usar función auxiliar para alinear series
+    # Usar función auxiliar para alinear series (con forward fill habilitado por defecto)
     try:
-        aligned_returns, aligned_rf = _align_series_by_date(returns, rf)
+        aligned_returns, aligned_rf = _align_series_by_date(returns, rf, allow_ffill_rf=True)
     except ValueError as e:
         raise ValueError(f"Error alineando series para Sortino ratio: {str(e)}")
     
     # Calcular exceso de retorno
-    excess_returns = aligned_returns - aligned_rf
+    excess = aligned_returns - aligned_rf
     
     # Calcular downside deviation (solo retornos negativos)
-    downside_returns = excess_returns[excess_returns < 0]
+    downside = np.minimum(0, excess)
+    downside_dev = np.sqrt(np.mean(np.square(downside)))
     
-    if len(downside_returns) == 0:
-        return np.inf  # Sin riesgo downside
+    # Si no hay downside deviation, retornar infinito
+    if downside_dev == 0:
+        return np.inf
     
-    downside_deviation = downside_returns.std()
+    # Calcular ratio de Sortino
+    sortino = excess.mean() / downside_dev
     
-    if downside_deviation == 0:
-        return 0.0
-    
-    sortino = excess_returns.mean() / downside_deviation
-    
-    # Anualizar
-    return sortino * np.sqrt(252)
+    # Anualizar usando periods_per_year
+    return sortino * np.sqrt(periods_per_year)
 
 
-def information_ratio(returns: pd.Series, benchmark: pd.Series, rf: pd.Series) -> float:
+def information_ratio(returns: pd.Series, benchmark: pd.Series, periods_per_year: int = 252) -> float:
     """
-    Calcula el ratio de información.
+    Calcula el ratio de información (exceso sobre benchmark vs error de seguimiento).
     
     Information Ratio = (E[R_p] - E[R_b]) / σ_tracking_error
+    
+    Donde σ_tracking_error es la desviación estándar de la diferencia entre retornos
+    del portafolio y benchmark.
     
     Parameters
     ----------
@@ -621,13 +758,13 @@ def information_ratio(returns: pd.Series, benchmark: pd.Series, rf: pd.Series) -
         Serie de retornos del activo/cartera.
     benchmark : pd.Series
         Serie de retornos del benchmark.
-    rf : pd.Series
-        Serie de tasa libre de riesgo.
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
     float
-        Ratio de información.
+        Ratio de información anualizado. Retorna 0.0 si no hay tracking error.
         
     Raises
     ------
@@ -638,45 +775,94 @@ def information_ratio(returns: pd.Series, benchmark: pd.Series, rf: pd.Series) -
     --------
     >>> returns = pd.Series([0.01, 0.02, -0.01, 0.03])
     >>> benchmark = pd.Series([0.005, 0.015, -0.005, 0.025])
-    >>> rf = pd.Series([0.001, 0.001, 0.001, 0.001])
-    >>> ir = information_ratio(returns, benchmark, rf)
+    >>> ir = information_ratio(returns, benchmark)
     >>> isinstance(ir, float)
     True
+    >>> # Caso sin tracking error
+    >>> returns_same = pd.Series([0.01, 0.02, -0.01, 0.03])
+    >>> ir_no_error = information_ratio(returns_same, returns_same)
+    >>> ir_no_error == 0.0
+    True
     """
-    if returns.empty or benchmark.empty or rf.empty:
-        raise ValueError("Alguna de las series está vacía")
-    
-    # Alinear todas las series usando la función auxiliar
-    try:
-        # Primero alinear returns y benchmark
-        aligned_returns, aligned_benchmark = _align_series_by_date(returns, benchmark)
-        # Luego alinear con rf
-        aligned_returns, aligned_rf = _align_series_by_date(aligned_returns, rf)
-        aligned_benchmark, _ = _align_series_by_date(aligned_benchmark, rf)
-    except ValueError as e:
-        raise ValueError(f"Error alineando series para Information ratio: {str(e)}")
-    
-    # Calcular excesos de retorno
-    excess_returns = aligned_returns - aligned_rf
-    excess_benchmark = aligned_benchmark - aligned_rf
-    
-    # Calcular tracking error (diferencia de excesos)
-    tracking_error = excess_returns - excess_benchmark
-    
-    if tracking_error.std() == 0:
+    # Validaciones robustas
+    if returns is None or benchmark is None:
         return 0.0
     
-    information_ratio_value = tracking_error.mean() / tracking_error.std()
+    if returns.empty or benchmark.empty:
+        return 0.0
     
-    # Anualizar
-    return information_ratio_value * np.sqrt(252)
+    # Verificar que son Series válidas
+    if not isinstance(returns, pd.Series) or not isinstance(benchmark, pd.Series):
+        return 0.0
+    
+    try:
+        # Normalizar índices de fechas para mejor alineación
+        returns_normalized = returns.copy()
+        benchmark_normalized = benchmark.copy()
+        
+        # Convertir índices a DatetimeIndex si no lo son
+        if not isinstance(returns_normalized.index, pd.DatetimeIndex):
+            returns_normalized.index = pd.to_datetime(returns_normalized.index)
+        if not isinstance(benchmark_normalized.index, pd.DatetimeIndex):
+            benchmark_normalized.index = pd.to_datetime(benchmark_normalized.index)
+        
+        # Normalizar zonas horarias
+        if returns_normalized.index.tz is not None:
+            returns_normalized.index = returns_normalized.index.tz_convert('UTC').tz_localize(None)
+        if benchmark_normalized.index.tz is not None:
+            benchmark_normalized.index = benchmark_normalized.index.tz_convert('UTC').tz_localize(None)
+        
+        # Redondear fechas a días completos
+        returns_normalized.index = returns_normalized.index.normalize()
+        benchmark_normalized.index = benchmark_normalized.index.normalize()
+        
+        # Alinear series por fechas
+        aligned = pd.concat([returns_normalized, benchmark_normalized], axis=1, join='inner').dropna()
+        
+        if aligned.empty:
+            return 0.0
+        
+        # Verificar que hay suficientes datos
+        if len(aligned) < 2:
+            return 0.0
+        
+        # Calcular diferencia entre retornos
+        diff = aligned.iloc[:, 0] - aligned.iloc[:, 1]
+        
+        # Verificar que diff no esté vacío
+        if diff.empty:
+            return 0.0
+        
+        # Calcular tracking error
+        te = diff.std()
+        
+        # Verificar que tracking error sea válido
+        if pd.isna(te) or te == 0:
+            return 0.0
+        
+        # Calcular ratio de información y anualizar
+        result = (diff.mean() / te) * np.sqrt(periods_per_year)
+        
+        # Asegurar que el resultado sea un float válido
+        if pd.isna(result) or np.isinf(result):
+            return 0.0
+        
+        return float(result)
+        
+    except Exception as e:
+        # Log del error para debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error en information_ratio: {str(e)}")
+        return 0.0
 
 
 # ============================================================================
 # 6. RIESGO EXTREMO
 # ============================================================================
 
-def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1) -> float:
+def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1, 
+                 method: Literal["historical"] = "historical") -> float:
     """
     Calcula el Value at Risk (VaR) histórico.
     
@@ -688,7 +874,10 @@ def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1
         Nivel de confianza (0.05 = 95% de confianza).
     horizon_days : int, default 1
         Horizonte en días para el VaR. Si >1, agrega retornos a ese horizonte
-        usando composición de retornos simples.
+        usando composición de retornos simples en ventana rodante, lo que introduce solapamiento.
+    method : Literal["historical"], default "historical"
+        Método de cálculo. Actualmente solo soporta "historical".
+        Preparado para futuras extensiones (Cornish-Fisher, paramétrico).
     
     Returns
     -------
@@ -698,7 +887,7 @@ def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1
     Raises
     ------
     ValueError
-        Si la serie está vacía o el nivel es inválido.
+        Si la serie está vacía, el nivel es inválido, o el horizonte es inválido.
         
     Examples
     --------
@@ -706,25 +895,32 @@ def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1
     >>> var_5 = calculate_var(returns, 0.05)
     >>> var_5 > 0  # VaR debe ser positivo (representa pérdida)
     True
+    >>> # Con horizonte de 5 días
+    >>> var_5d = calculate_var(returns, 0.05, horizon_days=5)
+    >>> var_5d > var_5  # VaR de horizonte mayor debe ser mayor
+    True
     """
     if returns.empty:
         raise ValueError("La serie de retornos está vacía")
     
     if not (0 < level < 1):
-        raise ValueError("El nivel debe estar entre 0 y 1")
+        raise ValueError(f"El parámetro 'level' debe estar entre 0 y 1, recibido: {level}")
+    
+    if horizon_days < 1:
+        raise ValueError(f"El parámetro 'horizon_days' debe ser >= 1, recibido: {horizon_days}")
     
     clean_returns = returns.dropna()
     
     # Agregar a horizonte si aplica (asumiendo retornos simples)
     if horizon_days > 1:
         if len(clean_returns) < horizon_days:
-            raise ValueError("No hay suficientes datos para el horizonte solicitado")
+            raise ValueError(f"No hay suficientes datos para el horizonte solicitado: {len(clean_returns)} observaciones vs {horizon_days} días requeridos")
         # Composición de retornos simples en ventana rodante
         clean_returns = (1 + clean_returns).rolling(window=horizon_days).apply(lambda x: np.prod(x) - 1, raw=False)
         clean_returns = clean_returns.dropna()
     
     if len(clean_returns) == 0:
-        raise ValueError("No hay datos válidos en la serie")
+        raise ValueError("No hay datos válidos en la serie tras el procesamiento")
     
     # Calcular VaR como percentil (negativo para representar pérdida)
     var_value = -np.percentile(clean_returns, level * 100)
@@ -732,7 +928,8 @@ def calculate_var(returns: pd.Series, level: float = 0.05, horizon_days: int = 1
     return var_value
 
 
-def calculate_cvar(returns: pd.Series, level: float = 0.05, horizon_days: int = 1) -> float:
+def calculate_cvar(returns: pd.Series, level: float = 0.05, horizon_days: int = 1,
+                  method: Literal["historical"] = "historical") -> float:
     """
     Calcula el Conditional Value at Risk (CVaR) o Expected Shortfall.
     
@@ -744,7 +941,10 @@ def calculate_cvar(returns: pd.Series, level: float = 0.05, horizon_days: int = 
         Nivel de confianza (0.05 = 95% de confianza).
     horizon_days : int, default 1
         Horizonte en días para el CVaR. Si >1, agrega retornos a ese horizonte
-        usando composición de retornos simples.
+        usando composición de retornos simples en ventana rodante, lo que introduce solapamiento.
+    method : Literal["historical"], default "historical"
+        Método de cálculo. Actualmente solo soporta "historical".
+        Preparado para futuras extensiones (Cornish-Fisher, paramétrico).
     
     Returns
     -------
@@ -754,7 +954,7 @@ def calculate_cvar(returns: pd.Series, level: float = 0.05, horizon_days: int = 
     Raises
     ------
     ValueError
-        Si la serie está vacía o el nivel es inválido.
+        Si la serie está vacía, el nivel es inválido, o el horizonte es inválido.
         
     Examples
     --------
@@ -762,24 +962,31 @@ def calculate_cvar(returns: pd.Series, level: float = 0.05, horizon_days: int = 
     >>> cvar_5 = calculate_cvar(returns, 0.05)
     >>> cvar_5 > 0  # CVaR debe ser positivo (representa pérdida)
     True
+    >>> # Con horizonte de 5 días
+    >>> cvar_5d = calculate_cvar(returns, 0.05, horizon_days=5)
+    >>> cvar_5d > cvar_5  # CVaR de horizonte mayor debe ser mayor
+    True
     """
     if returns.empty:
         raise ValueError("La serie de retornos está vacía")
     
     if not (0 < level < 1):
-        raise ValueError("El nivel debe estar entre 0 y 1")
+        raise ValueError(f"El parámetro 'level' debe estar entre 0 y 1, recibido: {level}")
+    
+    if horizon_days < 1:
+        raise ValueError(f"El parámetro 'horizon_days' debe ser >= 1, recibido: {horizon_days}")
     
     clean_returns = returns.dropna()
     
     # Agregar a horizonte si aplica (asumiendo retornos simples)
     if horizon_days > 1:
         if len(clean_returns) < horizon_days:
-            raise ValueError("No hay suficientes datos para el horizonte solicitado")
+            raise ValueError(f"No hay suficientes datos para el horizonte solicitado: {len(clean_returns)} observaciones vs {horizon_days} días requeridos")
         clean_returns = (1 + clean_returns).rolling(window=horizon_days).apply(lambda x: np.prod(x) - 1, raw=False)
         clean_returns = clean_returns.dropna()
     
     if len(clean_returns) == 0:
-        raise ValueError("No hay datos válidos en la serie")
+        raise ValueError("No hay datos válidos en la serie tras el procesamiento")
     
     # Calcular VaR primero
     var_value = -np.percentile(clean_returns, level * 100)
@@ -848,11 +1055,13 @@ def max_drawdown(returns: pd.Series) -> float:
 # 7. BETA Y ALPHA FRENTE A BENCHMARK
 # ============================================================================
 
-def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -> Dict[str, float]:
+def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series,
+                   rf: Optional[pd.Series] = None, periods_per_year: int = 252) -> Dict[str, float]:
     """
     Calcula Alpha, Beta y R² usando regresión OLS.
     
-    Modelo: R_p - R_f = α + β(R_m - R_f) + ε
+    Si rf se proporciona: R_p - R_f = α + β(R_m - R_f) + ε (modelo CAPM completo)
+    Si rf es None: R_p = α + β R_m + ε (regresión simple)
     
     Parameters
     ----------
@@ -860,11 +1069,16 @@ def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -
         Serie de retornos del portafolio/activo.
     benchmark_returns : pd.Series
         Serie de retornos del benchmark.
+    rf : Optional[pd.Series], default None
+        Serie de tasa libre de riesgo. Si se proporciona, usa modelo CAPM completo.
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización de alpha.
     
     Returns
     -------
     Dict[str, float]
         Diccionario con 'alpha', 'beta', y 'r2'.
+        Alpha se anualiza solo si rf se proporciona.
         
     Raises
     ------
@@ -878,45 +1092,65 @@ def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -
     >>> result = calculate_beta(portfolio, benchmark)
     >>> 'alpha' in result and 'beta' in result and 'r2' in result
     True
+    >>> # Con tasa libre de riesgo (CAPM completo)
+    >>> rf = pd.Series([0.001, 0.001, 0.001, 0.001])
+    >>> result_capm = calculate_beta(portfolio, benchmark, rf=rf)
+    >>> result_capm['alpha'] != result['alpha']  # Alpha anualizado vs no anualizado
+    True
     """
     if portfolio_returns.empty or benchmark_returns.empty:
         raise ValueError("Las series de retornos están vacías")
     
-    # Alinear series por fechas
-    aligned_data = pd.concat([portfolio_returns, benchmark_returns], axis=1, join='inner').dropna()
-    
-    if aligned_data.empty:
-        raise ValueError("No hay fechas comunes entre las series")
-    
-    if len(aligned_data) < 2:
-        raise ValueError("Se necesitan al menos 2 observaciones para la regresión")
-    
-    y = aligned_data.iloc[:, 0]  # Retornos del portafolio
-    x = aligned_data.iloc[:, 1]  # Retornos del benchmark
-    
-    # Agregar constante para la regresión
-    X = sm.add_constant(x)
-    
-    try:
-        # Ajustar modelo OLS
+    if rf is not None:
+        # Modelo CAPM completo: R_p - R_f = α + β(R_m - R_f)
+        rp, rf_al = _align_series_by_date(portfolio_returns, rf)
+        rm, _ = _align_series_by_date(benchmark_returns, rf)
+        
+        # Calcular excesos de retorno
+        y = rp - rf_al
+        x = rm - rf_al
+        
+        # Verificar que hay suficientes observaciones
+        if len(y) < 2:
+            raise ValueError("No hay suficientes observaciones tras alinear las series")
+        
+        # Regresión OLS
+        X = sm.add_constant(x)
         model = sm.OLS(y, X).fit()
         
-        # Extraer resultados
-        alpha = model.params[0]  # Intercepto
-        beta = model.params[1]   # Pendiente
-        r2 = model.rsquared      # R cuadrado
+        # Extraer parámetros
+        alpha_param = model.params.get('const', model.params.iloc[0])
+        beta_param = model.params.drop('const', errors='ignore').iloc[0] if 'const' in model.params else model.params.iloc[1]
         
-        # Anualizar alpha (asumiendo retornos diarios)
-        alpha_annualized = alpha * 252
+        # Anualizar alpha para modelo CAPM
+        alpha = alpha_param * periods_per_year
         
-        return {
-            'alpha': alpha_annualized,
-            'beta': beta,
-            'r2': r2
-        }
+    else:
+        # Regresión simple: R_p = α + β R_m
+        aligned = pd.concat([portfolio_returns, benchmark_returns], axis=1, join='inner').dropna()
         
-    except Exception as e:
-        raise ValueError(f"Error en la regresión OLS: {str(e)}")
+        if aligned.empty or len(aligned) < 2:
+            raise ValueError("No hay suficientes observaciones tras alinear las series")
+        
+        y = aligned.iloc[:, 0]  # Retornos del portafolio
+        x = aligned.iloc[:, 1]  # Retornos del benchmark
+        
+        # Regresión OLS
+        X = sm.add_constant(x)
+        model = sm.OLS(y, X).fit()
+        
+        # Extraer parámetros
+        alpha_param = model.params.get('const', model.params.iloc[0])
+        beta_param = model.params.drop('const', errors='ignore').iloc[0] if 'const' in model.params else model.params.iloc[1]
+        
+        # No anualizar alpha para regresión simple
+        alpha = alpha_param
+    
+    return {
+        'alpha': float(alpha),
+        'beta': float(beta_param),
+        'r2': float(model.rsquared)
+    }
 
 
 # ============================================================================
@@ -924,7 +1158,7 @@ def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -
 # ============================================================================
 
 def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series, 
-                          risk_free_rate: pd.Series) -> Dict[str, float]:
+                          risk_free_rate: pd.Series, periods_per_year: int = 252) -> Dict[str, float]:
     """
     Calcula métricas CAPM completas.
     
@@ -938,6 +1172,8 @@ def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series,
         Serie de retornos del mercado (benchmark).
     risk_free_rate : pd.Series
         Serie de tasa libre de riesgo.
+    periods_per_year : int, default 252
+        Número de periodos por año para anualización.
     
     Returns
     -------
@@ -957,6 +1193,10 @@ def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series,
     >>> rf = pd.Series([0.001, 0.001, 0.001, 0.001])
     >>> capm = calculate_capm_metrics(returns, market, rf)
     >>> 'beta' in capm and 'expected_return_capm' in capm
+    True
+    >>> # Con frecuencia mensual
+    >>> capm_monthly = calculate_capm_metrics(returns, market, rf, periods_per_year=12)
+    >>> capm_monthly['expected_return_capm'] != capm['expected_return_capm']
     True
     """
     if returns.empty or market_returns.empty or risk_free_rate.empty:
@@ -1020,10 +1260,10 @@ def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series,
         
         if df.empty:
             # Mostrar información adicional para debug
-            # print(f"      DEBUG CAPM - Todas las series tienen valores NaN en las mismas fechas")
-            print(f"        Returns NaN: {returns_normalized.isna().sum()}")
-            print(f"        Market NaN: {market_normalized.isna().sum()}")
-            print(f"        RF NaN: {rf_normalized.isna().sum()}")
+            # Todas las series tienen valores NaN en las mismas fechas
+            logger.warning(f"Returns NaN: {returns_normalized.isna().sum()}")
+            logger.warning(f"Market NaN: {market_normalized.isna().sum()}")
+            logger.warning(f"RF NaN: {rf_normalized.isna().sum()}")
             raise ValueError("No hay fechas comunes entre las series para calcular CAPM")
         
         if len(df) < 30:  # Necesitamos al menos 30 observaciones para un análisis confiable
@@ -1075,15 +1315,15 @@ def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series,
     actual_return = aligned_returns.mean()
     excess_return = actual_return - expected_return_capm
     
-    # Anualizar métricas (asumiendo retornos diarios)
-    annualized_alpha = alpha * 252
-    annualized_expected_return = expected_return_capm * 252
-    annualized_actual_return = actual_return * 252
-    annualized_excess_return = excess_return * 252
-    annualized_market_risk_premium = market_risk_premium * 252
+    # Anualizar métricas usando periods_per_year
+    annualized_alpha = alpha * periods_per_year
+    annualized_expected_return = expected_return_capm * periods_per_year
+    annualized_actual_return = actual_return * periods_per_year
+    annualized_excess_return = excess_return * periods_per_year
+    annualized_market_risk_premium = market_risk_premium * periods_per_year
     
     # Sharpe ratio según CAPM
-    sharpe_ratio_capm = (annualized_excess_return) / (aligned_returns.std() * np.sqrt(252))
+    sharpe_ratio_capm = (annualized_excess_return) / (aligned_returns.std() * np.sqrt(periods_per_year))
     
     return {
         'beta': beta,
@@ -1097,83 +1337,139 @@ def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series,
     }
 
 
-def plot_security_market_line(assets_data: Dict[str, Dict[str, float]], 
-                            market_return: float, risk_free_rate: float,
-                            save_plot: bool = False, show_plot: bool = True) -> Optional[str]:
+def plot_security_market_line(
+    assets_data: Dict[str, Dict[str, float]],
+    market_return: float,
+    risk_free_rate: float,
+    *,
+    periods_per_year: int = 252,
+    ax: Optional[plt.Axes] = None,
+    save_plot: bool = False,
+    show_plot: bool = True,
+    annotate: bool = True,
+    annotate_threshold: float = 0.02  # 2% de diferencia vs SML
+) -> Optional[str]:
     """
     Grafica la Línea del Mercado de Valores (SML) del CAPM con retornos reales vs esperados.
     
     SML: E(Ri) = Rf + βi(E(Rm) - Rf)
     Los puntos muestran retornos reales para comparar con la SML teórica.
     
+    IMPORTANTE: Todos los valores deben estar en términos ANUALIZADOS.
+    
     Parameters
     ----------
     assets_data : Dict[str, Dict[str, float]]
         Diccionario con datos de activos: {symbol: {'beta': float, 'actual_return': float}}
+        donde 'beta' y 'actual_return' están en términos anualizados.
     market_return : float
         Retorno esperado del mercado (anualizado).
     risk_free_rate : float
         Tasa libre de riesgo (anualizada).
+    periods_per_year : int, default 252
+        Número de periodos por año (para compatibilidad, no se usa en cálculos).
+    ax : Optional[plt.Axes], default None
+        Eje de matplotlib donde graficar. Si se proporciona, no se llama a plt.show().
     save_plot : bool, default False
         Si guardar el gráfico.
     show_plot : bool, default True
         Si mostrar el gráfico.
+    annotate : bool, default True
+        Si añadir etiquetas de ticker y resaltar activos con alpha significativo.
+    annotate_threshold : float, default 0.02
+        Umbral para resaltar activos con alpha implícito >= 2% de diferencia vs SML.
     
     Returns
     -------
     Optional[str]
         Ruta del archivo si se guardó, None en caso contrario.
         
+    Raises
+    ------
+    ValueError
+        Si assets_data no contiene 'beta' y 'actual_return' para algún símbolo.
+        
     Examples
     --------
-    >>> assets = {'AAPL': {'beta': 1.2, 'actual_return': 0.15}}
-    >>> plot_security_market_line(assets, 0.10, 0.02, show_plot=False)
+    >>> data = {'AAA': {'beta': 1.2, 'actual_return': 0.18}, 'BBB': {'beta': 0.8, 'actual_return': 0.10}}
+    >>> _ = plot_security_market_line(data, market_return=0.12, risk_free_rate=0.02, show_plot=False)
     """
     if not assets_data:
-        print("No hay datos de activos para graficar")
+        logger.warning("No hay datos de activos para graficar")
         return None
+    
+    # Validar estructura de datos
+    for symbol, data in assets_data.items():
+        if 'beta' not in data or 'actual_return' not in data:
+            raise ValueError(f"assets_data['{symbol}'] debe incluir 'beta' y 'actual_return' anualizados.")
     
     # Preparar datos para el gráfico
     symbols = list(assets_data.keys())
     betas = [assets_data[s]['beta'] for s in symbols]
     actual_returns = [assets_data[s]['actual_return'] for s in symbols]
     
+    # Validar que los retornos estén en rango razonable anualizado
+    if np.nanmax(np.abs(actual_returns)) < 0.02:
+        logger.warning("plot_security_market_line: los retornos parecen no estar anualizados (|R|<2%). Revisa inputs.")
+    
     # Calcular SML teórica
     market_risk_premium = market_return - risk_free_rate
-    sml_betas = np.linspace(0, max(betas) * 1.2, 100)
+    sml_betas = np.linspace(0, max(1.2, max(betas) * 1.1), 200)
     sml_returns = risk_free_rate + sml_betas * market_risk_premium
     
     # Crear gráfico
-    plt.figure(figsize=(12, 8))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))
     
-    # Graficar SML teórica
-    plt.plot(sml_betas, sml_returns, 'b--', linewidth=2, label='SML Teórica (CAPM)', alpha=0.7)
+    # Graficar SML teórica con línea discontinua más gruesa
+    ax.plot(sml_betas, sml_returns, 'b--', linewidth=2.5, label='SML Teórica (CAPM)', alpha=0.8)
     
     # Graficar activos individuales con retornos reales
     colors = plt.cm.Set3(np.linspace(0, 1, len(symbols)))
     for i, symbol in enumerate(symbols):
-        plt.scatter(betas[i], actual_returns[i], c=[colors[i]], s=100, 
-                   label=f'{symbol} (Real)', alpha=0.8, edgecolors='black')
+        ax.scatter(betas[i], actual_returns[i], c=[colors[i]], s=110, 
+                  edgecolors='black', alpha=0.85, label=f'{symbol} (Real)')
     
     # Líneas de referencia
-    plt.axhline(y=risk_free_rate, color='g', linestyle=':', alpha=0.7, label=f'Rf = {risk_free_rate:.2%}')
-    plt.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
+    ax.axhline(y=risk_free_rate, color='g', linestyle=':', alpha=0.7, label=f'Rf = {risk_free_rate:.2%}')
+    ax.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
+    
+    # Configurar eje Y en formato porcentaje anual
+    import matplotlib.ticker as mtick
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
     
     # Configurar gráfico
-    plt.xlabel('Beta (β)', fontsize=12, fontweight='bold')
-    plt.ylabel('Retorno Real vs Esperado E(R)', fontsize=12, fontweight='bold')
-    plt.title('Línea del Mercado de Valores (SML) - CAPM\nRetornos Reales vs Teóricos', fontsize=14, fontweight='bold')
-    plt.grid(True, alpha=0.3)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.set_xlabel('Beta (β)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Retorno Anualizado E(R)', fontsize=12, fontweight='bold')
+    ax.set_title('Línea del Mercado de Valores (SML) - CAPM\nRetornos Reales vs Teóricos (Anualizados)', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
-    # Añadir anotaciones explicativas
-    plt.text(0.02, 0.98, 
-             f'Rf = {risk_free_rate:.2%}\nE(Rm) = {market_return:.2%}\nMRP = {market_risk_premium:.2%}\n\n'
-             f'Puntos por encima de SML:\nAlpha positivo\nPuntos por debajo:\nAlpha negativo', 
-             transform=plt.gca().transAxes, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
+    # Anotaciones útiles si se solicita
+    if annotate:
+        # Calcular alpha implícito (distancia vertical a SML)
+        expected_on_sml = risk_free_rate + np.array(betas) * market_risk_premium
+        alpha_impl = np.array(actual_returns) - expected_on_sml
+        
+        # Añadir etiquetas de ticker y resaltar activos con alpha significativo
+        for i, symbol in enumerate(symbols):
+            if abs(alpha_impl[i]) >= annotate_threshold:
+                ax.annotate(symbol, (betas[i], actual_returns[i]), 
+                           xytext=(6, 6), textcoords='offset points', 
+                           fontsize=9, weight='bold')
     
-    plt.tight_layout()
+    # Añadir cuadro de texto con valores anualizados
+    ax.text(0.02, 0.98, 
+            f'Rf = {risk_free_rate:.2%}\nE(Rm) = {market_return:.2%}\nMRP = {market_risk_premium:.2%}', 
+            transform=ax.transAxes, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
+    
+    # Warning si MRP es negativo
+    if market_risk_premium < 0:
+        logger.warning("plot_security_market_line: Market Risk Premium es negativo (E(Rm) < Rf)")
+    
+    if ax is None:
+        plt.tight_layout()
     
     # Guardar si se solicita
     filepath = None
@@ -1181,16 +1477,52 @@ def plot_security_market_line(assets_data: Dict[str, Dict[str, float]],
         filepath = "security_market_line_capm.png"
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
     
-    if show_plot:
+    # Solo mostrar si no se proporcionó un eje y se solicita mostrar
+    if show_plot and ax is None:
         plt.show()
-    else:
+    elif not show_plot and ax is None:
         plt.close()
     
     return filepath
 
 
+def build_assets_data_from_capm(capm_results: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
+    """
+    Toma el dict devuelto por calculate_capm_metrics para cada símbolo y
+    devuelve {symbol: {'beta': float, 'actual_return': float}} en anualizado.
+    
+    Parameters
+    ----------
+    capm_results : Dict[str, Dict[str, float]]
+        Diccionario con resultados CAPM de múltiples símbolos.
+    
+    Returns
+    -------
+    Dict[str, Dict[str, float]]
+        Diccionario con estructura requerida para plot_security_market_line.
+        
+    Examples
+    --------
+    >>> capm_data = {'AAPL': {'beta': 1.2, 'actual_return': 0.18, 'alpha': 0.05}}
+    >>> assets_data = build_assets_data_from_capm(capm_data)
+    >>> assets_data['AAPL']['beta']
+    1.2
+    >>> assets_data['AAPL']['actual_return']
+    0.18
+    """
+    out = {}
+    for symbol, metrics in capm_results.items():
+        if 'beta' in metrics and 'actual_return' in metrics:
+            out[symbol] = {
+                'beta': float(metrics['beta']), 
+                'actual_return': float(metrics['actual_return'])
+            }
+    return out
+
+
 def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]], 
-                       save_plot: bool = False, show_plot: bool = True) -> Optional[str]:
+                       save_plot: bool = False, show_plot: bool = True,
+                       ax: Optional[plt.Axes] = None) -> Optional[str]:
     """
     Grafica Alpha vs Beta para evaluar retornos excesivos del CAPM.
     
@@ -1202,6 +1534,8 @@ def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]],
         Si guardar el gráfico.
     show_plot : bool, default True
         Si mostrar el gráfico.
+    ax : Optional[plt.Axes], default None
+        Eje de matplotlib donde graficar. Si se proporciona, no se llama a plt.show().
     
     Returns
     -------
@@ -1209,7 +1543,7 @@ def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]],
         Ruta del archivo si se guardó, None en caso contrario.
     """
     if not assets_data:
-        print("No hay datos de activos para graficar")
+        logger.warning("No hay datos de activos para graficar")
         return None
     
     # Preparar datos para el gráfico
@@ -1218,38 +1552,40 @@ def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]],
     alphas = [assets_data[s]['alpha'] for s in symbols]
     
     # Crear gráfico
-    plt.figure(figsize=(12, 8))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))
     
     # Línea horizontal en alpha = 0 (SML teórica)
-    plt.axhline(y=0, color='g', linestyle='--', linewidth=2, 
-                label='SML Teórica (α = 0)', alpha=0.7)
+    ax.axhline(y=0, color='g', linestyle='--', linewidth=2, 
+               label='SML Teórica (α = 0)', alpha=0.7)
     
     # Graficar activos individuales con alphas
     colors = plt.cm.Set3(np.linspace(0, 1, len(symbols)))
     for i, symbol in enumerate(symbols):
-        plt.scatter(betas[i], alphas[i], c=[colors[i]], s=100, 
-                   label=f'{symbol} (α = {alphas[i]:.2%})', alpha=0.8, edgecolors='black')
+        ax.scatter(betas[i], alphas[i], c=[colors[i]], s=100, 
+                  label=f'{symbol} (α = {alphas[i]:.2%})', alpha=0.8, edgecolors='black')
     
     # Líneas de referencia
-    plt.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
+    ax.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
     
     # Configurar gráfico
-    plt.xlabel('Beta (β)', fontsize=12, fontweight='bold')
-    plt.ylabel('Alpha (α) - Retorno Excesivo', fontsize=12, fontweight='bold')
-    plt.title('Alpha vs Beta - Análisis de Retornos Excesivos (CAPM)', fontsize=14, fontweight='bold')
-    plt.grid(True, alpha=0.3)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.set_xlabel('Beta (β)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Alpha (α) - Retorno Excesivo', fontsize=12, fontweight='bold')
+    ax.set_title('Alpha vs Beta - Análisis de Retornos Excesivos (CAPM)', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
     # Añadir anotaciones explicativas
-    plt.text(0.02, 0.98, 
-             f'Interpretación:\n\n'
-             f'α > 0: Activo por encima de SML\n(Retorno excesivo positivo)\n\n'
-             f'α < 0: Activo por debajo de SML\n(Retorno excesivo negativo)\n\n'
-             f'α = 0: Activo en SML\n(Retorno según CAPM)', 
-             transform=plt.gca().transAxes, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
+    ax.text(0.02, 0.98, 
+            f'Interpretación:\n\n'
+            f'α > 0: Activo por encima de SML\n(Retorno excesivo positivo)\n\n'
+            f'α < 0: Activo por debajo de SML\n(Retorno excesivo negativo)\n\n'
+            f'α = 0: Activo en SML\n(Retorno según CAPM)', 
+            transform=ax.transAxes, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
     
-    plt.tight_layout()
+    if ax is None:
+        plt.tight_layout()
     
     # Guardar si se solicita
     filepath = None
@@ -1257,9 +1593,10 @@ def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]],
         filepath = "alpha_vs_beta_capm.png"
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
     
-    if show_plot:
+    # Solo mostrar si no se proporcionó un eje y se solicita mostrar
+    if show_plot and ax is None:
         plt.show()
-    else:
+    elif not show_plot and ax is None:
         plt.close()
     
     return filepath
@@ -1349,7 +1686,8 @@ def analyze_market_efficiency(returns: pd.DataFrame, market_returns: pd.Series,
 # ============================================================================
 
 def plot_return_distribution(returns: pd.Series, symbol: str = "Asset", 
-                           save_plot: bool = False, show_plot: bool = True) -> Optional[str]:
+                           save_plot: bool = False, show_plot: bool = True,
+                           ax: Optional[Tuple[plt.Axes, plt.Axes]] = None) -> Optional[str]:
     """
     Genera histograma y QQ-plot de retornos.
     
@@ -1363,6 +1701,9 @@ def plot_return_distribution(returns: pd.Series, symbol: str = "Asset",
         Si guardar el gráfico.
     show_plot : bool, default True
         Si mostrar el gráfico.
+    ax : Optional[Tuple[plt.Axes, plt.Axes]], default None
+        Tupla de ejes de matplotlib donde graficar (histograma, QQ-plot).
+        Si se proporciona, no se llama a plt.show().
     
     Returns
     -------
@@ -1377,11 +1718,14 @@ def plot_return_distribution(returns: pd.Series, symbol: str = "Asset",
     clean_returns = returns.dropna()
     
     if len(clean_returns) == 0:
-        print("No hay datos válidos para graficar")
+        logger.warning("No hay datos válidos para graficar")
         return None
     
     # Crear figura con 2 subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    if ax is None:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    else:
+        ax1, ax2 = ax
     
     # Histograma
     ax1.hist(clean_returns, bins=50, density=True, alpha=0.7, color='skyblue', edgecolor='black')
@@ -1414,7 +1758,8 @@ def plot_return_distribution(returns: pd.Series, symbol: str = "Asset",
     ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes, verticalalignment='top',
              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8), fontsize=10)
     
-    plt.tight_layout()
+    if ax is None:
+        plt.tight_layout()
     
     # Guardar si se solicita
     filepath = None
@@ -1422,16 +1767,18 @@ def plot_return_distribution(returns: pd.Series, symbol: str = "Asset",
         filepath = f"{symbol}_distribution_analysis.png"
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
     
-    if show_plot:
+    # Solo mostrar si no se proporcionó un eje y se solicita mostrar
+    if show_plot and ax is None:
         plt.show()
-    else:
+    elif not show_plot and ax is None:
         plt.close()
     
     return filepath
 
 
 def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "Asset",
-                           save_plot: bool = False, show_plot: bool = True) -> Dict[str, any]:
+                           save_plot: bool = False, show_plot: bool = True,
+                           ax: Optional[Tuple[plt.Axes, plt.Axes, plt.Axes, plt.Axes]] = None) -> Dict[str, Any]:
     """
     Análisis de autocorrelación de retornos y retornos al cuadrado.
     
@@ -1447,10 +1794,13 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
         Si guardar el gráfico.
     show_plot : bool, default True
         Si mostrar el gráfico.
+    ax : Optional[Tuple[plt.Axes, plt.Axes, plt.Axes, plt.Axes]], default None
+        Tupla de 4 ejes de matplotlib donde graficar (ACF retornos, ACF retornos², 
+        Ljung-Box retornos, Ljung-Box retornos²). Si se proporciona, no se llama a plt.show().
     
     Returns
     -------
-    Dict[str, any]
+    Dict[str, Any]
         Resultados del análisis de autocorrelación.
         
     Examples
@@ -1458,7 +1808,7 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
     >>> returns = pd.Series(np.random.normal(0, 0.02, 1000))
     >>> result = autocorrelation_analysis(returns, show_plot=False)
     >>> 'ljung_box_returns' in result
-    True                                                                                                                                                                                                                                                                                                                                                                        
+    True
     """
     clean_returns = returns.dropna()
     
@@ -1474,7 +1824,10 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
     ljung_box_squared = acorr_ljungbox(clean_returns**2, lags=lags, return_df=True)
     
     # Crear gráficos
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    if ax is None:
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    else:
+        ax1, ax2, ax3, ax4 = ax
     
     # ACF de retornos
     ax1.bar(range(len(acf_returns)), acf_returns, alpha=0.7, color='blue')
@@ -1514,7 +1867,8 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
     ax4.legend()
     ax4.grid(True, alpha=0.3)
     
-    plt.tight_layout()
+    if ax is None:
+        plt.tight_layout()
     
     # Guardar si se solicita
     filepath = None
@@ -1522,9 +1876,10 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
         filepath = f"{symbol}_autocorrelation_analysis.png"
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
     
-    if show_plot:
+    # Solo mostrar si no se proporcionó un eje y se solicita mostrar
+    if show_plot and ax is None:
         plt.show()
-    else:
+    elif not show_plot and ax is None:
         plt.close()
     
     # Preparar resultados
