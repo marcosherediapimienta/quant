@@ -31,8 +31,8 @@ def test_portfolio_analysis():
     symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'IBM', 'IONQ', 'SMR', 
                'BTC-USD', 'ETH-USD', 'GLD', 'ACWI', 'SPY', 'QQQ']
     benchmark_symbol = 'SPY'  # S&P 500 como benchmark
-    start_date = "2020-01-01"
-    end_date = "2023-12-31"
+    start_date = "2000-01-01"
+    end_date = "2025-08-31"
     var_horizon_days = 1  # <-- Cambia aquí el horizonte de VaR/CVaR (1, 10, 252, ...)
     
     try:
@@ -42,6 +42,121 @@ def test_portfolio_analysis():
         prices = dm.download_market_data(symbols, start_date=start_date, end_date=end_date)
         print(f"✅ Datos descargados: {prices.shape[0]} días, {prices.shape[1]} activos")
         print(f"   Fechas: {prices.index[0].strftime('%Y-%m-%d')} a {prices.index[-1].strftime('%Y-%m-%d')}")
+        
+        # 1.1 ANÁLISIS DINÁMICO DE DISPONIBILIDAD DE DATOS
+        print("\n🔍 1.1 ANÁLISIS DE DISPONIBILIDAD DE DATOS...")
+        
+        # Analizar disponibilidad por símbolo
+        symbol_coverage = {}
+        for symbol in symbols:
+            if symbol in prices.columns:
+                symbol_data = prices[symbol].dropna()
+                if not symbol_data.empty:
+                    first_date = symbol_data.first_valid_index()
+                    last_date = symbol_data.last_valid_index()
+                    total_days = len(symbol_data)
+                    years_of_data = (last_date - first_date).days / 365.25
+                    completeness = total_days / len(prices) * 100
+                    
+                    symbol_coverage[symbol] = {
+                        'first_date': first_date,
+                        'last_date': last_date,
+                        'total_days': total_days,
+                        'years_of_data': years_of_data,
+                        'completeness': completeness
+                    }
+                    
+                    print(f"   {symbol:8}: {first_date.strftime('%Y-%m-%d')} a {last_date.strftime('%Y-%m-%d')} "
+                          f"({years_of_data:.1f} años, {completeness:.1f}% cobertura)")
+                else:
+                    print(f"   {symbol:8}: ❌ Sin datos válidos")
+        
+        # Encontrar período común óptimo (solo informativo, NO para recortar)
+        if symbol_coverage:
+            # Encontrar última fecha de inicio (cuando todos tienen datos)
+            common_start = max([info['first_date'] for info in symbol_coverage.values()])
+            # Encontrar primera fecha de fin (cuando alguno deja de tener datos)
+            common_end = min([info['last_date'] for info in symbol_coverage.values()])
+            
+            # Calcular estadísticas del período común
+            common_days = (common_end - common_start).days
+            common_years = common_days / 365.25
+            
+            print(f"\n📊 PERÍODO COMÚN INFORMATIVO:")
+            print(f"   📅 Desde: {common_start.strftime('%Y-%m-%d')}")
+            print(f"   📅 Hasta: {common_end.strftime('%Y-%m-%d')}")
+            print(f"   📊 Duración: {common_days} días ({common_years:.1f} años)")
+            
+            # Estadísticas sobre diferencias de períodos
+            original_days = (prices.index[-1] - prices.index[0]).days
+            original_years = original_days / 365.25
+            lost_years = original_years - common_years
+            
+            if lost_years > 1.0:
+                print(f"   ⚠️  DIFERENCIA DE PERÍODOS: {lost_years:.1f} años")
+                print(f"   💡 Período más largo disponible: {original_years:.1f} años")
+                print(f"   📉 Período común mínimo: {common_years:.1f} años")
+                
+                # Identificar símbolos limitantes
+                limiting_symbols = []
+                for symbol, info in symbol_coverage.items():
+                    if info['first_date'] == common_start or info['last_date'] == common_end:
+                        limiting_symbols.append(symbol)
+                
+                if limiting_symbols:
+                    print(f"   🎯 Símbolos con períodos más cortos: {', '.join(limiting_symbols)}")
+            
+            # ESTRATEGIA ADAPTATIVA: cada stock usa su período completo
+            print(f"\n🔄 ESTRATEGIA ADAPTATIVA IMPLEMENTADA:")
+            print(f"   ✅ Cada stock se analiza con TODOS sus datos disponibles")
+            print(f"   ✅ No se recortan datos históricos")
+            print(f"   ✅ Análisis optimizado por período individual")
+            
+            # Mostrar períodos por categorías
+            print(f"\n📈 PERÍODOS POR CATEGORÍA:")
+            
+            # Blue chips (período completo)
+            blue_chips = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'IBM', 'SPY', 'QQQ', 'GLD', 'ACWI']
+            blue_chip_coverage = {k: v for k, v in symbol_coverage.items() if k in blue_chips}
+            
+            if blue_chip_coverage:
+                blue_years = [info['years_of_data'] for info in blue_chip_coverage.values()]
+                avg_blue_years = sum(blue_years) / len(blue_years)
+                print(f"   🏢 Blue chips: {len(blue_chip_coverage)} símbolos, promedio {avg_blue_years:.1f} años")
+            
+            # Criptomonedas
+            crypto = ['BTC-USD', 'ETH-USD']
+            crypto_coverage = {k: v for k, v in symbol_coverage.items() if k in crypto}
+            
+            if crypto_coverage:
+                crypto_years = [info['years_of_data'] for info in crypto_coverage.values()]
+                avg_crypto_years = sum(crypto_years) / len(crypto_years)
+                print(f"   🪙 Criptomonedas: {len(crypto_coverage)} símbolos, promedio {avg_crypto_years:.1f} años")
+            
+            # Nuevos stocks (período corto)
+            new_stocks = ['IONQ', 'SMR']
+            new_stock_coverage = {k: v for k, v in symbol_coverage.items() if k in new_stocks}
+            
+            if new_stock_coverage:
+                new_years = [info['years_of_data'] for info in new_stock_coverage.values()]
+                avg_new_years = sum(new_years) / len(new_years)
+                print(f"   🆕 Nuevos stocks: {len(new_stock_coverage)} símbolos, promedio {avg_new_years:.1f} años")
+            
+            print(f"\n💡 VENTAJAS DE ESTA ESTRATEGIA:")
+            print(f"   ✅ Máximo aprovechamiento de datos históricos")
+            print(f"   ✅ Análisis más robusto para stocks establecidos")
+            print(f"   ✅ Inclusión de nuevos stocks sin perder datos antiguos")
+            print(f"   ✅ Períodos adaptados a la realidad de cada activo")
+            
+        else:
+            print("❌ No se pudo determinar cobertura de datos")
+        
+        # NO recortar datos - mantener todos los períodos disponibles
+        print(f"\n📊 DATOS FINALES PARA ANÁLISIS:")
+        print(f"   📅 Período total: {prices.index[0].strftime('%Y-%m-%d')} a {prices.index[-1].strftime('%Y-%m-%d')}")
+        print(f"   📊 Total días: {prices.shape[0]}")
+        print(f"   🎯 Total activos: {prices.shape[1]}")
+        print(f"   ⚠️  NOTA: Cada activo se analizará con su período disponible")
         
         # 2. Calcular retornos
         print("\n📈 2. CALCULANDO RETORNOS...")
