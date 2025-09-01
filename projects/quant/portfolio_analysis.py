@@ -920,7 +920,432 @@ def calculate_beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -
 
 
 # ============================================================================
-# 8. DISTRIBUCIÓN Y AUTOCORRELACIÓN
+# 8. CAPM (CAPITAL ASSET PRICING MODEL)
+# ============================================================================
+
+def calculate_capm_metrics(returns: pd.Series, market_returns: pd.Series, 
+                          risk_free_rate: pd.Series) -> Dict[str, float]:
+    """
+    Calcula métricas CAPM completas.
+    
+    Modelo CAPM: E(Ri) = Rf + βi(E(Rm) - Rf)
+    
+    Parameters
+    ----------
+    returns : pd.Series
+        Serie de retornos del activo/portafolio.
+    market_returns : pd.Series
+        Serie de retornos del mercado (benchmark).
+    risk_free_rate : pd.Series
+        Serie de tasa libre de riesgo.
+    
+    Returns
+    -------
+    Dict[str, float]
+        Diccionario con métricas CAPM: 'beta', 'alpha', 'r2', 'expected_return_capm',
+        'excess_return', 'market_risk_premium', 'sharpe_ratio_capm'.
+        
+    Raises
+    ------
+    ValueError
+        Si las series están vacías o no se pueden alinear.
+        
+    Examples
+    --------
+    >>> returns = pd.Series([0.01, 0.02, -0.01, 0.03])
+    >>> market = pd.Series([0.005, 0.015, -0.005, 0.025])
+    >>> rf = pd.Series([0.001, 0.001, 0.001, 0.001])
+    >>> capm = calculate_capm_metrics(returns, market, rf)
+    >>> 'beta' in capm and 'expected_return_capm' in capm
+    True
+    """
+    if returns.empty or market_returns.empty or risk_free_rate.empty:
+        raise ValueError("Alguna de las series está vacía")
+    
+    # Debug: imprimir información sobre las series
+            # print(f"      DEBUG CAPM - Returns: {len(returns)} obs, fechas: {returns.index[0]} a {returns.index[-1]}")
+        # print(f"      DEBUG CAPM - Market: {len(market_returns)} obs, fechas: {market_returns.index[0]} a {market_returns.index[-1]}")
+        # print(f"      DEBUG CAPM - RF: {len(risk_free_rate)} obs, fechas: {risk_free_rate.index[0]} a {risk_free_rate.index[-1]}")
+    
+    # Alinear todas las series por fechas de una vez
+    try:
+        # Normalizar zonas horarias antes de crear el DataFrame
+        returns_normalized = returns.copy()
+        market_normalized = market_returns.copy()
+        rf_normalized = risk_free_rate.copy()
+        
+        # Convertir índices a DatetimeIndex si no lo son
+        if not isinstance(returns_normalized.index, pd.DatetimeIndex):
+            returns_normalized.index = pd.to_datetime(returns_normalized.index)
+        if not isinstance(market_normalized.index, pd.DatetimeIndex):
+            market_normalized.index = pd.to_datetime(market_normalized.index)
+        if not isinstance(rf_normalized.index, pd.DatetimeIndex):
+            rf_normalized.index = pd.to_datetime(rf_normalized.index)
+        
+        # Normalizar zonas horarias - convertir ambas a UTC o eliminar zona horaria
+        if returns_normalized.index.tz is not None:
+            returns_normalized.index = returns_normalized.index.tz_convert('UTC').tz_localize(None)
+        if market_normalized.index.tz is not None:
+            market_normalized.index = market_normalized.index.tz_convert('UTC').tz_localize(None)
+        if rf_normalized.index.tz is not None:
+            rf_normalized.index = rf_normalized.index.tz_convert('UTC').tz_localize(None)
+        
+        # Redondear todas las fechas a días completos (00:00:00)
+        returns_normalized.index = returns_normalized.index.normalize()
+        market_normalized.index = market_normalized.index.normalize()
+        rf_normalized.index = rf_normalized.index.normalize()
+        
+        # print(f"      DEBUG CAPM - Después de normalización:")
+        # print(f"        Returns: {returns_normalized.index[0]} a {returns_normalized.index[-1]}")
+        # print(f"        Market: {market_normalized.index[0]} a {market_normalized.index[-1]}")
+        # print(f"        RF: {rf_normalized.index[0]} a {rf_normalized.index[-1]}")
+        
+        # Crear DataFrame con todas las series
+        df = pd.DataFrame({
+            'returns': returns_normalized,
+            'market': market_normalized,
+            'rf': rf_normalized
+        })
+        
+        # print(f"      DEBUG CAPM - DataFrame creado: {df.shape}")
+        
+        # Mostrar algunas fechas del DataFrame
+        # print(f"      DEBUG CAPM - Primeras fechas del DataFrame:")
+        # print(f"        {df.head().index.tolist()}")
+        
+        # Eliminar filas con valores NaN
+        df = df.dropna()
+        
+        # print(f"      DEBUG CAPM - Después de dropna: {df.shape}")
+        
+        if df.empty:
+            # Mostrar información adicional para debug
+            # print(f"      DEBUG CAPM - Todas las series tienen valores NaN en las mismas fechas")
+            print(f"        Returns NaN: {returns_normalized.isna().sum()}")
+            print(f"        Market NaN: {market_normalized.isna().sum()}")
+            print(f"        RF NaN: {rf_normalized.isna().sum()}")
+            raise ValueError("No hay fechas comunes entre las series para calcular CAPM")
+        
+        if len(df) < 30:  # Necesitamos al menos 30 observaciones para un análisis confiable
+            raise ValueError(f"Insuficientes observaciones para CAPM: {len(df)} (mínimo 30)")
+        
+        aligned_returns = df['returns']
+        aligned_market = df['market']
+        aligned_rf = df['rf']
+        
+        # print(f"      DEBUG CAPM - Series alineadas: {len(aligned_returns)} obs")
+        
+    except Exception as e:
+        raise ValueError(f"Error alineando series para CAPM: {str(e)}")
+    
+    # Verificar que las series alineadas no estén vacías
+    if aligned_returns.empty or aligned_market.empty or aligned_rf.empty:
+        raise ValueError("Las series alineadas están vacías")
+    
+    # Calcular excesos de retorno
+    excess_returns = aligned_returns - aligned_rf
+    excess_market = aligned_market - aligned_rf
+    
+    # Calcular Beta usando regresión OLS
+    X = sm.add_constant(excess_market)
+    model = sm.OLS(excess_returns, X).fit()
+    
+    # Acceder a los parámetros de manera más robusta
+    if 'const' in model.params.index:
+        alpha = model.params['const']
+        # Para el segundo parámetro (beta), tomar el que no sea 'const'
+        beta = model.params.drop('const').iloc[0]
+    else:
+        # Si no hay 'const', tomar el primer y segundo parámetro
+        alpha = model.params.iloc[0]
+        beta = model.params.iloc[1]
+    
+    r2 = model.rsquared
+    
+    # Verificar que los parámetros sean válidos
+    if np.isnan(beta) or np.isnan(alpha) or np.isnan(r2):
+        raise ValueError("Parámetros de regresión inválidos (NaN)")
+    
+    if np.isinf(beta) or np.isinf(alpha):
+        raise ValueError("Parámetros de regresión inválidos (infinitos)")
+    
+    # Calcular métricas CAPM
+    market_risk_premium = excess_market.mean()
+    expected_return_capm = aligned_rf.mean() + beta * market_risk_premium
+    actual_return = aligned_returns.mean()
+    excess_return = actual_return - expected_return_capm
+    
+    # Anualizar métricas (asumiendo retornos diarios)
+    annualized_alpha = alpha * 252
+    annualized_expected_return = expected_return_capm * 252
+    annualized_actual_return = actual_return * 252
+    annualized_excess_return = excess_return * 252
+    annualized_market_risk_premium = market_risk_premium * 252
+    
+    # Sharpe ratio según CAPM
+    sharpe_ratio_capm = (annualized_excess_return) / (aligned_returns.std() * np.sqrt(252))
+    
+    return {
+        'beta': beta,
+        'alpha': annualized_alpha,
+        'r2': r2,
+        'expected_return_capm': annualized_expected_return,
+        'actual_return': annualized_actual_return,
+        'excess_return': annualized_excess_return,
+        'market_risk_premium': annualized_market_risk_premium,
+        'sharpe_ratio_capm': sharpe_ratio_capm
+    }
+
+
+def plot_security_market_line(assets_data: Dict[str, Dict[str, float]], 
+                            market_return: float, risk_free_rate: float,
+                            save_plot: bool = False, show_plot: bool = True) -> Optional[str]:
+    """
+    Grafica la Línea del Mercado de Valores (SML) del CAPM con retornos reales vs esperados.
+    
+    SML: E(Ri) = Rf + βi(E(Rm) - Rf)
+    Los puntos muestran retornos reales para comparar con la SML teórica.
+    
+    Parameters
+    ----------
+    assets_data : Dict[str, Dict[str, float]]
+        Diccionario con datos de activos: {symbol: {'beta': float, 'actual_return': float}}
+    market_return : float
+        Retorno esperado del mercado (anualizado).
+    risk_free_rate : float
+        Tasa libre de riesgo (anualizada).
+    save_plot : bool, default False
+        Si guardar el gráfico.
+    show_plot : bool, default True
+        Si mostrar el gráfico.
+    
+    Returns
+    -------
+    Optional[str]
+        Ruta del archivo si se guardó, None en caso contrario.
+        
+    Examples
+    --------
+    >>> assets = {'AAPL': {'beta': 1.2, 'actual_return': 0.15}}
+    >>> plot_security_market_line(assets, 0.10, 0.02, show_plot=False)
+    """
+    if not assets_data:
+        print("No hay datos de activos para graficar")
+        return None
+    
+    # Preparar datos para el gráfico
+    symbols = list(assets_data.keys())
+    betas = [assets_data[s]['beta'] for s in symbols]
+    actual_returns = [assets_data[s]['actual_return'] for s in symbols]
+    
+    # Calcular SML teórica
+    market_risk_premium = market_return - risk_free_rate
+    sml_betas = np.linspace(0, max(betas) * 1.2, 100)
+    sml_returns = risk_free_rate + sml_betas * market_risk_premium
+    
+    # Crear gráfico
+    plt.figure(figsize=(12, 8))
+    
+    # Graficar SML teórica
+    plt.plot(sml_betas, sml_returns, 'b--', linewidth=2, label='SML Teórica (CAPM)', alpha=0.7)
+    
+    # Graficar activos individuales con retornos reales
+    colors = plt.cm.Set3(np.linspace(0, 1, len(symbols)))
+    for i, symbol in enumerate(symbols):
+        plt.scatter(betas[i], actual_returns[i], c=[colors[i]], s=100, 
+                   label=f'{symbol} (Real)', alpha=0.8, edgecolors='black')
+    
+    # Líneas de referencia
+    plt.axhline(y=risk_free_rate, color='g', linestyle=':', alpha=0.7, label=f'Rf = {risk_free_rate:.2%}')
+    plt.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
+    
+    # Configurar gráfico
+    plt.xlabel('Beta (β)', fontsize=12, fontweight='bold')
+    plt.ylabel('Retorno Real vs Esperado E(R)', fontsize=12, fontweight='bold')
+    plt.title('Línea del Mercado de Valores (SML) - CAPM\nRetornos Reales vs Teóricos', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    # Añadir anotaciones explicativas
+    plt.text(0.02, 0.98, 
+             f'Rf = {risk_free_rate:.2%}\nE(Rm) = {market_return:.2%}\nMRP = {market_risk_premium:.2%}\n\n'
+             f'Puntos por encima de SML:\nAlpha positivo\nPuntos por debajo:\nAlpha negativo', 
+             transform=plt.gca().transAxes, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
+    
+    plt.tight_layout()
+    
+    # Guardar si se solicita
+    filepath = None
+    if save_plot:
+        filepath = "security_market_line_capm.png"
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+    
+    return filepath
+
+
+def plot_alpha_vs_beta(assets_data: Dict[str, Dict[str, float]], 
+                       save_plot: bool = False, show_plot: bool = True) -> Optional[str]:
+    """
+    Grafica Alpha vs Beta para evaluar retornos excesivos del CAPM.
+    
+    Parameters
+    ----------
+    assets_data : Dict[str, Dict[str, float]]
+        Diccionario con datos de activos: {symbol: {'beta': float, 'alpha': float}}
+    save_plot : bool, default False
+        Si guardar el gráfico.
+    show_plot : bool, default True
+        Si mostrar el gráfico.
+    
+    Returns
+    -------
+    Optional[str]
+        Ruta del archivo si se guardó, None en caso contrario.
+    """
+    if not assets_data:
+        print("No hay datos de activos para graficar")
+        return None
+    
+    # Preparar datos para el gráfico
+    symbols = list(assets_data.keys())
+    betas = [assets_data[s]['beta'] for s in symbols]
+    alphas = [assets_data[s]['alpha'] for s in symbols]
+    
+    # Crear gráfico
+    plt.figure(figsize=(12, 8))
+    
+    # Línea horizontal en alpha = 0 (SML teórica)
+    plt.axhline(y=0, color='g', linestyle='--', linewidth=2, 
+                label='SML Teórica (α = 0)', alpha=0.7)
+    
+    # Graficar activos individuales con alphas
+    colors = plt.cm.Set3(np.linspace(0, 1, len(symbols)))
+    for i, symbol in enumerate(symbols):
+        plt.scatter(betas[i], alphas[i], c=[colors[i]], s=100, 
+                   label=f'{symbol} (α = {alphas[i]:.2%})', alpha=0.8, edgecolors='black')
+    
+    # Líneas de referencia
+    plt.axvline(x=1, color='r', linestyle=':', alpha=0.7, label='β = 1 (Mercado)')
+    
+    # Configurar gráfico
+    plt.xlabel('Beta (β)', fontsize=12, fontweight='bold')
+    plt.ylabel('Alpha (α) - Retorno Excesivo', fontsize=12, fontweight='bold')
+    plt.title('Alpha vs Beta - Análisis de Retornos Excesivos (CAPM)', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    # Añadir anotaciones explicativas
+    plt.text(0.02, 0.98, 
+             f'Interpretación:\n\n'
+             f'α > 0: Activo por encima de SML\n(Retorno excesivo positivo)\n\n'
+             f'α < 0: Activo por debajo de SML\n(Retorno excesivo negativo)\n\n'
+             f'α = 0: Activo en SML\n(Retorno según CAPM)', 
+             transform=plt.gca().transAxes, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8), fontsize=10)
+    
+    plt.tight_layout()
+    
+    # Guardar si se solicita
+    filepath = None
+    if save_plot:
+        filepath = "alpha_vs_beta_capm.png"
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+    
+    return filepath
+
+
+def analyze_market_efficiency(returns: pd.DataFrame, market_returns: pd.Series, 
+                            risk_free_rate: pd.Series) -> Dict[str, any]:
+    """
+    Analiza la eficiencia del mercado según el CAPM.
+    
+    Parameters
+    ----------
+    returns : pd.DataFrame
+        DataFrame con retornos de múltiples activos.
+    market_returns : pd.Series
+        Serie de retornos del mercado.
+    risk_free_rate : pd.Series
+        Serie de tasa libre de riesgo.
+    
+    Returns
+    -------
+    Dict[str, any]
+        Resultados del análisis de eficiencia del mercado.
+        
+    Examples
+    --------
+    >>> returns_df = pd.DataFrame({'AAPL': [0.01, 0.02], 'MSFT': [0.015, 0.025]})
+    >>> market = pd.Series([0.012, 0.022])
+    >>> rf = pd.Series([0.001, 0.001])
+    >>> efficiency = analyze_market_efficiency(returns_df, market, rf)
+    """
+    if returns.empty or market_returns.empty or risk_free_rate.empty:
+        return {"error": "Datos insuficientes para el análisis"}
+    
+    # Calcular métricas CAPM para todos los activos
+    capm_results = {}
+    efficiency_metrics = {}
+    
+    for symbol in returns.columns:
+        try:
+            capm_metrics = calculate_capm_metrics(returns[symbol], market_returns, risk_free_rate)
+            capm_results[symbol] = capm_metrics
+            
+            # Métricas de eficiencia
+            efficiency_metrics[symbol] = {
+                'alpha_significance': abs(capm_metrics['alpha']) < 0.01,  # Alpha < 1% anual
+                'r2_quality': capm_metrics['r2'] > 0.3,  # R² > 30%
+                'beta_stability': 0.5 < capm_metrics['beta'] < 2.0,  # Beta razonable
+                'excess_return_consistency': abs(capm_metrics['excess_return']) < 0.05  # Exceso < 5%
+            }
+            
+        except Exception as e:
+            capm_results[symbol] = {"error": str(e)}
+            efficiency_metrics[symbol] = {"error": str(e)}
+    
+    # Análisis agregado del mercado
+    valid_results = {k: v for k, v in capm_results.items() if 'error' not in v}
+    
+    if valid_results:
+        avg_alpha = np.mean([v['alpha'] for v in valid_results.values()])
+        avg_r2 = np.mean([v['r2'] for v in valid_results.values()])
+        avg_beta = np.mean([v['beta'] for v in valid_results.values()])
+        
+        market_efficiency_score = (
+            (np.mean([v['alpha_significance'] for v in efficiency_metrics.values() if 'error' not in v]) * 0.4) +
+            (np.mean([v['r2_quality'] for v in efficiency_metrics.values() if 'error' not in v]) * 0.3) +
+            (np.mean([v['beta_stability'] for v in efficiency_metrics.values() if 'error' not in v]) * 0.2) +
+            (np.mean([v['excess_return_consistency'] for v in efficiency_metrics.values() if 'error' not in v]) * 0.1)
+        )
+    else:
+        avg_alpha = avg_r2 = avg_beta = market_efficiency_score = np.nan
+    
+    return {
+        'capm_results': capm_results,
+        'efficiency_metrics': efficiency_metrics,
+        'market_summary': {
+            'avg_alpha': avg_alpha,
+            'avg_r2': avg_r2,
+            'avg_beta': avg_beta,
+            'efficiency_score': market_efficiency_score
+        }
+    }
+
+
+# ============================================================================
+# 9. DISTRIBUCIÓN Y AUTOCORRELACIÓN
 # ============================================================================
 
 def plot_return_distribution(returns: pd.Series, symbol: str = "Asset", 
@@ -1033,12 +1458,12 @@ def autocorrelation_analysis(returns: pd.Series, lags: int = 20, symbol: str = "
     >>> returns = pd.Series(np.random.normal(0, 0.02, 1000))
     >>> result = autocorrelation_analysis(returns, show_plot=False)
     >>> 'ljung_box_returns' in result
-    True
+    True                                                                                                                                                                                                                                                                                                                                                                        
     """
     clean_returns = returns.dropna()
     
     if len(clean_returns) == 0:
-        return {"error": "No hay datos válidos"}
+        return {"error": "No hay datos válidos"}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
     
     # Calcular autocorrelaciones
     acf_returns = acf(clean_returns, nlags=lags, fft=False)

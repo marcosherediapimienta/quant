@@ -264,7 +264,119 @@ def test_portfolio_analysis():
         else:
             print(f"\n⚠️ Benchmark {benchmark_symbol} no disponible en los datos")
         
+        # Crear directorio para gráficos si no existe (para CAPM y gráficos individuales)
+        graphs_dir = os.path.join(os.path.dirname(__file__), 'graphs')
+        os.makedirs(graphs_dir, exist_ok=True)
         
+        # 11. Análisis CAPM completo
+        print(f"\n📊 11. ANÁLISIS CAPM COMPLETO...")
+        if benchmark_symbol in simple_returns.columns and not rf_series.empty:
+            try:
+                print(f"   🔍 Calculando métricas CAPM para todos los activos...")
+                
+                # Calcular métricas CAPM para cada activo
+                capm_results = {}
+                for symbol in symbols:
+                    if symbol in simple_returns.columns and symbol != benchmark_symbol:
+                        try:
+                            capm_metrics = calculate_capm_metrics(
+                                simple_returns[symbol], 
+                                simple_returns[benchmark_symbol], 
+                                rf_series
+                            )
+                            capm_results[symbol] = capm_metrics
+                            
+                            print(f"\n   {symbol} - CAPM:")
+                            print(f"      Beta: {capm_metrics['beta']:.3f}")
+                            print(f"      Alpha: {capm_metrics['alpha']:.2%}")
+                            print(f"      R²: {capm_metrics['r2']:.2%}")
+                            print(f"      Retorno esperado (CAPM): {capm_metrics['expected_return_capm']:.2%}")
+                            print(f"      Retorno real: {capm_metrics['actual_return']:.2%}")
+                            print(f"      Retorno excesivo: {capm_metrics['excess_return']:.2%}")
+                            print(f"      Sharpe ratio (CAPM): {capm_metrics['sharpe_ratio_capm']:.2f}")
+                            
+                        except Exception as e:
+                            print(f"   ⚠️ Error calculando CAPM para {symbol}: {e}")
+                
+                # Análisis de eficiencia del mercado
+                print(f"\n   📈 Analizando eficiencia del mercado...")
+                efficiency_analysis = analyze_market_efficiency(
+                    simple_returns.drop(columns=[benchmark_symbol]), 
+                    simple_returns[benchmark_symbol], 
+                    rf_series
+                )
+                
+                if 'market_summary' in efficiency_analysis:
+                    summary = efficiency_analysis['market_summary']
+                    print(f"\n   📊 RESUMEN DE EFICIENCIA DEL MERCADO:")
+                    print(f"      Alpha promedio: {summary['avg_alpha']:.2%}")
+                    print(f"      R² promedio: {summary['avg_r2']:.2%}")
+                    print(f"      Beta promedio: {summary['avg_beta']:.3f}")
+                    print(f"      Puntuación de eficiencia: {summary['efficiency_score']:.2%}")
+                    
+                    # Interpretar eficiencia
+                    if summary['efficiency_score'] > 0.7:
+                        efficiency_level = "ALTA EFICIENCIA"
+                    elif summary['efficiency_score'] > 0.5:
+                        efficiency_level = "EFICIENCIA MODERADA"
+                    else:
+                        efficiency_level = "BAJA EFICIENCIA"
+                    
+                    print(f"      Nivel de eficiencia: {efficiency_level}")
+                
+                # Generar gráficos SML y Alpha vs Beta
+                print(f"\n   📊 Generando gráficos SML y Alpha vs Beta...")
+                try:
+                    # Preparar datos para ambos gráficos
+                    sml_data = {}
+                    alpha_data = {}
+                    for symbol, metrics in capm_results.items():
+                        if 'error' not in metrics:
+                            sml_data[symbol] = {
+                                'beta': metrics['beta'],
+                                'actual_return': metrics['actual_return']
+                            }
+                            alpha_data[symbol] = {
+                                'beta': metrics['beta'],
+                                'alpha': metrics['alpha']
+                            }
+                    
+                    if sml_data and alpha_data:
+                        # Cambiar al directorio de gráficos
+                        original_cwd = os.getcwd()
+                        os.chdir(graphs_dir)
+                        
+                        # Calcular retorno del mercado
+                        market_return = simple_returns[benchmark_symbol].mean() * 252
+                        avg_rf = rf_series.mean() * 252
+                        
+                        # Gráfico SML tradicional
+                        sml_file = plot_security_market_line(
+                            sml_data, market_return, avg_rf, 
+                            save_plot=True, show_plot=False
+                        )
+                        
+                        if sml_file:
+                            print(f"      ✅ SML tradicional generado: {os.path.join(graphs_dir, sml_file)}")
+                        
+                        # Gráfico Alpha vs Beta
+                        alpha_file = plot_alpha_vs_beta(
+                            alpha_data, save_plot=True, show_plot=False
+                        )
+                        
+                        if alpha_file:
+                            print(f"      ✅ Alpha vs Beta generado: {os.path.join(graphs_dir, alpha_file)}")
+                        
+                        # Volver al directorio original
+                        os.chdir(original_cwd)
+                    
+                except Exception as e:
+                    print(f"      ⚠️ Error generando gráficos: {e}")
+                
+            except Exception as e:
+                print(f"   ⚠️ Error en análisis CAPM: {e}")
+        else:
+            print(f"   ⚠️ Benchmark {benchmark_symbol} o tasa libre de riesgo no disponible para CAPM")
         
         print("\n🎉 TODAS LAS PRUEBAS COMPLETADAS EXITOSAMENTE!")
         

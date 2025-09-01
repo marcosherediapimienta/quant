@@ -1,4 +1,4 @@
 # Módulo de análisis cuantitativo
-from . import quant_functions
+# from . import quant_functions
 
-__all__ = ['quant_functions']
+# __all__ = ['quant_functions']
