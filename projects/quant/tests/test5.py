@@ -1,27 +1,6 @@
 """
-Módulo de Análisis de Valoración de Stocks (v4)
+Módulo de Análisis de Valoración de Stocks 
 ==========================================================
-
-Refactor completo con:
-- Métricas relativas por sector/industria (percentiles/z-scores, opcional)
-- Incorporación de calidad (ROIC, márgenes), FCF yield, crecimiento y momentum
-- Manejo de P/B, ROE y EV/EBITDA extremos con winsorización contra peers
-- Reportes reproducibles y trazables con fuentes y fechas
-- Sanitización de múltiplos (evitar tratar múltiplos ≤0 como "baratos")
-- Formateo seguro para NaN/valores faltantes
-- Conteo correcto de peers disponibles (excluyendo el propio ticker)
-- Parche de índice temporal (naive) y búsquedas robustas de precios para evitar "panel vacío"
-
-NUEVAS CARACTERÍSTICAS v4:
-- FCF TTM robusto calculado desde quarterly_cashflow con fallback anual
-- EV corporativo extraído desde balance sheet (trimestral con fallback anual)
-- Manejo de equity ≤ 0 con P/B y ROE marcados como NM
-- Peers específicos para Credit Services/Payments
-- Fecha real de fundamentales desde datos más recientes disponibles
-- Nuevas métricas: FCF TTM, FCF/EV Yield, EV (corp)
-
-Autor: Sistema de Análisis Cuantitativo
-Fecha: 2025
 """
 
 from __future__ import annotations
@@ -501,8 +480,8 @@ def fetch_peers(scope: str, name: str, ticker: str) -> List[str]:
             "E-commerce": ["AMZN", "EBAY", "SHOP", "ETSY", "MELI"],
             "Automotive": ["TSLA", "F", "GM", "TM", "HMC"],
             "Financial Services": ["JPM", "BAC", "WFC", "GS", "MS"],
-            "Credit Services": ["V", "MA", "AXP", "COF", "DFS", "SYF", "SQ", "FI", "FIS", "GPN", "ADYEN.AS"],
-            "Payments": ["V", "MA", "AXP", "COF", "DFS", "SYF", "SQ", "FI", "FIS", "GPN", "ADYEN.AS"]
+            "Credit Services": ["V", "MA", "AXP", "COF", "SYF", "FI", "FIS", "GPN", "ADYEN.AS", "PYPL", "AFRM", "SOFI", "LC", "UPST"],
+            "Payments": ["V", "MA", "AXP", "COF", "SYF", "FI", "FIS", "GPN", "ADYEN.AS", "PYPL", "AFRM", "SOFI", "LC", "UPST"]
         }
         return industry_peers.get(name, [ticker])
     elif scope == "sector":
