@@ -1209,15 +1209,16 @@ def crear_graficos_valoracion(result: Dict) -> None:
         axes[0, 0].text(bar.get_x() + bar.get_width()/2., height + (0.01 if height >= 0 else -0.01),
                        f'{score:.2f}', ha='center', va='bottom' if height >= 0 else 'top')
 
-    # 2) Métricas de valoración
-    val_metrics = ['P/E TTM', 'P/E FWD', 'EV/EBITDA', 'P/S', 'P/B', 'FCF Yield']
+    # 2) Métricas de valoración (incluyendo v4)
+    val_metrics = ['P/E TTM', 'P/E FWD', 'EV/EBITDA', 'P/S', 'P/B', 'FCF Yield', 'FCF/EV Yield']
     val_values = [
         result['valuation']['pe_ttm'],
         result['valuation']['pe_fwd'],
         result['valuation']['ev_ebitda'],
         result['valuation']['ps'],
         result['valuation']['pb'],
-        result['valuation']['fcf_yield'] * 100 if not np.isnan(result['valuation']['fcf_yield']) else np.nan
+        result['valuation']['fcf_yield'] * 100 if not np.isnan(result['valuation']['fcf_yield']) else np.nan,
+        result['valuation']['fcf_ev_yield'] * 100 if not np.isnan(result['valuation']['fcf_ev_yield']) else np.nan
     ]
 
     # Filtrar valores válidos
@@ -1288,6 +1289,18 @@ def crear_graficos_valoracion(result: Dict) -> None:
             axes[1, 1].legend()
 
     plt.tight_layout()
+    
+    # Crear directorio png si no existe
+    import os
+    png_dir = "projects/quant/tests/png"
+    os.makedirs(png_dir, exist_ok=True)
+    
+    # Guardar gráfico
+    ticker = result['ticker']
+    filename = f"{png_dir}/analisis_valoracion_{ticker}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"📊 Gráfico guardado en: {filename}")
+    
     plt.show()
 
 def comparar_stocks(tickers: List[str]) -> None:
