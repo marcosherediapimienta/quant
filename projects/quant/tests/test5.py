@@ -1,5 +1,5 @@
 """
-Módulo de Análisis de Valoración de Stocks (v3, parcheado)
+Módulo de Análisis de Valoración de Stocks (v4)
 ==========================================================
 
 Refactor completo con:
@@ -7,10 +7,18 @@ Refactor completo con:
 - Incorporación de calidad (ROIC, márgenes), FCF yield, crecimiento y momentum
 - Manejo de P/B, ROE y EV/EBITDA extremos con winsorización contra peers
 - Reportes reproducibles y trazables con fuentes y fechas
-- Sanitización de múltiplos (evitar tratar múltiplos ≤0 como “baratos”)
+- Sanitización de múltiplos (evitar tratar múltiplos ≤0 como "baratos")
 - Formateo seguro para NaN/valores faltantes
 - Conteo correcto de peers disponibles (excluyendo el propio ticker)
-- Parche de índice temporal (naive) y búsquedas robustas de precios para evitar “panel vacío”
+- Parche de índice temporal (naive) y búsquedas robustas de precios para evitar "panel vacío"
+
+NUEVAS CARACTERÍSTICAS v4:
+- FCF TTM robusto calculado desde quarterly_cashflow con fallback anual
+- EV corporativo extraído desde balance sheet (trimestral con fallback anual)
+- Manejo de equity ≤ 0 con P/B y ROE marcados como NM
+- Peers específicos para Credit Services/Payments
+- Fecha real de fundamentales desde datos más recientes disponibles
+- Nuevas métricas: FCF TTM, FCF/EV Yield, EV (corp)
 
 Autor: Sistema de Análisis Cuantitativo
 Fecha: 2025
@@ -23,6 +31,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from pandas.tseries.offsets import BDay, MonthEnd
 
 import numpy as np
 import pandas as pd
@@ -32,12 +41,13 @@ import seaborn as sns
 
 warnings.filterwarnings("ignore")
 
+# Configuración de fuentes de datos
+
 # Estilo para gráficos
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
 
 # ================================ CONFIGURACIÓN ================================
-
 # Pesos de los bloques de análisis
 WEIGHTS = {
     "valuation": 0.40,  # Valoración (P/E, EV/EBITDA, P/S, FCF yield, P/B)
@@ -86,6 +96,153 @@ FALLBACK_SCOPE = {
 }
 
 # ================================ UTILIDADES ================================
+
+# ====== NEW: utilidades para extraer TTM y balance de yfinance ======
+CF_CFO_KEYS = [
+    "Total Cash From Operating Activities", "Operating Cash Flow",
+    "Net Cash Provided by Operating Activities", "Net CashFrom Operating Activities"
+]
+CF_CAPEX_KEYS = [
+    "Capital Expenditures", "Capital Expenditure", "Purchase Of Property Plant And Equipment"
+]
+BS_EQUITY_KEYS = [
+    "Total Stockholder Equity", "Total Stockholders Equity", "Stockholders Equity",
+    "Total Equity Gross Minority Interest"
+]
+BS_CASH_KEYS = [
+    "Cash And Cash Equivalents", "Cash", "Cash And Cash Equivalents And Short Term Investments"
+]
+BS_DEBT_KEYS = [
+    "Total Debt", "Short Long Term Debt", "Long Term Debt",
+    "Current Debt And Capital Lease Obligation", "Long Term Debt And Capital Lease Obligation"
+]
+
+def _get_row_sum_last_n(df: pd.DataFrame, keys: List[str], n: int = 4) -> Optional[float]:
+    if df is None or df.empty:
+        return None
+    for k in keys:
+        if k in df.index:
+            s = df.loc[k].dropna()
+            if not s.empty:
+                return float(s.iloc[:n].sum())
+    return None
+
+def _get_row_last(df: pd.DataFrame, keys: List[str]) -> Optional[float]:
+    if df is None or df.empty:
+        return None
+    for k in keys:
+        if k in df.index:
+            s = df.loc[k].dropna()
+            if not s.empty:
+                return float(s.iloc[0])
+    return None
+
+def _compute_fcf_ttm(stock: yf.Ticker) -> Optional[float]:
+    # FCF_TTM = Σ(CFO_4Q) - Σ(Capex_4Q) ; capex puede venir negativo
+    qcf = None
+    try:
+        qcf = stock.quarterly_cashflow
+    except Exception:
+        pass
+    cfo_4q = _get_row_sum_last_n(qcf, CF_CFO_KEYS, 4)
+    capex_4q = _get_row_sum_last_n(qcf, CF_CAPEX_KEYS, 4)
+
+    if cfo_4q is None and capex_4q is None:
+        # fallback anual
+        try:
+            acf = stock.cashflow
+            cfo = _get_row_last(acf, CF_CFO_KEYS)
+            capex = _get_row_last(acf, CF_CAPEX_KEYS)
+            if cfo is None or capex is None:
+                return None
+            capex_adj = -capex if capex < 0 else capex
+            return float(cfo - capex_adj)
+        except Exception:
+            return None
+
+    if cfo_4q is None or capex_4q is None:
+        return None
+
+    capex_adj = -capex_4q if capex_4q < 0 else capex_4q
+    return float(cfo_4q - capex_adj)
+
+def _get_equity_last(stock: yf.Ticker) -> Optional[float]:
+    for getter in ("quarterly_balance_sheet", "balance_sheet"):
+        try:
+            bs = getattr(stock, getter)
+            eq = _get_row_last(bs, BS_EQUITY_KEYS)
+            if eq is not None:
+                return float(eq)
+        except Exception:
+            continue
+    return None
+
+def _get_cash_debt_last(stock: yf.Ticker) -> Tuple[Optional[float], Optional[float]]:
+    cash = debt = None
+    for getter in ("quarterly_balance_sheet", "balance_sheet"):
+        try:
+            bs = getattr(stock, getter)
+            if bs is None or bs.empty:
+                continue
+            if cash is None:
+                cash = _get_row_last(bs, BS_CASH_KEYS)
+            if debt is None:
+                debt_vals = []
+                for k in BS_DEBT_KEYS:
+                    if k in bs.index:
+                        s = bs.loc[k].dropna()
+                        if not s.empty:
+                            debt_vals.append(float(s.iloc[0]))
+                if debt_vals:
+                    debt = float(sum(debt_vals))
+            if cash is not None and debt is not None:
+                break
+        except Exception:
+            continue
+    return cash, debt
+
+def _compute_ev_corporativo(info: Dict, stock: yf.Ticker) -> Optional[float]:
+    try:
+        mc = float(info.get("marketCap") or 0)
+        cash_i = info.get("totalCash")
+        debt_i = info.get("totalDebt")
+        cash_bs, debt_bs = _get_cash_debt_last(stock)
+        cash = float(cash_bs if cash_bs is not None else (cash_i or 0))
+        debt = float(debt_bs if debt_bs is not None else (debt_i or 0))
+        if mc <= 0:
+            return None
+        return mc + debt - cash
+    except Exception:
+        return None
+
+def _equity_nonpositive(stock: yf.Ticker) -> bool:
+    eq = _get_equity_last(stock)
+    try:
+        return (eq is not None) and (float(eq) <= 0)
+    except Exception:
+        return False
+
+def _latest_fund_date(stock: yf.Ticker) -> Optional[str]:
+    # Toma la columna más reciente de los DF trimestrales/anuales disponibles
+    dfs = []
+    for attr in ("quarterly_financials", "quarterly_cashflow", "quarterly_balance_sheet",
+                 "financials", "cashflow", "balance_sheet"):
+        try:
+            df = getattr(stock, attr)
+            if df is not None and not df.empty:
+                dfs.append(df)
+        except Exception:
+            pass
+    if not dfs:
+        return None
+    # column labels suelen ser Timestamp; toma el max
+    try:
+        latest = max([c for df in dfs for c in df.columns if pd.notna(c)])
+        if isinstance(latest, (pd.Timestamp, np.datetime64)):
+            return pd.to_datetime(latest).strftime("%Y-%m-%d")
+        return str(latest)
+    except Exception:
+        return None
 
 def _nan_if_missing(x):
     """Convierte valores faltantes o inválidos a NaN."""
@@ -169,27 +326,21 @@ def _calculate_rsi(prices: np.ndarray, window: int = 14) -> float:
 # ---------- Helpers de formateo y sanitizado ----------
 
 def fmt_num(x, fmt="{:,.2f}", na="N/D"):
-    try:
-        return na if pd.isna(x) or not np.isfinite(float(x)) else fmt.format(float(x))
-    except Exception:
-        return na
+    """Formatea números (mantener para compatibilidad)."""
+    return formatear_numero(x, fmt, na)
 
 def fmt_int(x, na="N/D"):
-    try:
-        return na if pd.isna(x) or not np.isfinite(float(x)) else f"{int(round(float(x))):,}"
-    except Exception:
-        return na
+    """Formatea enteros."""
+    return formatear_numero(x, "{:,.0f}", na)
 
 def fmt_pct(x, fmt="{:.2%}", na="N/D"):
-    try:
-        return na if pd.isna(x) or not np.isfinite(float(x)) else fmt.format(float(x))
-    except Exception:
-        return na
+    """Formatea porcentajes (mantener para compatibilidad)."""
+    return formatear_porcentaje(x, fmt, na)
 
 def _clean_multiple(x: float, allow_zero: bool = False) -> float:
     """
     Devuelve NaN si el múltiplo es inválido/no finito o ≤0 (o <0 si allow_zero=True).
-    Evita tratar múltiplos “negativos” como baratos (suelen reflejar pérdidas).
+    Evita tratar múltiplos "negativos" como baratos (suelen reflejar pérdidas).
     """
     if pd.isna(x):
         return np.nan
@@ -243,9 +394,19 @@ def fetch_snapshot(ticker: str) -> Dict:
         debt_equity = _nan_if_missing(info.get('debtToEquity'))
         debt_ebitda = _nan_if_missing(info.get('debtToEbitda'))
 
-        # FCF yield (calculado)
-        fcf = _nan_if_missing(info.get('freeCashflow'))
-        fcf_yield = _safe_div(fcf, market_cap) if pd.notna(fcf) and pd.notna(market_cap) and market_cap > 0 else np.nan
+        # FCF TTM robusto (v4)
+        fcf_ttm = _compute_fcf_ttm(stock)
+        fcf_yield = _safe_div(fcf_ttm, market_cap) if pd.notna(fcf_ttm) and pd.notna(market_cap) and market_cap > 0 else np.nan
+
+        # EV corporativo (v4)
+        ev_corp = _compute_ev_corporativo(info, stock)
+        fcf_ev_yield = _safe_div(fcf_ttm, ev_corp) if pd.notna(fcf_ttm) and pd.notna(ev_corp) and ev_corp > 0 else np.nan
+
+        # Equity nonpositive check (v4)
+        equity_nonpositive = _equity_nonpositive(stock)
+        if equity_nonpositive:
+            pb = np.nan
+            roe = np.nan
 
         # Net cash/EBITDA
         total_cash = _nan_if_missing(info.get('totalCash'))
@@ -253,6 +414,9 @@ def fetch_snapshot(ticker: str) -> Dict:
         net_cash = (total_cash if pd.notna(total_cash) else 0.0) - (total_debt if pd.notna(total_debt) else 0.0)
         ebitda = _nan_if_missing(info.get('ebitda'))
         net_cash_ebitda = _safe_div(net_cash, ebitda) if pd.notna(ebitda) and ebitda != 0 else np.nan
+
+        # Fecha de fundamentales real (v4)
+        fund_date = _latest_fund_date(stock) or _get_fundamental_date(info)
 
         return {
             'ticker': ticker.upper(),
@@ -270,6 +434,8 @@ def fetch_snapshot(ticker: str) -> Dict:
             'ev_ebitda': ev_ebitda,
             'ev_revenue': ev_revenue,
             'fcf_yield': fcf_yield,
+            'fcf_ttm': fcf_ttm,
+            'fcf_ev_yield': fcf_ev_yield,
 
             # Calidad
             'roe': roe,
@@ -291,9 +457,11 @@ def fetch_snapshot(ticker: str) -> Dict:
             # Metadatos
             'as_of': {
                 'price_date': _get_latest_trading_date(),
-                'fund_date': _get_fundamental_date(info)
+                'fund_date': fund_date
             },
-            'source': 'yfinance'
+            'source': 'yfinance',
+            'ev_corp': ev_corp,
+            'equity_nonpositive': equity_nonpositive
         }
 
     except Exception as e:
@@ -305,7 +473,9 @@ def fetch_snapshot(ticker: str) -> Dict:
             'sector': 'N/A',
             'industry': 'N/A',
             'as_of': {'price_date': 'N/D', 'fund_date': 'N/D'},
-            'source': 'error'
+            'source': 'error',
+            'ev_corp': np.nan,
+            'equity_nonpositive': False
         }
 
 def fetch_history(ticker: str, days: int = 252) -> pd.Series:
@@ -330,7 +500,9 @@ def fetch_peers(scope: str, name: str, ticker: str) -> List[str]:
             "Software": ["MSFT", "GOOGL", "ORCL", "CRM", "ADBE", "NOW"],
             "E-commerce": ["AMZN", "EBAY", "SHOP", "ETSY", "MELI"],
             "Automotive": ["TSLA", "F", "GM", "TM", "HMC"],
-            "Financial Services": ["JPM", "BAC", "WFC", "GS", "MS"]
+            "Financial Services": ["JPM", "BAC", "WFC", "GS", "MS"],
+            "Credit Services": ["V", "MA", "AXP", "COF", "DFS", "SYF", "SQ", "FI", "FIS", "GPN", "ADYEN.AS"],
+            "Payments": ["V", "MA", "AXP", "COF", "DFS", "SYF", "SQ", "FI", "FIS", "GPN", "ADYEN.AS"]
         }
         return industry_peers.get(name, [ticker])
     elif scope == "sector":
@@ -382,18 +554,15 @@ def _get_latest_trading_date() -> str:
     return datetime.now().strftime('%Y-%m-%d')
 
 def _get_fundamental_date(info: Dict) -> str:
-    """Obtiene fecha de datos fundamentales."""
-    v = info.get('lastFiscalYearEnd')
-    if v is None:
-        return datetime.now().strftime('%Y-%m-%d')
-    try:
-        if isinstance(v, (int, float)):
-            if v > 10_000_000_000:  # epoch ms
-                v = v / 1000.0
-            return datetime.utcfromtimestamp(v).strftime('%Y-%m-%d')
-        return str(v)
-    except Exception:
-        return datetime.now().strftime('%Y-%m-%d')
+    """Obtiene fecha de datos fundamentales (fallback al último día del año anterior)."""
+    # Obtener el año actual
+    año_actual = datetime.now().year
+    año_anterior = año_actual - 1
+    
+    # Crear fecha del último día del año anterior (31 de diciembre)
+    fecha_fundamentales = datetime(año_anterior, 12, 31)
+    
+    return fecha_fundamentales.strftime('%Y-%m-%d')
 
 # ================================ FACTORES ================================
 
@@ -766,7 +935,8 @@ def compute_score(ticker: str) -> Dict:
             'price': ticker_data['price'],
             'sector': ticker_data['sector'],
             'industry': ticker_data['industry'],
-            'market_cap': ticker_data['market_cap']
+            'market_cap': ticker_data['market_cap'],
+            'ev_corp': ticker_data.get('ev_corp', np.nan)
         },
         'valuation': {
             'pe_ttm': ticker_data['pe_ttm'],
@@ -775,6 +945,8 @@ def compute_score(ticker: str) -> Dict:
             'ps': ticker_data['ps'],
             'pb': ticker_data['pb'],
             'fcf_yield': ticker_data['fcf_yield'],
+            'fcf_ttm': ticker_data.get('fcf_ttm', np.nan),
+            'fcf_ev_yield': ticker_data.get('fcf_ev_yield', np.nan),
             'subscore': valuation_score,
             'detail': valuation_details
         },
@@ -805,9 +977,12 @@ def compute_score(ticker: str) -> Dict:
         'conclusion': conclusion,
         'as_of': ticker_data['as_of'],
         'source': ticker_data['source'],
-        'peers_used': len(peers_data),
+        'peers_used': len([p for p in peers if p != ticker]),  # Excluye el propio ticker
         'peers_scope': RELATIVE_SCOPE,
-        'relative_available': relative_available
+        'relative_available': relative_available,
+        'meta': {
+            'equity_nonpositive': ticker_data.get('equity_nonpositive', False)
+        }
     }
 
     return result
@@ -859,13 +1034,15 @@ def render_stock_report(result: Dict) -> str:
 
     # Header
     report = f"\n{'='*60}\n"
-    report += f"📊 REPORTE DE VALORACIÓN v3 - {ticker}\n"
+    report += f"📊 REPORTE DE VALORACIÓN v4 - {ticker}\n"
     report += f"{'='*60}\n"
 
     # Información básica
     report += f"\n INFORMACIÓN BÁSICA:\n"
     report += f"   Precio: ${fmt_num(basics['price'])}\n"
     report += f"   Market Cap: ${fmt_int(basics['market_cap'])}\n"
+    if pd.notna(basics.get('ev_corp', np.nan)):
+        report += f"   EV (corp): ${fmt_int(basics['ev_corp'])}\n"
     report += f"   Sector: {basics['sector']}\n"
     report += f"   Industria: {basics['industry']}\n"
 
@@ -877,8 +1054,24 @@ def render_stock_report(result: Dict) -> str:
     report += pe_line + "\n"
     report += f"   EV/EBITDA: {fmt_num(valuation['ev_ebitda'])}\n"
     report += f"   P/S: {fmt_num(valuation['ps'])}\n"
-    report += f"   P/B: {fmt_num(valuation['pb'])}\n"
+    
+    # P/B y ROE con renderizado NM
+    equity_nonpos = result.get('meta', {}).get('equity_nonpositive', False)
+    pb_val = valuation['pb']
+    roe_val = quality['roe']
+    
+    pb_str = "NM" if (equity_nonpos and pd.isna(pb_val)) else fmt_num(pb_val)
+    roe_str = "NM" if (equity_nonpos and pd.isna(roe_val)) else fmt_pct(roe_val)
+    
+    report += f"   P/B: {pb_str}\n"
     report += f"   FCF Yield: {fmt_pct(valuation['fcf_yield'])}\n"
+    
+    # Nuevas métricas v4
+    if pd.notna(valuation.get('fcf_ttm', np.nan)):
+        report += f"   FCF TTM: ${fmt_int(valuation['fcf_ttm'])}\n"
+    if pd.notna(basics.get('ev_corp', np.nan)) and pd.notna(valuation.get('fcf_ev_yield', np.nan)):
+        report += f"   FCF/EV Yield: {fmt_pct(valuation['fcf_ev_yield'], fmt='{:.1%}')}\n"
+    
     report += f"   Valuation Subscore: {fmt_num(valuation['subscore'], fmt='{:.2f}')}\n"
 
     # Calidad
@@ -886,7 +1079,7 @@ def render_stock_report(result: Dict) -> str:
     report += f"   ROIC: {fmt_pct(quality['roic'])}\n"
     report += f"   Margen Operativo: {fmt_pct(quality['op_margin'])}\n"
     report += f"   Margen Neto: {fmt_pct(quality['profit_margin'])}\n"
-    report += f"   ROE: {fmt_pct(quality['roe'])}\n"
+    report += f"   ROE: {roe_str}\n"
     report += f"   Quality Subscore: {fmt_num(quality['subscore'], fmt='{:.2f}')}\n"
 
     # Crecimiento
@@ -1252,8 +1445,6 @@ def generar_reporte_detallado(ticker: str) -> None:
     print(f"\n🎯 RECOMENDACIÓN: {color} {recommendation}")
     print(f"   Score: {score:.2f} | Conclusión: {result['conclusion']}")
 
-# ================================ TESTS ================================
-
 def test_scoring():
     """Pruebas unitarias del sistema de scoring."""
     print("🧪 Ejecutando tests del sistema de scoring...")
@@ -1300,702 +1491,284 @@ def test_scoring():
 
     print("\n🎉 Tests completados!")
 
-# ================================ EJEMPLOS DE USO ================================
-
 def ejemplo_analisis_individual():
-    """Ejemplo de análisis individual."""
-    print("📊 EJEMPLO: ANÁLISIS INDIVIDUAL")
-    print("="*50)
-
-    # Analizar un ticker (puedes cambiar META por AAPL si prefieres)
-    generar_reporte_detallado("META")
+    """Ejecuta un análisis individual sencillo."""
+    ticker = "AAPL"
+    print("\n" + "="*60)
+    print(f"🔹 Ejemplo 1: Análisis individual ({ticker})")
+    print("="*60)
+    analizar_stock(ticker)
 
 def ejemplo_comparacion():
-    """Ejemplo de comparación de stocks."""
-    print("📊 EJEMPLO: COMPARACIÓN DE STOCKS")
-    print("="*50)
+    """Compara un conjunto de grandes tecnológicas."""
+    tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
+    print("\n" + "="*60)
+    print(f"🔹 Ejemplo 2: Comparación entre tickers {tickers}")
+    print("="*60)
+    comparar_stocks(tickers)
 
-    # Comparar grandes tecnológicas
-    faang_tickers = ["AAPL","MSFT","NVDA","META"]
-    comparar_stocks(faang_tickers)
 
-# ================================ EMPÍRICO: RE-CALIBRACIÓN DE PESOS ================================
-# Este bloque construye un panel "punto en tiempo" (PIT), evalúa estrategias long-short
-# y busca los pesos (valuation, quality, growth, momentum) que maximizan Sharpe OOS.
+# ================================ FUNCIONES DE UTILIDAD ===============================
 
-from functools import lru_cache
-from dateutil.relativedelta import relativedelta
-
-# ---------- Utilidades de fechas y cache ----------
-
-def _month_end(d: pd.Timestamp) -> pd.Timestamp:
-    return (pd.Timestamp(d).to_period('M') + 0).to_timestamp('M')
-
-@lru_cache(maxsize=256)
-def _prices_series_cached(ticker: str, years: int = 6) -> pd.Series:
+def formatear_numero(x, formato="{:,.2f}", na="N/D"):
+    """Función unificada de formateo de números."""
     try:
-        t = yf.Ticker(ticker)
-        hist = t.history(period=f"{years}y", interval="1d")
-        if hist.empty:
-            return pd.Series(dtype=float)
-        s = hist["Close"].astype(float).dropna().copy()
-        # Índice -> naive (sin tz) + ordenado + sin duplicados
-        idx = pd.to_datetime(s.index)
-        try:
-            idx = idx.tz_localize(None)
-        except Exception:
-            try:
-                idx = idx.tz_convert(None)
-            except Exception:
-                pass
-        s.index = idx
-        s = s[~s.index.duplicated(keep="last")].sort_index()
-        return s
+        return na if pd.isna(x) or not np.isfinite(float(x)) else formato.format(float(x))
     except Exception:
-        return pd.Series(dtype=float)
+        return na
 
-@lru_cache(maxsize=128)
-def _funds_cached(ticker: str):
-    """Devuelve (quarterly_financials, quarterly_balance_sheet, quarterly_cashflow, info) cacheado."""
+def formatear_porcentaje(x, formato="{:.2%}", na="N/D"):
+    """Formatea porcentajes."""
     try:
-        t = yf.Ticker(ticker)
-        qfin = t.quarterly_financials
-        qbs = t.quarterly_balance_sheet
-        qcf = t.quarterly_cashflow
-        info = t.info or {}
-        
-        # Asegurar que no devolvemos None
-        qfin = qfin if qfin is not None else pd.DataFrame()
-        qbs = qbs if qbs is not None else pd.DataFrame()
-        qcf = qcf if qcf is not None else pd.DataFrame()
-        info = info if info is not None else {}
-        
-        return (qfin, qbs, qcf, info)
-    except Exception as e:
-        print(f"⚠️ Error obteniendo datos financieros para {ticker}: {e}")
-        return (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {})
-
-def _last_quarter_leq(df: pd.DataFrame, cutoff: pd.Timestamp) -> Optional[pd.Timestamp]:
-    """Obtiene la última columna (quarter end) <= cutoff."""
-    if df is None or df.empty:
-        return None
-    cols = df.columns
-    try:
-        cols = pd.to_datetime(cols)
+        return na if pd.isna(x) or not np.isfinite(float(x)) else formato.format(float(x))
     except Exception:
-        return None
-    cols = [c for c in cols if c <= cutoff]
-    if not cols:
-        return None
-    return max(cols)
+        return na
 
-def _getq(df: pd.DataFrame, row_name: str, col: pd.Timestamp) -> float:
-    """Saca un valor (float) del DF trimestral en fila row_name y columna col."""
-    if df is None or df.empty or col is None:
-        return np.nan
-    if row_name not in df.index:
-        return np.nan
-    try:
-        return float(df.loc[row_name, col])
-    except Exception:
-        return np.nan
+# ================================ FUNCIONES PRINCIPALES ===============================
 
-def _sum_ttm(df: pd.DataFrame, row_name: str, col: pd.Timestamp, n_quarters: int = 4) -> float:
-    """Suma TTM de la fila row_name terminando en 'col' (incluido)."""
-    if df is None or df.empty or col is None:
-        return np.nan
-    if row_name not in df.index:
-        return np.nan
-    try:
-        cols_sorted = sorted(pd.to_datetime(df.columns))
-        if col not in cols_sorted:
-            return np.nan
-        idx = cols_sorted.index(col)
-        start = max(0, idx - (n_quarters - 1))
-        window = cols_sorted[start:idx + 1]
-        vals = [df.loc[row_name, c] for c in window if row_name in df.index]
-        vals = [float(v) for v in vals if pd.notna(v)]
-        return float(np.nansum(vals)) if vals else np.nan
-    except Exception:
-        return np.nan
-
-def _shares_outstanding_from_info(info: Dict) -> float:
-    x = info.get('sharesOutstanding')
-    try:
-        return float(x) if x is not None and np.isfinite(float(x)) else np.nan
-    except Exception:
-        return np.nan
-
-def _price_on_or_before(ticker: str, date: pd.Timestamp) -> float:
-    s = _prices_series_cached(ticker)
-    if s.empty:
-        return np.nan
-    ts = pd.Timestamp(date)
-    # Asegura naive
-    if ts.tzinfo is not None:
-        ts = ts.tz_localize(None)
-    # Búsqueda binaria: última barra <= ts
-    pos = s.index.searchsorted(ts, side="right") - 1
-    if pos >= 0:
-        return float(s.iloc[pos])
-    # Fallback: primera barra >= ts (por si no hay anterior)
-    pos = s.index.searchsorted(ts, side="left")
-    return float(s.iloc[pos]) if pos < len(s) else np.nan
-
-def _price_on_after(ticker: str, date: pd.Timestamp) -> float:
-    s = _prices_series_cached(ticker)
-    if s.empty:
-        return np.nan
-    ts = pd.Timestamp(date)
-    if ts.tzinfo is not None:
-        ts = ts.tz_localize(None)
-    pos = s.index.searchsorted(ts, side="left")
-    if pos < len(s):
-        return float(s.iloc[pos])
-    # Fallback: última barra disponible
-    return float(s.iloc[-1])
-
-def _create_empty_snapshot(ticker: str, asof: pd.Timestamp) -> Dict:
-    """Crea un snapshot vacío cuando no hay datos financieros disponibles."""
-    return {
-        'ticker': ticker.upper(),
-        'price': np.nan,
-        'market_cap': np.nan,
-        'sector': 'N/A',
-        'industry': 'N/A',
+def menu_principal():
+    """Menú principal del sistema de análisis."""
+    while True:
+        print("\n" + "="*60)
+        print("📊 SISTEMA DE ANÁLISIS DE VALORACIÓN DE STOCKS v3")
+        print("="*60)
+        print("1. Analizar stock individual")
+        print("2. Comparar múltiples stocks")
+        print("3. Análisis de portafolio")
+        print("4. Generar reporte detallado con gráficos")
+        print("5. Validar métricas de valoración")
+        print("6. Ejecutar tests del sistema")
+        print("7. Salir")
+        print("="*60)
         
-        # Valoración
-        'pe_ttm': np.nan,
-        'pe_fwd': np.nan,
-        'pb': np.nan,
-        'ps': np.nan,
-        'ev_ebitda': np.nan,
-        'ev_revenue': np.nan,
-        'fcf_yield': np.nan,
+        opcion = input("Seleccione una opción (1-7): ").strip()
         
-        # Calidad
-        'roe': np.nan,
-        'roa': np.nan,
-        'roic': np.nan,
-        'gross_margin': np.nan,
-        'operating_margin': np.nan,
-        'profit_margin': np.nan,
-        
-        # Crecimiento
-        'revenue_growth': np.nan,
-        'earnings_growth': np.nan,
-        
-        # Deuda
-        'debt_equity': np.nan,
-        'debt_ebitda': np.nan,
-        'net_cash_ebitda': np.nan,
-        
-        'as_of': {'price_date': str(pd.Timestamp(asof).date()), 'fund_date': 'N/D'},
-        'source': 'empty'
-    }
-
-# ---------- Snapshot PIT (fundamentales y múltiplos con lag) ----------
-
-def build_pit_snapshot(ticker: str, asof: pd.Timestamp, lag_days: int = 30) -> Dict:
-    """
-    Construye un snapshot 'punto en tiempo' para 'asof'.
-    - Usa el último trimestre con cierre <= asof - lag_days (para evitar look-ahead).
-    - Calcula TTM de Revenue, Net Income, EBIT/EBITDA aprox, CFO/CapEx y deriva múltiplos.
-    """
-    try:
-        qfin, qbs, qcf, info = _funds_cached(ticker)
-        cutoff = pd.Timestamp(asof) - pd.Timedelta(days=lag_days)
-        
-        # Verificar que tenemos datos financieros básicos
-        if qfin is None or qfin.empty:
-            print(f"⚠️ Sin datos financieros para {ticker} en {asof.date()}")
-            return _create_empty_snapshot(ticker, asof)
-    except Exception as e:
-        print(f"⚠️ Error en build_pit_snapshot para {ticker}: {e}")
-        return _create_empty_snapshot(ticker, asof)
-
-    # Quarter más reciente disponible antes del cutoff
-    qcol_fin = _last_quarter_leq(qfin, cutoff)
-    qcol_bs  = _last_quarter_leq(qbs, cutoff)
-    qcol_cf  = _last_quarter_leq(qcf, cutoff)
-    
-    # Debug: verificar si tenemos quarters válidos
-    if qcol_fin is None:
-        print(f"⚠️ {ticker} en {asof.date()}: sin quarters financieros antes de {cutoff.date()}")
-        return _create_empty_snapshot(ticker, asof)
-
-    # TTM básicos
-    rev_ttm = _sum_ttm(qfin, 'Total Revenue', qcol_fin)
-    ni_ttm  = _sum_ttm(qfin, 'Net Income', qcol_fin)
-
-    # EBITDA TTM (intentamos EBITDA; si no, EBIT + Depreciation)
-    ebitda_ttm = _sum_ttm(qfin, 'Ebitda', qcol_fin)
-    if pd.isna(ebitda_ttm):
-        ebit_ttm = _sum_ttm(qfin, 'Ebit', qcol_fin)
-        d_and_a_ttm = _sum_ttm(qfin, 'Depreciation', qcol_fin)
-        if pd.isna(d_and_a_ttm):
-            d_and_a_ttm = _sum_ttm(qfin, 'Depreciation & Amortization', qcol_fin)
-        if pd.isna(ebit_ttm) and not pd.isna(_sum_ttm(qfin, 'Operating Income', qcol_fin)):
-            ebit_ttm = _sum_ttm(qfin, 'Operating Income', qcol_fin)
-        ebitda_ttm = (ebit_ttm if pd.notna(ebit_ttm) else 0.0) + (d_and_a_ttm if pd.notna(d_and_a_ttm) else 0.0)
-        if ebitda_ttm == 0.0:
-            ebitda_ttm = np.nan
-
-    # Márgenes (TTM)
-    gross_ttm   = _sum_ttm(qfin, 'Gross Profit', qcol_fin)
-    op_inc_ttm  = _sum_ttm(qfin, 'Operating Income', qcol_fin)
-    profit_m    = _safe_div(ni_ttm, rev_ttm)
-    op_m        = _safe_div(op_inc_ttm, rev_ttm)
-    gross_m     = _safe_div(gross_ttm, rev_ttm)
-
-    # Balance y CF (último quarter)
-    total_debt = _getq(qbs, 'Total Debt', qcol_bs)
-    if pd.isna(total_debt):
-        # aproximar con deuda corto+largo si existe
-        sd = _getq(qbs, 'Short Long Term Debt', qcol_bs)
-        ld = _getq(qbs, 'Long Term Debt', qcol_bs)
-        total_debt = (sd if pd.notna(sd) else 0.0) + (ld if pd.notna(ld) else 0.0)
-        if total_debt == 0.0:
-            total_debt = np.nan
-    cash = _getq(qbs, 'Cash And Cash Equivalents', qcol_bs)
-    if pd.isna(cash):
-        cash = _getq(qbs, 'CashAndCashEquivalents', qcol_bs)
-    total_equity = _getq(qbs, 'Total Stockholder Equity', qcol_bs)
-
-    cfo_ttm   = _sum_ttm(qcf, 'Total Cash From Operating Activities', qcol_cf)
-    if pd.isna(cfo_ttm):
-        cfo_ttm = _sum_ttm(qcf, 'Operating Cash Flow', qcol_cf)
-    capex_ttm = _sum_ttm(qcf, 'Capital Expenditures', qcol_cf)
-
-    fcf_ttm = np.nan
-    if pd.notna(cfo_ttm) and pd.notna(capex_ttm):
-        fcf_ttm = cfo_ttm - abs(capex_ttm)
-
-    # Precio/MC/EV a fecha asof
-    price = _price_on_or_before(ticker, asof)
-    shares = _shares_outstanding_from_info(info)  # no PIT, pero usable como proxy
-    market_cap = price * shares if (pd.notna(price) and pd.notna(shares)) else np.nan
-    ev = np.nan
-    if pd.notna(market_cap) and pd.notna(total_debt) and pd.notna(cash):
-        ev = market_cap + total_debt - cash
-
-    # Múltiplos TTM
-    eps_ttm = _safe_div(ni_ttm, shares)
-    pe_ttm  = _safe_div(price, eps_ttm) if pd.notna(eps_ttm) else np.nan
-    ps      = _safe_div(market_cap, rev_ttm)
-    pb      = _safe_div(market_cap, total_equity)
-    ev_ebitda = _safe_div(ev, ebitda_ttm) if pd.notna(ev) and pd.notna(ebitda_ttm) else np.nan
-    fcf_yield = _safe_div(fcf_ttm, market_cap) if pd.notna(fcf_ttm) and pd.notna(market_cap) else np.nan
-
-    # Crecimiento YoY (TTM contra TTM-4Q)
-    rev_ttm_prev = np.nan
-    ni_ttm_prev  = np.nan
-    if qcol_fin is not None:
-        four_q_back = qcol_fin - pd.DateOffset(months=12)
-        rev_ttm_prev = _sum_ttm(qfin, 'Total Revenue', four_q_back)
-        ni_ttm_prev  = _sum_ttm(qfin, 'Net Income', four_q_back)
-
-    rev_yoy  = _safe_div(rev_ttm - rev_ttm_prev, rev_ttm_prev) if pd.notna(rev_ttm_prev) else np.nan
-    eps_ttm_prev = _safe_div(ni_ttm_prev, shares) if pd.notna(ni_ttm_prev) and pd.notna(shares) else np.nan
-    eps_yoy  = _safe_div(eps_ttm - eps_ttm_prev, eps_ttm_prev) if pd.notna(eps_ttm_prev) else np.nan
-
-    # Net cash / EBITDA
-    net_cash = (cash if pd.notna(cash) else 0.0) - (total_debt if pd.notna(total_debt) else 0.0)
-    net_cash_ebitda = _safe_div(net_cash, ebitda_ttm) if pd.notna(ebitda_ttm) and ebitda_ttm != 0 else np.nan
-
-    # Sector/Industria (de info; no PIT, pero estable)
-    sector = info.get('sector', 'N/A')
-    industry = info.get('industry', 'N/A')
-
-    # Armar dict "ticker_data" con las mismas claves que usan tus subscores
-    return {
-        'ticker': ticker.upper(),
-        'price': price,
-        'market_cap': market_cap,
-        'sector': sector,
-        'industry': industry,
-
-        # Valoración
-        'pe_ttm': pe_ttm,
-        'pe_fwd': np.nan,  # forward PE no PIT con yfinance; se deja NaN
-        'pb': pb,
-        'ps': ps,
-        'ev_ebitda': ev_ebitda,
-        'ev_revenue': np.nan,
-        'fcf_yield': fcf_yield,
-
-        # Calidad
-        'roe': _safe_div(ni_ttm, total_equity),
-        'roa': np.nan,
-        'roic': np.nan,  # opcional: calcular proxy si añades NOPAT/Capital
-        'gross_margin': gross_m,
-        'operating_margin': op_m,
-        'profit_margin': profit_m,
-
-        # Crecimiento
-        'revenue_growth': rev_yoy,
-        'earnings_growth': eps_yoy,
-
-        # Deuda
-        'debt_equity': _safe_div(total_debt, total_equity),
-        'debt_ebitda': _safe_div(total_debt, ebitda_ttm) if pd.notna(ebitda_ttm) else np.nan,
-        'net_cash_ebitda': net_cash_ebitda,
-
-        'as_of': {'price_date': str(pd.Timestamp(asof).date()), 'fund_date': str(qcol_fin.date()) if qcol_fin else 'N/D'},
-        'source': 'yfinance-pit'
-    }
-
-# ---------- Construcción del panel PIT ----------
-
-def _get_peers_same_scope(snapshots_by_ticker: Dict[str, Dict], ticker: str) -> List[str]:
-    """Peers según RELATIVE_SCOPE con fallbacks como en tu módulo."""
-    tdata = snapshots_by_ticker[ticker]
-    scope = RELATIVE_SCOPE
-    name = tdata.get('industry' if scope == 'industry' else 'sector', '')
-    # Candidatos = todos los de la fecha con mismo scope
-    if scope == 'industry':
-        peers = [k for k, v in snapshots_by_ticker.items() if v.get('industry') == name]
-        if len(peers) < MIN_PEERS:
-            # fallback sector
-            sname = tdata.get('sector', '')
-            peers = [k for k, v in snapshots_by_ticker.items() if v.get('sector') == sname]
-    else:
-        peers = [k for k, v in snapshots_by_ticker.items() if v.get('sector') == name]
-        if len(peers) < MIN_PEERS:
-            # fallback industria
-            iname = tdata.get('industry', '')
-            peers = [k for k, v in snapshots_by_ticker.items() if v.get('industry') == iname]
-    if len(peers) < MIN_PEERS:
-        peers = list(snapshots_by_ticker.keys())
-    return peers
-
-def _momentum_prices_to_date(ticker: str, asof: pd.Timestamp, min_days: int = 220) -> np.ndarray:
-    s = _prices_series_cached(ticker)
-    if s.empty:
-        return np.array([])
-    s = s.loc[:pd.Timestamp(asof)]
-    if len(s) < min_days:
-        return np.array([])
-    # usa hasta 3 años de histórico para momentum
-    s = s.tail(3*252)
-    return s.values.astype(float)
-
-def build_panel_pit(tickers: List[str], start: str, end: str, freq: str = 'M', lag_days: int = 30) -> pd.DataFrame:
-    """
-    Construye un panel con índices (date, ticker) y columnas:
-    ['valuation','quality','growth','momentum','ret_fwd','sector'].
-    Calcula subscores usando snapshots PIT por fecha y un retorno 1M forward.
-    - Robusto a fines de semana/festivos (precio 'smart' en/antes o en/después).
-    - Normaliza fechas a fin de mes si freq='M'.
-    """
-    # Normaliza la rejilla temporal (si es mensual, usa fin de mes)
-    dates = pd.date_range(start=start, end=end, freq=freq)
-    dates = pd.to_datetime(dates).to_period('M').to_timestamp('M') if freq.upper().startswith('M') else dates
-
-    rows: List[Dict] = []
-
-    # Precio "inteligente": intenta <= dt; si no hay, usa >= dt
-    def _price_smart(tkr: str, dt: pd.Timestamp) -> float:
-        p = _price_on_or_before(tkr, dt)
-        if pd.isna(p):
-            p = _price_on_after(tkr, dt)
-        return p
-
-    for dt in dates:
-        dt = pd.Timestamp(dt).normalize()
-
-        # Snapshots PIT para todos los tickers en la fecha dt
-        snaps: Dict[str, Dict] = {}
-        for t in tickers:
-            try:
-                snap = build_pit_snapshot(t, dt, lag_days=lag_days)
-                # Verificar que el snapshot no esté vacío y tenga precio válido
-                if snap and snap.get('source') != 'empty':
-                    price_ok = snap.get('price', np.nan)
-                    if pd.notna(price_ok) and np.isfinite(float(price_ok)):
-                        snaps[t] = snap
-            except Exception as e:
-                print(f"⚠️ Error procesando {t} en {dt.date()}: {e}")
-                continue
-
-        # Debug: mostrar información sobre snapshots por fecha
-        if len(snaps) < 3:
-            print(f"⚠️ Fecha {dt.date()}: solo {len(snaps)} snapshots válidos (necesarios: 3+)")
-            continue
-
-        # Precalcular precios de t y t+1 para ret_fwd (1M forward)
-        dt_next = (dt + pd.offsets.MonthEnd(1)).normalize()
-        price_t  = {t: _price_smart(t, dt)      for t in snaps.keys()}
-        price_t1 = {t: _price_smart(t, dt_next) for t in snaps.keys()}
-
-        # Para cada ticker, calcular subscores con peers de esa fecha
-        for t in list(snaps.keys()):
-            tdata = snaps[t]
-            peers_list = _get_peers_same_scope(snaps, t)
-            peers_data = [snaps[p] for p in peers_list]  # incluye al propio
-
-            # Momentum history hasta dt
-            phist = _momentum_prices_to_date(t, dt)
-
-            val_s, _ = valuation_subscore(tdata, peers_data)
-            qual_s, _ = quality_subscore(tdata, peers_data)
-            grow_s, _ = growth_subscore(tdata, peers_data)
-            mom_s,  _ = momentum_subscore(tdata, phist)
-
-            # Retorno futuro 1m (t -> t+1)
-            p0 = price_t.get(t, np.nan)
-            p1 = price_t1.get(t, np.nan)
-            ret_fwd = _safe_div(p1 - p0, p0) if (pd.notna(p0) and pd.notna(p1)) else np.nan
-
-            rows.append({
-                'date': dt,
-                'ticker': t,
-                'valuation': val_s,
-                'quality': qual_s,
-                'growth': grow_s,
-                'momentum': mom_s,
-                'ret_fwd': ret_fwd,
-                'sector': tdata.get('sector', 'N/A'),
-            })
-
-    if not rows:
-        return pd.DataFrame()
-
-    panel = pd.DataFrame(rows).set_index(['date', 'ticker']).sort_index()
-
-    # Limpieza: quitar filas sin ret_fwd o no finitas
-    mask_ret = pd.notna(panel['ret_fwd'])
-    try:
-        mask_ret &= np.isfinite(panel['ret_fwd'].astype(float))
-    except Exception:
-        pass
-    panel = panel[mask_ret]
-
-    # (Opcional) quitar filas con todos los factores NaN
-    fac_cols = ['valuation', 'quality', 'growth', 'momentum']
-    if set(fac_cols).issubset(panel.columns):
-        panel = panel[~panel[fac_cols].isna().all(axis=1)]
-
-    return panel
-
-# ---------- Motor de evaluación y búsqueda de pesos ----------
-
-def _portfolio_long_short(scores: pd.Series, rets: pd.Series, sectors: Optional[pd.Series],
-                          costs_bps: float = 5, neutralize_sector: bool = False) -> float:
-    df = pd.DataFrame({'score': scores, 'ret': rets})
-    
-    # Verificar que tenemos datos válidos
-    valid_data = df.dropna()
-    if len(valid_data) < 3:
-        return np.nan
-    
-    if neutralize_sector and sectors is not None:
-        df['sector'] = sectors
-        ls_by_sector = []
-        for sctr, g in df.groupby('sector'):
-            if len(g) < 10:
-                continue
-            q = g['score'].quantile([0.2, 0.8])
-            long_ret = g[g['score'] >= q.loc[0.8]]['ret'].mean()
-            short_ret = g[g['score'] <= q.loc[0.2]]['ret'].mean()
-            if pd.notna(long_ret) and pd.notna(short_ret):
-                ls_by_sector.append(long_ret - short_ret)
-        if not ls_by_sector:
-            return np.nan
-        ls = float(np.mean(ls_by_sector))
-    else:
-        q = df['score'].quantile([0.2, 0.8])
-        long_ret = df[df['score'] >= q.loc[0.8]]['ret'].mean()
-        short_ret = df[df['score'] <= q.loc[0.2]]['ret'].mean()
-        if pd.isna(long_ret) or pd.isna(short_ret):
-            return np.nan
-        ls = long_ret - short_ret
-
-    # Costes por lado (simplificación): 2 * bps
-    ls_net = ls - 2 * (costs_bps / 1e4)
-    return ls_net
-
-def _evaluate_weights(panel: pd.DataFrame, w: np.ndarray, neutralize_sector: bool = False, costs_bps: float = 5) -> Tuple[float, Dict]:
-    assert np.isclose(w.sum(), 1.0), "Pesos deben sumar 1"
-    assert (w >= 0).all(), "Pesos no negativos"
-
-    # Score compuesto por fecha
-    def _row_s(x):
-        return w[0]*x['valuation'] + w[1]*x['quality'] + w[2]*x['growth'] + w[3]*x['momentum']
-
-    panel_ = panel.copy()
-    panel_['score'] = panel_[['valuation','quality','growth','momentum']].apply(_row_s, axis=1)
-
-    # Long-short mensual
-    ls_ret = []
-    for dt, df_t in panel_.groupby(level=0):
-        scores = df_t['score']
-        rets   = df_t['ret_fwd']
-        sectors = df_t['sector'] if 'sector' in df_t.columns else None
-        r = _portfolio_long_short(scores, rets, sectors, costs_bps=costs_bps, neutralize_sector=neutralize_sector)
-        if pd.notna(r) and np.isfinite(r):
-            ls_ret.append(r)
-
-    if not ls_ret:
-        return -np.inf, {}
-
-    rets = np.array(ls_ret, dtype=float)
-    mu, sd = np.nanmean(rets), np.nanstd(rets, ddof=1)
-    sharpe = (mu / (sd + 1e-9)) * np.sqrt(12)  # mensual -> anual
-    stats = {
-        'ann_ret': (1.0 + mu)**12 - 1.0,
-        'ann_vol': sd * np.sqrt(12),
-        'sharpe': sharpe,
-        'n_periods': int(len(rets)),
-    }
-    return sharpe, stats
-
-def _grid_simplex(grid: int = 5) -> List[np.ndarray]:
-    vals = np.linspace(0, 1, grid)
-    cand = []
-    for wv in vals:
-        for wq in vals:
-            for wg in vals:
-                wm = 1 - (wv + wq + wg)
-                if wm < 0:
-                    continue
-                w = np.array([wv, wq, wg, wm], dtype=float)
-                cand.append(w)
-    return cand
-
-def grid_search_weights(panel: pd.DataFrame, grid: int = 6, neutralize_sector: bool = True, costs_bps: float = 5) -> Tuple[float, np.ndarray, Dict]:
-    best = (-np.inf, None, None)
-    valid_combinations = 0
-    
-    for w in _grid_simplex(grid):
-        sharpe, stats = _evaluate_weights(panel, w, neutralize_sector=neutralize_sector, costs_bps=costs_bps)
-        if np.isfinite(sharpe) and sharpe > -np.inf:
-            valid_combinations += 1
-            if sharpe > best[0]:
-                best = (sharpe, w, stats)
-    
-    print(f"🔍 Grid search: {valid_combinations} combinaciones válidas de {len(_grid_simplex(grid))}")
-    if valid_combinations == 0:
-        print("⚠️ Ninguna combinación de pesos produjo retornos válidos")
-    
-    return best  # (best_sharpe, best_weights, stats)
-
-# ---------- Orquestador: construir panel + buscar pesos ----------
-
-# ---------- Orquestador: construir panel + buscar pesos ----------
-
-def recalibrar_pesos_empirico(tickers: List[str],
-                              start: str = "2019-01-01",
-                              end: str   = None,
-                              freq: str = "M",
-                              lag_days: int = 30,
-                              grid: int = 6,
-                              neutralize_sector: bool = True,
-                              costs_bps: float = 5.0) -> Dict:
-    """
-    Construye panel PIT (mensual), ejecuta grid search de pesos y devuelve el mejor set.
-    Retorna: {'weights': array([wV,wQ,wG,wM]), 'sharpe': float, 'stats': dict, 'panel_shape': tuple}
-    """
-    try:
-        if end is None:
-            end = datetime.now().strftime("%Y-%m-%d")
-        
-        print(f"🔨 Construyendo panel PIT para {len(tickers)} tickers...")
-        panel = build_panel_pit(tickers, start=start, end=end, freq=freq, lag_days=lag_days)
-        
-        if panel.empty:
-            print("❌ Panel vacío. Revisa tickers/fechas o disponibilidad de datos.")
-            return {}
-
-        print(f"📊 Panel construido: {panel.shape[0]} observaciones, {panel.shape[1]} columnas")
-        
-        best_sharpe, best_w, stats = grid_search_weights(panel, grid=grid, neutralize_sector=neutralize_sector, costs_bps=costs_bps)
-        
-        if best_w is None:
-            print("❌ No se pudieron encontrar pesos óptimos.")
-            return {}
+        if opcion == "1":
+            ticker = input("Ingrese el ticker del stock (ej: AAPL): ").strip().upper()
+            if ticker:
+                analizar_stock(ticker)
+            else:
+                print("❌ Ticker inválido")
+                
+        elif opcion == "2":
+            tickers_input = input("Ingrese los tickers separados por comas (ej: AAPL,MSFT,GOOGL): ").strip()
+            if tickers_input:
+                tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+                if len(tickers) >= 2:
+                    comparar_stocks(tickers)
+                else:
+                    print("❌ Se necesitan al menos 2 tickers para comparar")
+            else:
+                print("❌ Lista de tickers inválida")
+                
+        elif opcion == "3":
+            tickers_input = input("Ingrese los tickers del portafolio separados por comas: ").strip()
+            if tickers_input:
+                tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+                if tickers:
+                    analizar_portafolio(tickers)
+                else:
+                    print("❌ Lista de tickers inválida")
+            else:
+                print("❌ Lista de tickers inválida")
+                
+        elif opcion == "4":
+            ticker = input("Ingrese el ticker para reporte detallado (ej: AAPL): ").strip().upper()
+            if ticker:
+                generar_reporte_detallado(ticker)
+            else:
+                print("❌ Ticker inválido")
+                
+        elif opcion == "5":
+            ejemplo_validacion_metricas()
             
-    except Exception as e:
-        print(f"❌ Error en recalibrar_pesos_empirico: {e}")
-        return {}
+        elif opcion == "6":
+            test_scoring()
+            
+        elif opcion == "7":
+            print("👋 ¡Hasta luego!")
+            break
+            
+        else:
+            print("❌ Opción inválida. Por favor seleccione 1-7.")
+        
+        input("\nPresione Enter para continuar...")
 
-    # Mostrar resultado
-    print("\n🧪 Recalibración empírica de pesos (long-short Top20% vs Bottom20%)")
-    print(f"Periodo: {panel.index.get_level_values(0).min().date()} → {panel.index.get_level_values(0).max().date()}  |  Muestras mensuales: {stats.get('n_periods', 'N/A')}")
-    print(f"Neutralización por sector: {'Sí' if neutralize_sector else 'No'}  |  Costes: {costs_bps} bps por lado")
-    print(f"Mejor Sharpe anualizado: {stats.get('sharpe', np.nan):.2f}")
-    print(f"Retorno anualizado (aprox): {stats.get('ann_ret', np.nan):.2%}  |  Vol: {stats.get('ann_vol', np.nan):.2%}")
-    print(f"Pesos óptimos: valuation={best_w[0]:.2f}  quality={best_w[1]:.2f}  growth={best_w[2]:.2f}  momentum={best_w[3]:.2f}")
-    return {'weights': best_w, 'sharpe': best_sharpe, 'stats': stats, 'panel_shape': panel.shape}
+def demo_automatico():
+    """Ejecuta una demostración automática del sistema."""
+    print("🚀 DEMOSTRACIÓN AUTOMÁTICA DEL SISTEMA")
+    print("="*60)
+    
+    # Demo 1: Análisis individual
+    print("\n1️⃣ ANÁLISIS INDIVIDUAL - AAPL")
+    print("-" * 40)
+    analizar_stock("AAPL")
+    
+    # Demo 2: Comparación
+    print("\n2️⃣ COMPARACIÓN DE TECNOLÓGICAS")
+    print("-" * 40)
+    tech_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META"]
+    comparar_stocks(tech_tickers)
+    
+    # Demo 3: Test del sistema
+    print("\n3️⃣ VERIFICACIÓN DEL SISTEMA")
+    print("-" * 40)
+    test_scoring()
 
+# ================================ VALIDACIÓN DE MÉTRICAS ===============================
 
-# ================================ MAIN ================================
+def validar_metricas_valoracion(datos_metricas: List[Dict]) -> Dict:
+    """
+    Valida y formatea métricas de valoración para megacaps tech.
+    
+    Args:
+        datos_metricas: Lista de diccionarios con métricas de cada ticker
+        
+    Returns:
+        Dict con tabla formateada, CSV, alertas y metadatos
+    """
+    # Procesar y formatear datos
+    tabla_formateada = []
+    alertas = []
+    
+    for ticker_data in datos_metricas:
+        ticker = ticker_data.get('ticker', '')
+        pe_ttm = ticker_data.get('pe_ttm', np.nan)
+        pe_fwd = ticker_data.get('pe_fwd', np.nan)
+        ev_ebitda = ticker_data.get('ev_ebitda', np.nan)
+        fcf_yield = ticker_data.get('fcf_yield', np.nan)
+        
+        # Convertir FCF Yield a porcentaje (0.02 -> 2.0)
+        if pd.notna(fcf_yield):
+            fcf_yield_pct = fcf_yield * 100
+        else:
+            fcf_yield_pct = np.nan
+        
+        # Formatear con decimales correctos
+        fila = {
+            'ticker': ticker,
+            'pe_ttm': round(pe_ttm, 2) if pd.notna(pe_ttm) else np.nan,
+            'pe_fwd': round(pe_fwd, 2) if pd.notna(pe_fwd) else np.nan,
+            'ev_ebitda': round(ev_ebitda, 2) if pd.notna(ev_ebitda) else np.nan,
+            'fcf_yield_pct': round(fcf_yield_pct, 1) if pd.notna(fcf_yield_pct) else np.nan
+        }
+        
+        tabla_formateada.append(fila)
+        
+        # Sanity checks
+        if pd.notna(pe_fwd) and pd.notna(pe_ttm) and pe_fwd > pe_ttm:
+            alertas.append(f"• {ticker}: P/E FWD ({pe_fwd}) > P/E TTM ({pe_ttm}) - Posible caída de BPA esperado o datos inconsistentes")
+        
+        if pd.notna(fcf_yield_pct) and fcf_yield_pct == 0.0:
+            alertas.append(f"• {ticker}: FCF Yield ≈ 0.0% - FCF reciente escaso/volátil")
+        
+        if pd.notna(pe_ttm) and pe_ttm > 80:
+            alertas.append(f"• {ticker}: P/E TTM = {pe_ttm} (múltiplo elevado; confirmar supuestos)")
+        
+        if pd.notna(ev_ebitda) and ev_ebitda > 60:
+            alertas.append(f"• {ticker}: EV/EBITDA = {ev_ebitda} (múltiplo elevado; confirmar supuestos)")
+    
+    # Verificar FCF Yield idéntico
+    fcf_values = [fila['fcf_yield_pct'] for fila in tabla_formateada if pd.notna(fila['fcf_yield_pct'])]
+    if len(set(fcf_values)) < len(fcf_values) and len(fcf_values) > 1:
+        alertas.append("• FCF Yield idéntico en varias compañías - Posible redondeo o placeholder; revisar")
+    
+    # Generar CSV
+    csv_lines = ["Ticker,P/E TTM,P/E FWD,EV/EBITDA,FCF Yield (%)"]
+    for fila in tabla_formateada:
+        csv_line = f"{fila['ticker']},{fila['pe_ttm']},{fila['pe_fwd']},{fila['ev_ebitda']},{fila['fcf_yield_pct']}"
+        csv_lines.append(csv_line)
+    csv_content = "\n".join(csv_lines)
+    
+    return {
+        'tabla_formateada': tabla_formateada,
+        'csv_content': csv_content,
+        'alertas': alertas,
+        'fecha_corte': 'desconocida'
+    }
+
+def generar_reporte_metricas(datos_metricas: List[Dict]) -> str:
+    """
+    Genera reporte completo de validación de métricas de valoración.
+    
+    Args:
+        datos_metricas: Lista de diccionarios con métricas de cada ticker
+        
+    Returns:
+        String con reporte formateado en Markdown
+    """
+    resultado = validar_metricas_valoracion(datos_metricas)
+    
+    # Header
+    reporte = "## Tabla de Métricas de Valoración - Megacaps Tech\n\n"
+    
+    # Tabla Markdown
+    reporte += "| Ticker | P/E TTM | P/E FWD | EV/EBITDA | FCF Yield (%) |\n"
+    reporte += "|--------|---------|---------|-----------|---------------|\n"
+    
+    for fila in resultado['tabla_formateada']:
+        pe_ttm = f"{fila['pe_ttm']:.2f}" if pd.notna(fila['pe_ttm']) else "N/D"
+        pe_fwd = f"{fila['pe_fwd']:.2f}" if pd.notna(fila['pe_fwd']) else "N/D"
+        ev_ebitda = f"{fila['ev_ebitda']:.2f}" if pd.notna(fila['ev_ebitda']) else "N/D"
+        fcf_yield = f"{fila['fcf_yield_pct']:.1f}" if pd.notna(fila['fcf_yield_pct']) else "N/D"
+        
+        reporte += f"| {fila['ticker']:<6} | {pe_ttm:>7} | {pe_fwd:>7} | {ev_ebitda:>9} | {fcf_yield:>13} |\n"
+    
+    reporte += f"\n**Fecha de corte:** ({resultado['fecha_corte']})\n\n"
+    
+    # CSV
+    reporte += "---\n\n## Versión CSV\n\n```csv\n"
+    reporte += resultado['csv_content']
+    reporte += "\n```\n\n"
+    
+    # Alertas
+    if resultado['alertas']:
+        reporte += "---\n\n## Alertas\n\n"
+        for alerta in resultado['alertas']:
+            reporte += f"{alerta}\n"
+        reporte += "\n"
+    
+    return reporte
+
+def ejemplo_validacion_metricas():
+    """Ejemplo de uso de la validación de métricas."""
+    print("🔍 Ejemplo de Validación de Métricas de Valoración")
+    print("="*60)
+    
+    # Datos de ejemplo (megacaps tech)
+    datos_ejemplo = [
+        {'ticker': 'META', 'pe_ttm': 27.33, 'pe_fwd': 29.74, 'ev_ebitda': 20.07, 'fcf_yield': 0.02},
+        {'ticker': 'GOOGL', 'pe_ttm': 24.92, 'pe_fwd': 26.12, 'ev_ebitda': 19.72, 'fcf_yield': 0.02},
+        {'ticker': 'MSFT', 'pe_ttm': 36.50, 'pe_fwd': 33.32, 'ev_ebitda': 23.77, 'fcf_yield': 0.02},
+        {'ticker': 'AAPL', 'pe_ttm': 36.10, 'pe_fwd': 28.63, 'ev_ebitda': 25.24, 'fcf_yield': 0.03},
+        {'ticker': 'TSLA', 'pe_ttm': 208.67, 'pe_fwd': 106.91, 'ev_ebitda': 96.46, 'fcf_yield': 0.00}
+    ]
+    
+    # Generar reporte
+    reporte = generar_reporte_metricas(datos_ejemplo)
+    print(reporte)
+
+# ================================ MAIN ÚNICO ===============================
 
 if __name__ == "__main__":
-    print("📦 MÓDULO DE ANÁLISIS DE VALORACIÓN DE STOCKS v3 (parcheado)")
+    print("📦 MÓDULO DE ANÁLISIS DE VALORACIÓN DE STOCKS v3")
     print("="*60)
     print("Sistema de valoración relativa por sector/industria")
     print("Con métricas de calidad, crecimiento y momentum")
     print("="*60)
-
-    # Ejecutar tests (opcional)
-    # test_scoring()
-
-    print("\n" + "="*60)
-    print("🧭 EJEMPLOS DE USO")
-    print("="*60)
-
-    # Ejemplo 1: Análisis individual
-    ejemplo_analisis_individual()
-
-    # Ejemplo 2: Comparación
-    ejemplo_comparacion()
-
-    # Ejemplo 3: Recalibración empírica de pesos (opcional)
-    print("\n" + "="*60)
-    print("🧪 Recalibración empírica de WEIGHTS (long-short Top20% vs Bottom20%)")
-    print("="*60)
-    try:
-        # Smoke test (opcional, para verificar histórico disponible)
+    
+    # Verificar si se pasó argumento para demo automática
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--demo":
+        demo_automatico()
+    else:
+        # Modo interactivo
         try:
-            s = _prices_series_cached("AAPL", years=6)
-            print("🔎 AAPL barras:", len(s), "| última fecha:", (s.index[-1] if not s.empty else None))
-        except Exception as _e:
-            print("⚠️ No se pudo leer histórico de AAPL:", _e)
+            menu_principal()
+        except KeyboardInterrupt:
+            print("\n\n👋 Programa interrumpido por el usuario. ¡Hasta luego!")
+        except Exception as e:
+            print(f"\n❌ Error inesperado: {e}")
+            print("Por favor, reporte este error al desarrollador.")
 
-        tickers_empirico = ["AAPL","MSFT","GOOGL","META","NVDA","AMZN","ORCL","ADBE","CRM"]
-        res = recalibrar_pesos_empirico(
-            tickers=tickers_empirico,
-            start="2020-01-01",
-            end=datetime.now().strftime("%Y-%m-%d"),
-            freq="M",            # rebalanceo mensual
-            lag_days=5,          # lag reducido para tener más datos
-            grid=6,              # densidad del grid en el simplex
-            neutralize_sector=False,  # desactivar neutralización por sector
-            costs_bps=5.0        # costes por lado (bps)
-        )
-        if res and 'weights' in res:
-            w = res['weights']
-            print(f"\n🔧 Pesos sugeridos (empírico): valuation={w[0]:.2f} quality={w[1]:.2f} growth={w[2]:.2f} momentum={w[3]:.2f}")
-            print(f"   Sharpe anualizado (OOS aprox): {res.get('sharpe', float('nan')):.2f}")
-            print(f"   Panel (filas, cols): {res.get('panel_shape', None)}")
 
-            # Aplicación opcional de los pesos hallados:
-            APPLY_EMPIRICAL_WEIGHTS = False  # <- pon True si deseas actualizar WEIGHTS automáticamente
-            if APPLY_EMPIRICAL_WEIGHTS:
-                WEIGHTS.update({
-                    "valuation": float(w[0]),
-                    "quality":   float(w[1]),
-                    "growth":    float(w[2]),
-                    "momentum":  float(w[3]),
-                })
-                print("✅ WEIGHTS actualizados:", WEIGHTS)
-        else:
-            print("⚠️ No se pudo recalibrar pesos (panel vacío o error).")
-    except NameError:
-        print("⚠️ Falta 'recalibrar_pesos_empirico'. Asegúrate de pegar el bloque EMPÍRICO completo.")
-    except Exception as e:
-        print(f"⚠️ Recalibración empírica omitida por error: {e}")
-
-    print("\n🎉 Análisis completado!")
-    print("="*60)
