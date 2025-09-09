@@ -1,16 +1,21 @@
 """
-Módulo de Análisis de Valoración de Stocks 
+Módulo de Análisis de Valoración de Stocks (v4)
 ==========================================================
+Cambios clave v4:
+- FCF TTM: no invertir signo de CapEx; se resta tal como viene.
+- P/E Forward: percentil contra peers de P/E Forward (no TTM).
+- Deuda: evitar doble conteo; preferir Total Debt si existe.
+- relative_available: contar peers realmente válidos (con datos).
+- Fecha de precios: basada en el ticker analizado (fallback: SPY).
+- Robustez: ordenar columnas por fecha en DF de yfinance.
 """
 
 from __future__ import annotations
 
 import math
 import warnings
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from pandas.tseries.offsets import BDay, MonthEnd
 
 import numpy as np
 import pandas as pd
@@ -19,8 +24,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 warnings.filterwarnings("ignore")
-
-# Configuración de fuentes de datos
 
 # Estilo para gráficos
 plt.style.use('seaborn-v0_8')
@@ -76,7 +79,7 @@ FALLBACK_SCOPE = {
 
 # ================================ UTILIDADES ================================
 
-# ====== NEW: utilidades para extraer TTM y balance de yfinance ======
+# ====== utilidades para extraer TTM y balance de yfinance ======
 CF_CFO_KEYS = [
     "Total Cash From Operating Activities", "Operating Cash Flow",
     "Net Cash Provided by Operating Activities", "Net CashFrom Operating Activities"
@@ -96,9 +99,21 @@ BS_DEBT_KEYS = [
     "Current Debt And Capital Lease Obligation", "Long Term Debt And Capital Lease Obligation"
 ]
 
+def _order_cols_by_date(df: pd.DataFrame) -> pd.DataFrame:
+    """Intenta ordenar columnas por fecha descendente (más reciente primero)."""
+    try:
+        cols = pd.to_datetime(df.columns, errors="coerce")
+        if getattr(cols, "notna", lambda: False)().any():
+            order = np.argsort(cols)[::-1]
+            return df.iloc[:, order]
+    except Exception:
+        pass
+    return df
+
 def _get_row_sum_last_n(df: pd.DataFrame, keys: List[str], n: int = 4) -> Optional[float]:
     if df is None or df.empty:
         return None
+    df = _order_cols_by_date(df)
     for k in keys:
         if k in df.index:
             s = df.loc[k].dropna()
@@ -109,6 +124,7 @@ def _get_row_sum_last_n(df: pd.DataFrame, keys: List[str], n: int = 4) -> Option
 def _get_row_last(df: pd.DataFrame, keys: List[str]) -> Optional[float]:
     if df is None or df.empty:
         return None
+    df = _order_cols_by_date(df)
     for k in keys:
         if k in df.index:
             s = df.loc[k].dropna()
@@ -116,34 +132,92 @@ def _get_row_last(df: pd.DataFrame, keys: List[str]) -> Optional[float]:
                 return float(s.iloc[0])
     return None
 
-def _compute_fcf_ttm(stock: yf.Ticker) -> Optional[float]:
-    # FCF_TTM = Σ(CFO_4Q) - Σ(Capex_4Q) ; capex puede venir negativo
-    qcf = None
+def _compute_fcfe_ttm(stock: yf.Ticker) -> Optional[float]:
+    """
+    FCFE TTM (yfinance) = CFO_TTM − CapEx_TTM
+    Nota: en yfinance el CapEx suele venir NEGATIVO (outflow). Por eso:
+          CFO − CapEx_neg = CFO + |CapEx|.
+    """
     try:
         qcf = stock.quarterly_cashflow
     except Exception:
-        pass
-    cfo_4q = _get_row_sum_last_n(qcf, CF_CFO_KEYS, 4)
+        qcf = None
+
+    cfo_4q   = _get_row_sum_last_n(qcf, CF_CFO_KEYS, 4)
     capex_4q = _get_row_sum_last_n(qcf, CF_CAPEX_KEYS, 4)
 
+    # Si no hay TTM, usar anual
     if cfo_4q is None and capex_4q is None:
-        # fallback anual
         try:
             acf = stock.cashflow
-            cfo = _get_row_last(acf, CF_CFO_KEYS)
-            capex = _get_row_last(acf, CF_CAPEX_KEYS)
-            if cfo is None or capex is None:
-                return None
-            capex_adj = -capex if capex < 0 else capex
-            return float(cfo - capex_adj)
         except Exception:
+            acf = None
+        if acf is None or acf.empty:
             return None
+        cfo   = _get_row_last(acf, CF_CFO_KEYS)
+        capex = _get_row_last(acf, CF_CAPEX_KEYS)
+        if cfo is None or capex is None:
+            return None
+        # FCFE = CFO − CapEx (CapEx suele ser negativo)
+        return float(cfo - capex)
 
     if cfo_4q is None or capex_4q is None:
         return None
 
-    capex_adj = -capex_4q if capex_4q < 0 else capex_4q
-    return float(cfo_4q - capex_adj)
+    # FCFE = CFO − CapEx (CapEx suele ser negativo)
+    return float(cfo_4q - capex_4q)
+
+def _compute_fcff_ttm(stock: yf.Ticker, tax_rate: float = 0.21) -> Optional[float]:
+    """
+    FCFF TTM (yfinance) = CFO_TTM − CapEx_TTM + Interest_Expense_TTM * (1 − tax_rate)
+    Razón: CFO ya está después de intereses en US GAAP; para FCFF hay que
+            sumar de vuelta el gasto financiero neto después de impuestos.
+    Convenciones de signos en yfinance:
+      - CapEx suele venir NEGATIVO (outflow)  ⇒ usar (− CapEx)  ≡  +|CapEx|
+      - Interest Expense suele venir NEGATIVO ⇒ usar abs() antes de (1 − t)
+    """
+    try:
+        qcf = stock.quarterly_cashflow
+    except Exception:
+        qcf = None
+
+    cfo_4q   = _get_row_sum_last_n(qcf, CF_CFO_KEYS, 4)
+    capex_4q = _get_row_sum_last_n(qcf, CF_CAPEX_KEYS, 4)
+
+    # Interest Expense (4Q)
+    interest_expense_keys = [
+        "Interest Expense", "Interest Paid", "Net Interest Income",
+        "Interest Income", "Interest And Debt Expense"
+    ]
+    interest_4q = _get_row_sum_last_n(qcf, interest_expense_keys, 4)
+
+    # Fallback anual si falta TTM
+    if cfo_4q is None and capex_4q is None:
+        try:
+            acf = stock.cashflow
+        except Exception:
+            acf = None
+        if acf is None or acf.empty:
+            return None
+        cfo      = _get_row_last(acf, CF_CFO_KEYS)
+        capex    = _get_row_last(acf, CF_CAPEX_KEYS)
+        interest = _get_row_last(acf, interest_expense_keys)
+        if cfo is None or capex is None:
+            return None
+
+        fcff = (cfo - capex)  # − CapEx (CapEx suele ser negativo)
+        if interest is not None:
+            fcff += abs(interest) * (1 - tax_rate)
+        return float(fcff)
+
+    if cfo_4q is None or capex_4q is None:
+        return None
+
+    fcff = (cfo_4q - capex_4q)  # − CapEx (CapEx suele ser negativo)
+    if interest_4q is not None:
+        fcff += abs(interest_4q) * (1 - tax_rate)
+
+    return float(fcff)
 
 def _get_equity_last(stock: yf.Ticker) -> Optional[float]:
     for getter in ("quarterly_balance_sheet", "balance_sheet"):
@@ -157,23 +231,38 @@ def _get_equity_last(stock: yf.Ticker) -> Optional[float]:
     return None
 
 def _get_cash_debt_last(stock: yf.Ticker) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Obtiene caja y deuda evitando doble conteo.
+    - Si existe 'Total Debt', úsalo directamente.
+    - Si no, suma componentes relevantes.
+    """
     cash = debt = None
     for getter in ("quarterly_balance_sheet", "balance_sheet"):
         try:
             bs = getattr(stock, getter)
             if bs is None or bs.empty:
                 continue
+
             if cash is None:
                 cash = _get_row_last(bs, BS_CASH_KEYS)
+
             if debt is None:
-                debt_vals = []
-                for k in BS_DEBT_KEYS:
-                    if k in bs.index:
-                        s = bs.loc[k].dropna()
-                        if not s.empty:
-                            debt_vals.append(float(s.iloc[0]))
-                if debt_vals:
-                    debt = float(sum(debt_vals))
+                if "Total Debt" in bs.index:
+                    debt = _get_row_last(bs, ["Total Debt"])
+                else:
+                    comp_keys = [
+                        "Short Long Term Debt",
+                        "Current Debt And Capital Lease Obligation",
+                        "Long Term Debt",
+                        "Long Term Debt And Capital Lease Obligation",
+                    ]
+                    vals = []
+                    for k in comp_keys:
+                        v = _get_row_last(bs, [k])
+                        if v is not None:
+                            vals.append(float(v))
+                    debt = float(sum(vals)) if vals else None
+
             if cash is not None and debt is not None:
                 break
         except Exception:
@@ -214,7 +303,6 @@ def _latest_fund_date(stock: yf.Ticker) -> Optional[str]:
             pass
     if not dfs:
         return None
-    # column labels suelen ser Timestamp; toma el max
     try:
         latest = max([c for df in dfs for c in df.columns if pd.notna(c)])
         if isinstance(latest, (pd.Timestamp, np.datetime64)):
@@ -266,7 +354,6 @@ def winsorize(x: float, p_low: float, p_high: float, data: List[float] = None) -
             return x
         lo, hi = np.quantile(vals, [p_low, p_high])
         return float(np.clip(x, lo, hi))
-    # Modo absoluto (evitar en producción)
     return float(np.clip(x, p_low, p_high))
 
 def percentile_rank(value: float, peer_values: List[float]) -> float:
@@ -288,7 +375,7 @@ def normalize_signed(value: float, higher_is_better: bool = True) -> float:
     return np.tanh(signed_value)
 
 def _calculate_rsi(prices: np.ndarray, window: int = 14) -> float:
-    """Calcula RSI de una serie de precios."""
+    """Calcula RSI de una serie de precios (promedio simple)."""
     if len(prices) < window + 1:
         return np.nan
     deltas = np.diff(prices)
@@ -373,15 +460,23 @@ def fetch_snapshot(ticker: str) -> Dict:
         debt_equity = _nan_if_missing(info.get('debtToEquity'))
         debt_ebitda = _nan_if_missing(info.get('debtToEbitda'))
 
-        # FCF TTM robusto (v4)
-        fcf_ttm = _compute_fcf_ttm(stock)
-        fcf_yield = _safe_div(fcf_ttm, market_cap) if pd.notna(fcf_ttm) and pd.notna(market_cap) and market_cap > 0 else np.nan
+        # FCFE TTM (Free Cash Flow to Equity) - Flujo para accionistas
+        fcfe_ttm = _compute_fcfe_ttm(stock)
+        fcfe_yield = _safe_div(fcfe_ttm, market_cap) if pd.notna(fcfe_ttm) and pd.notna(market_cap) and market_cap > 0 else np.nan
 
-        # EV corporativo (v4)
+        # FCFF TTM (Free Cash Flow to Firm) - Flujo para la empresa
+        fcff_ttm = _compute_fcff_ttm(stock, tax_rate=0.21)
+        
+        # EV corporativo
         ev_corp = _compute_ev_corporativo(info, stock)
-        fcf_ev_yield = _safe_div(fcf_ttm, ev_corp) if pd.notna(fcf_ttm) and pd.notna(ev_corp) and ev_corp > 0 else np.nan
+        fcff_ev_yield = _safe_div(fcff_ttm, ev_corp) if pd.notna(fcff_ttm) and pd.notna(ev_corp) and ev_corp > 0 else np.nan
 
-        # Equity nonpositive check (v4)
+        # Mantener compatibilidad con fcf_ttm (alias FCFE)
+        fcf_ttm = fcfe_ttm
+        fcf_yield = fcfe_yield
+        fcf_ev_yield = fcff_ev_yield
+
+        # Equity nonpositive
         equity_nonpositive = _equity_nonpositive(stock)
         if equity_nonpositive:
             pb = np.nan
@@ -394,7 +489,7 @@ def fetch_snapshot(ticker: str) -> Dict:
         ebitda = _nan_if_missing(info.get('ebitda'))
         net_cash_ebitda = _safe_div(net_cash, ebitda) if pd.notna(ebitda) and ebitda != 0 else np.nan
 
-        # Fecha de fundamentales real (v4)
+        # Fecha de fundamentales real (o fallback)
         fund_date = _latest_fund_date(stock) or _get_fundamental_date(info)
 
         return {
@@ -415,6 +510,10 @@ def fetch_snapshot(ticker: str) -> Dict:
             'fcf_yield': fcf_yield,
             'fcf_ttm': fcf_ttm,
             'fcf_ev_yield': fcf_ev_yield,
+            'fcfe_ttm': fcfe_ttm,
+            'fcfe_yield': fcfe_yield,
+            'fcff_ttm': fcff_ttm,
+            'fcff_ev_yield': fcff_ev_yield,
 
             # Calidad
             'roe': roe,
@@ -435,7 +534,7 @@ def fetch_snapshot(ticker: str) -> Dict:
 
             # Metadatos
             'as_of': {
-                'price_date': _get_latest_trading_date(),
+                'price_date': _get_latest_trading_date(ticker),
                 'fund_date': fund_date
             },
             'source': 'yfinance',
@@ -521,10 +620,10 @@ def _get_current_price(stock) -> float:
         pass
     return np.nan
 
-def _get_latest_trading_date() -> str:
-    """Obtiene la fecha de trading más reciente."""
+def _get_latest_trading_date(ticker: str = "SPY") -> str:
+    """Obtiene la fecha de trading más reciente usando el ticker dado (fallback: SPY)."""
     try:
-        stock = yf.Ticker("AAPL")
+        stock = yf.Ticker(ticker)
         hist = stock.history(period='5d')
         if not hist.empty:
             return hist.index[-1].strftime('%Y-%m-%d')
@@ -534,13 +633,9 @@ def _get_latest_trading_date() -> str:
 
 def _get_fundamental_date(info: Dict) -> str:
     """Obtiene fecha de datos fundamentales (fallback al último día del año anterior)."""
-    # Obtener el año actual
     año_actual = datetime.now().year
     año_anterior = año_actual - 1
-    
-    # Crear fecha del último día del año anterior (31 de diciembre)
     fecha_fundamentales = datetime(año_anterior, 12, 31)
-    
     return fecha_fundamentales.strftime('%Y-%m-%d')
 
 # ================================ FACTORES ================================
@@ -559,6 +654,10 @@ def valuation_subscore(ticker_data: Dict, peers_data: List[Dict]) -> Tuple[float
     # Obtener arrays de peers (mismos filtros)
     pe_peers = [_clean_multiple(p.get('pe_ttm')) for p in peers_data]
     pe_peers = [v for v in pe_peers if pd.notna(v)]
+
+    # 🔧 peers correctos para P/E forward
+    pe_fwd_peers = [_clean_multiple(p.get('pe_fwd')) for p in peers_data]
+    pe_fwd_peers = [v for v in pe_fwd_peers if pd.notna(v)]
 
     ev_peers = [_clean_multiple(p.get('ev_ebitda')) for p in peers_data]
     ev_peers = [v for v in ev_peers if pd.notna(v)]
@@ -584,9 +683,9 @@ def valuation_subscore(ticker_data: Dict, peers_data: List[Dict]) -> Tuple[float
             weights.append(0.25)
             details['pe_pct'] = pe_pct
 
-    # P/E Forward (si disponible)
-    if pd.notna(pe_fwd) and pe_peers:
-        pe_fwd_pct = percentile_rank(pe_fwd, pe_peers)
+    # P/E Forward (usar peers forward)
+    if pd.notna(pe_fwd) and pe_fwd_peers:
+        pe_fwd_pct = percentile_rank(pe_fwd, pe_fwd_peers)
         if pd.notna(pe_fwd_pct):
             pe_fwd_score = -(2 * pe_fwd_pct - 1)
             scores.append(pe_fwd_score)
@@ -780,7 +879,7 @@ def momentum_subscore(ticker_data: Dict, price_history: np.ndarray) -> Tuple[flo
     if len(price_history) < 200:  # Necesitamos al menos ~8 meses de datos
         return 0.0, {}
 
-    # Calcular rendimientos (aritméticos; opcional: usar log-retornos)
+    # Calcular rendimientos (aritméticos)
     returns = np.diff(price_history) / price_history[:-1]
 
     # Momentum 12m menos 1m
@@ -852,6 +951,617 @@ def momentum_subscore(ticker_data: Dict, price_history: np.ndarray) -> Tuple[flo
 
     return final_score, details
 
+# ================================ DCF (VALORACIÓN ABSOLUTA) ================================
+
+def _get_net_debt_for_ticker(ticker: str) -> Optional[float]:
+    """
+    Deuda neta = Deuda total - Caja, usando balance (quarterly si existe).
+    Prioriza 'Total Debt'; si no está, suma componentes de deuda.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        cash, debt = _get_cash_debt_last(stock)  # ya existe en tu módulo
+        if cash is None and debt is None:
+            info = stock.info or {}
+            cash = info.get("totalCash", None)
+            debt = info.get("totalDebt", None)
+        if cash is None or debt is None:
+            return None
+        return float(debt - cash)
+    except Exception:
+        return None
+
+def dcf_2stage_fcff(
+    fcf0: float,
+    wacc: float,
+    g_years: float = 0.08,
+    years: int = 5,
+    g_terminal: float = 0.025,
+    mid_year: bool = True
+) -> float:
+    """
+    DCF 2 etapas con FCFF:
+      - Proyecta FCFF durante 'years' años con crecimiento g_years.
+      - Valor terminal = FCFF_yearN * (1 + g_terminal) / (WACC - g_terminal).
+      - Devuelve EV (Enterprise Value) en valor presente.
+      - mid_year=True: descuenta cada flujo con t-0.5 periodos.
+    Nota: requiere WACC > g_terminal.
+    """
+    if fcf0 is None or not np.isfinite(fcf0):
+        return np.nan
+    if wacc <= g_terminal:
+        return np.nan
+
+    fcfs = []
+    fcf_t = float(fcf0)
+    for t in range(1, years + 1):
+        fcf_t *= (1.0 + g_years)
+        fcfs.append(fcf_t)
+
+    # Descuento con convención mid-year opcional
+    if mid_year:
+        pv_fcfs = sum(f / ((1.0 + wacc) ** (t - 0.5)) for t, f in enumerate(fcfs, start=1))
+        fcf_term = fcfs[-1] * (1.0 + g_terminal)
+        tv = fcf_term / (wacc - g_terminal)
+        pv_tv = tv / ((1.0 + wacc) ** (years - 0.5))
+    else:
+        pv_fcfs = sum(f / ((1.0 + wacc) ** t) for t, f in enumerate(fcfs, start=1))
+        fcf_term = fcfs[-1] * (1.0 + g_terminal)
+        tv = fcf_term / (wacc - g_terminal)
+        pv_tv = tv / ((1.0 + wacc) ** years)
+
+    ev = pv_fcfs + pv_tv
+    return float(ev)
+
+def dcf_2stage_fcfe(
+    fcfe0: float,
+    cost_of_equity: float,
+    g_years: float = 0.08,
+    years: int = 5,
+    g_terminal: float = 0.025,
+    mid_year: bool = True
+) -> float:
+    """
+    DCF 2 etapas con FCFE:
+      - Proyecta FCFE durante 'years' años con crecimiento g_years.
+      - Valor terminal = FCFE_yearN * (1 + g_terminal) / (Re - g_terminal).
+      - Devuelve Equity Value directamente (no resta deuda neta).
+      - mid_year=True: descuenta cada flujo con t-0.5 periodos.
+    Nota: requiere cost_of_equity > g_terminal.
+    """
+    if fcfe0 is None or not np.isfinite(fcfe0):
+        return np.nan
+    if cost_of_equity <= g_terminal:
+        return np.nan
+
+    fcfes = []
+    fcfe_t = float(fcfe0)
+    for t in range(1, years + 1):
+        fcfe_t *= (1.0 + g_years)
+        fcfes.append(fcfe_t)
+
+    # Descuento con convención mid-year opcional
+    if mid_year:
+        pv_fcfes = sum(f / ((1.0 + cost_of_equity) ** (t - 0.5)) for t, f in enumerate(fcfes, start=1))
+        fcfe_term = fcfes[-1] * (1.0 + g_terminal)
+        tv = fcfe_term / (cost_of_equity - g_terminal)
+        pv_tv = tv / ((1.0 + cost_of_equity) ** (years - 0.5))
+    else:
+        pv_fcfes = sum(f / ((1.0 + cost_of_equity) ** t) for t, f in enumerate(fcfes, start=1))
+        fcfe_term = fcfes[-1] * (1.0 + g_terminal)
+        tv = fcfe_term / (cost_of_equity - g_terminal)
+        pv_tv = tv / ((1.0 + cost_of_equity) ** years)
+
+    equity_value = pv_fcfes + pv_tv
+    return float(equity_value)
+
+def compute_dcf_for_ticker_fcff(
+    ticker: str,
+    wacc: float = 0.09,
+    g_years: float = 0.08,
+    years: int = 5,
+    g_terminal: float = 0.025,
+    mid_year: bool = True,
+    use_net_debt: bool = True
+) -> Dict:
+    """
+    Calcula DCF 2 etapas usando FCFF (Free Cash Flow to Firm):
+      - FCFF TTM (de _compute_fcff_ttm via fetch_snapshot)
+      - Acciones en circulación
+      - Deuda neta (si use_net_debt=True)
+    Retorna valor razonable/acción y upside.
+    """
+    snap = fetch_snapshot(ticker)
+    fcff_ttm = snap.get("fcff_ttm", np.nan)
+    shares = snap.get("shares_outstanding", np.nan)
+    price = snap.get("price", np.nan)
+
+    if pd.isna(fcff_ttm) or not np.isfinite(fcff_ttm) or fcff_ttm <= 0:
+        return {"ticker": ticker.upper(), "error": "FCFF TTM no disponible o no positivo (DCF no fiable)"}
+    if pd.isna(shares) or not np.isfinite(shares) or shares <= 0:
+        return {"ticker": ticker.upper(), "error": "Shares outstanding no disponible (DCF no calculable)"}
+
+    ev = dcf_2stage_fcff(fcf0=fcff_ttm, wacc=wacc, g_years=g_years, years=years, g_terminal=g_terminal, mid_year=mid_year)
+    if pd.isna(ev):
+        return {"ticker": ticker.upper(), "error": "Parámetros inválidos: WACC debe ser > g_terminal."}
+
+    net_debt = _get_net_debt_for_ticker(ticker) if use_net_debt else 0.0
+    if pd.isna(net_debt):
+        net_debt = 0.0  # fallback prudente
+
+    equity_value = ev - net_debt
+    fair_value_per_share = equity_value / shares
+
+    upside = np.nan
+    if pd.notna(price) and np.isfinite(price) and price > 0:
+        upside = (fair_value_per_share / price) - 1.0
+
+    return {
+        "ticker": ticker.upper(),
+        "method": "FCFF",
+        "assumptions": {
+            "wacc": wacc, "g_years": g_years, "years": years,
+            "g_terminal": g_terminal, "mid_year": mid_year, "use_net_debt": use_net_debt
+        },
+        "inputs": {
+            "fcff_ttm": fcff_ttm, "shares_outstanding": shares,
+            "net_debt": net_debt, "price": price
+        },
+        "outputs": {
+            "enterprise_value": ev,
+            "equity_value": equity_value,
+            "fair_value_per_share": fair_value_per_share,
+            "upside": upside
+        },
+        "as_of": snap.get("as_of", {})
+    }
+
+def compute_dcf_for_ticker_fcfe(
+    ticker: str,
+    cost_of_equity: float = 0.12,
+    g_years: float = 0.08,
+    years: int = 5,
+    g_terminal: float = 0.025,
+    mid_year: bool = True
+) -> Dict:
+    """
+    Calcula DCF 2 etapas usando FCFE (Free Cash Flow to Equity):
+      - FCFE TTM (de _compute_fcfe_ttm via fetch_snapshot)
+      - Acciones en circulación
+      - No resta deuda neta (ya está implícito en FCFE)
+    Retorna valor razonable/acción y upside.
+    """
+    snap = fetch_snapshot(ticker)
+    fcfe_ttm = snap.get("fcfe_ttm", np.nan)
+    shares = snap.get("shares_outstanding", np.nan)
+    price = snap.get("price", np.nan)
+
+    if pd.isna(fcfe_ttm) or not np.isfinite(fcfe_ttm) or fcfe_ttm <= 0:
+        return {"ticker": ticker.upper(), "error": "FCFE TTM no disponible o no positivo (DCF no fiable)"}
+    if pd.isna(shares) or not np.isfinite(shares) or shares <= 0:
+        return {"ticker": ticker.upper(), "error": "Shares outstanding no disponible (DCF no calculable)"}
+
+    equity_value = dcf_2stage_fcfe(fcfe0=fcfe_ttm, cost_of_equity=cost_of_equity, g_years=g_years, years=years, g_terminal=g_terminal, mid_year=mid_year)
+    if pd.isna(equity_value):
+        return {"ticker": ticker.upper(), "error": "Parámetros inválidos: cost_of_equity debe ser > g_terminal."}
+
+    fair_value_per_share = equity_value / shares
+
+    upside = np.nan
+    if pd.notna(price) and np.isfinite(price) and price > 0:
+        upside = (fair_value_per_share / price) - 1.0
+
+    return {
+        "ticker": ticker.upper(),
+        "method": "FCFE",
+        "assumptions": {
+            "cost_of_equity": cost_of_equity, "g_years": g_years, "years": years,
+            "g_terminal": g_terminal, "mid_year": mid_year
+        },
+        "inputs": {
+            "fcfe_ttm": fcfe_ttm, "shares_outstanding": shares, "price": price
+        },
+        "outputs": {
+            "equity_value": equity_value,
+            "fair_value_per_share": fair_value_per_share,
+            "upside": upside
+        },
+        "as_of": snap.get("as_of", {})
+    }
+
+def compute_dcf_for_ticker(
+    ticker: str,
+    wacc: float = 0.09,
+    g_years: float = 0.08,
+    years: int = 5,
+    g_terminal: float = 0.025,
+    use_net_debt: bool = True,
+    method: str = "fcff",
+    mid_year: bool = True
+) -> Dict:
+    """
+    Función de conveniencia que llama a FCFF o FCFE según el método.
+    Por defecto usa FCFF+WACC.
+    """
+    if method.lower() == "fcfe":
+        # Para FCFE necesitamos estimar cost_of_equity
+        wacc_data = estimate_wacc(ticker)
+        if "error" in wacc_data:
+            cost_of_equity = 0.12  # fallback
+        else:
+            cost_of_equity = wacc_data["cost_of_equity"]
+        return compute_dcf_for_ticker_fcfe(ticker, cost_of_equity, g_years, years, g_terminal, mid_year)
+    else:
+        return compute_dcf_for_ticker_fcff(ticker, wacc, g_years, years, g_terminal, mid_year, use_net_debt)
+
+def dcf_sensitivity(
+    ticker: str,
+    wacc_grid: List[float] = None,
+    gterm_grid: List[float] = None,
+    g_years: float = 0.08,
+    years: int = 5,
+    use_net_debt: bool = True
+) -> pd.DataFrame:
+    """
+    Matriz de sensibilidad del DCF: filas = WACC, columnas = g_terminal.
+    Devuelve DataFrame con valor razonable por acción.
+    """
+    if wacc_grid is None:
+        wacc_grid = [0.07, 0.08, 0.09, 0.10, 0.11]
+    if gterm_grid is None:
+        gterm_grid = [0.01, 0.02, 0.025, 0.03, 0.035]
+
+    snap = fetch_snapshot(ticker)
+    fcf_ttm = snap.get("fcf_ttm", np.nan)
+    shares = snap.get("shares_outstanding", np.nan)
+    if pd.isna(fcf_ttm) or fcf_ttm <= 0 or pd.isna(shares) or shares <= 0:
+        return pd.DataFrame()
+
+    net_debt = _get_net_debt_for_ticker(ticker) if use_net_debt else 0.0
+    if pd.isna(net_debt):
+        net_debt = 0.0
+
+    table = []
+    for w in wacc_grid:
+        row = []
+        for gt in gterm_grid:
+            if w <= gt:
+                row.append(np.nan)
+                continue
+            ev = dcf_2stage_fcff(fcf0=fcf_ttm, wacc=w, g_years=g_years, years=years, g_terminal=gt)
+            eq = (ev - net_debt) if pd.notna(ev) else np.nan
+            pps = (eq / shares) if (pd.notna(eq) and shares > 0) else np.nan
+            row.append(pps)
+        table.append(row)
+
+    df = pd.DataFrame(table, index=[f"WACC {w*100:.1f}%" for w in wacc_grid],
+                      columns=[f"gT {gt*100:.1f}%" for gt in gterm_grid])
+    return df
+
+def demo_dcf(ticker: str = "AAPL"):
+    """Demo rápida: imprime DCF y una pequeña sensibilidad."""
+    print(f"\n🧮 DCF (2 etapas) para {ticker.upper()}")
+    res = compute_dcf_for_ticker(ticker, wacc=0.09, g_years=0.08, years=5, g_terminal=0.025)
+    if "error" in res:
+        print("❌", res["error"])
+        return
+
+    fv = res["outputs"]["fair_value_per_share"]
+    px = res["inputs"]["price"]
+    up = res["outputs"]["upside"]
+
+    print(f"  Valor razonable/acción: {fmt_num(fv)}")
+    if pd.notna(px):
+        print(f"  Precio actual:         {fmt_num(px)}")
+    if pd.notna(up):
+        print(f"  Upside estimado:       {fmt_pct(up)}")
+
+    print("\n🔁 Sensibilidad (precio/acción):")
+    sens = dcf_sensitivity(ticker, wacc_grid=[0.08, 0.09, 0.10], gterm_grid=[0.02, 0.025, 0.03])
+    if sens.empty:
+        print("   (No disponible: requiere FCF>0 y acciones)")
+    else:
+        sens_fmt = sens.applymap(lambda x: fmt_num(x) if pd.notna(x) else "N/D")
+        print(sens_fmt.to_string())
+
+def estimate_wacc(ticker: str, rf: float = 0.042, erp: float = 0.05, tax_rate: float = 0.21) -> Dict:
+    """
+    Estima el WACC para un ticker usando CAPM + estructura de capital con deuda bruta.
+    
+    Args:
+        ticker: símbolo (ej. "META", "AAPL").
+        rf: tasa libre de riesgo (ej. bono 10Y USD = 4.2%).
+        erp: equity risk premium (USA ~5%).
+        tax_rate: tasa impositiva efectiva (USA ~21%).
+        
+    Returns:
+        dict con desglose de R_e, R_d, pesos E/D (deuda bruta) y WACC.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info or {}
+        
+        # Market Cap y deuda bruta (no deuda neta para pesos)
+        E = float(info.get("marketCap", 0) or 0)
+        D = float(info.get("totalDebt", 0) or 0)
+        
+        # Pesos con deuda bruta
+        V = E + D
+        we = E / V if V > 0 else 1.0  # si no hay deuda, 100% equity
+        wd = D / V if V > 0 else 0.0
+        
+        # Beta
+        beta = info.get("beta", 1.0) or 1.0
+        
+        # Coste de equity (CAPM)
+        Re = rf + beta * erp
+        
+        # Coste de deuda empírico
+        Rd = _estimate_cost_of_debt(stock, info, D)
+        Rd_after_tax = Rd * (1 - tax_rate)
+        
+        # WACC
+        WACC = we * Re + wd * Rd_after_tax
+        
+        return {
+            "ticker": ticker.upper(),
+            "beta": beta,
+            "cost_of_equity": Re,
+            "cost_of_debt": Rd_after_tax,
+            "cost_of_debt_before_tax": Rd,
+            "weights": {"equity": we, "debt": wd},
+            "wacc": WACC,
+            "market_cap": E,
+            "total_debt": D
+        }
+    except Exception as e:
+        return {"ticker": ticker.upper(), "error": str(e)}
+
+def _estimate_cost_of_debt(stock: yf.Ticker, info: Dict, total_debt: float) -> float:
+    """
+    Estima el coste de deuda empíricamente usando Interest Expense / Total Debt.
+    Fallback por tramos de D/EBITDA si no hay datos de interés.
+    """
+    if total_debt <= 0:
+        return 0.0
+    
+    # Intentar usar Interest Expense 4Q
+    try:
+        qcf = stock.quarterly_cashflow
+        if qcf is not None and not qcf.empty:
+            interest_expense_keys = [
+                "Interest Expense", "Interest Paid", "Net Interest Income", 
+                "Interest Income", "Interest And Debt Expense"
+            ]
+            interest_4q = _get_row_sum_last_n(qcf, interest_expense_keys, 4)
+            if interest_4q is not None and interest_4q != 0:
+                # Interest Expense suele venir negativo, usar abs()
+                rd_empirical = abs(interest_4q) / total_debt
+                return float(np.clip(rd_empirical, 0.01, 0.12))  # clamp 1%-12%
+    except Exception:
+        pass
+    
+    # Fallback anual
+    try:
+        acf = stock.cashflow
+        if acf is not None and not acf.empty:
+            interest_expense_keys = [
+                "Interest Expense", "Interest Paid", "Net Interest Income", 
+                "Interest Income", "Interest And Debt Expense"
+            ]
+            interest_annual = _get_row_last(acf, interest_expense_keys)
+            if interest_annual is not None and interest_annual != 0:
+                rd_empirical = abs(interest_annual) / total_debt
+                return float(np.clip(rd_empirical, 0.01, 0.12))  # clamp 1%-12%
+    except Exception:
+        pass
+    
+    # Fallback por tramos de D/EBITDA
+    ebitda = info.get("ebitda", None)
+    if ebitda and ebitda > 0:
+        ratio = total_debt / ebitda
+        if ratio < 1:
+            return 0.04  # 4%
+        elif ratio < 2:
+            return 0.05  # 5%
+        elif ratio < 3:
+            return 0.06  # 6%
+        elif ratio < 4:
+            return 0.07  # 7%
+        else:
+            return 0.08  # 8%
+    
+    # Fallback genérico
+    return 0.045  # 4.5%
+    
+def _series_from_financials(df: pd.DataFrame, key: str) -> pd.Series:
+    """Extrae una serie anual ordenada (más reciente primero) para 'key' desde un DF de yfinance."""
+    if df is None or df.empty or key not in df.index:
+        return pd.Series(dtype=float)
+    df = _order_cols_by_date(df)
+    s = df.loc[key].dropna()
+    # columnas suelen ser timestamps (años). Devolver en orden DESC ya viene tras _order_cols_by_date
+    return s
+
+def _series_fcf_annual(stock: yf.Ticker) -> pd.Series:
+    """
+    Construye FCF anual = CFO - CapEx a partir de 'stock.cashflow' (anual).
+    Nota: CapEx suele venir negativo en Yahoo; NO invertir signo.
+    """
+    try:
+        acf = stock.cashflow
+    except Exception:
+        acf = None
+    if acf is None or acf.empty:
+        return pd.Series(dtype=float)
+    acf = _order_cols_by_date(acf)
+    # claves compatibles (ya usadas en tu módulo)
+    cfo = None
+    for k in CF_CFO_KEYS:
+        if k in acf.index:
+            cfo = acf.loc[k].dropna()
+            break
+    capex = None
+    for k in CF_CAPEX_KEYS:
+        if k in acf.index:
+            capex = acf.loc[k].dropna()
+            break
+    if cfo is None or capex is None or cfo.empty or capex.empty:
+        return pd.Series(dtype=float)
+    # Alinear por columnas (fechas)
+    aligned = pd.concat([cfo, capex], axis=1, join="inner")
+    aligned.columns = ["CFO", "CapEx"]
+    fcf = aligned["CFO"] + aligned["CapEx"]  # sin invertir signo
+    # Ya está en orden DESC por _order_cols_by_date
+    return fcf.dropna()
+
+def _cagr_from_series_robusta(series: pd.Series, min_points: int = 3, max_points: int = 5) -> Optional[float]:
+    """
+    Calcula CAGR robusto usando entre 3 y 5 observaciones más recientes (anuales).
+    
+    Estrategias:
+    1. Si todos los valores >0 → CAGR clásico
+    2. Si hay ≤0 → mediana de crecimientos YoY sobre pares positivos
+    3. Si no hay suficientes puntos válidos → None
+    
+    Args:
+        series: Serie temporal ordenada (más reciente primero)
+        min_points: Mínimo de puntos requeridos
+        max_points: Máximo de puntos a usar
+        
+    Returns:
+        CAGR o mediana de crecimientos YoY, o None si no hay suficientes datos
+    """
+    if series is None or series.empty:
+        return None
+    s = series.dropna().astype(float)
+    if s.size < min_points:
+        return None
+    
+    # Tomar las N más recientes (ya en orden DESC)
+    N = min(max_points, s.size)
+    sN = s.iloc[:N].iloc[::-1]  # ordenar ASC temporalmente (antiguo -> reciente)
+    
+    # Estrategia 1: Si todos los valores son positivos, usar CAGR clásico
+    if (sN > 0).all():
+        try:
+            first, last = float(sN.iloc[0]), float(sN.iloc[-1])
+            periods = N - 1
+            if periods > 0 and first > 0 and last > 0:
+                return (last / first) ** (1.0 / periods) - 1.0
+        except Exception:
+            pass
+    
+    # Estrategia 2: Calcular mediana de crecimientos YoY sobre pares positivos
+    growth_rates = []
+    for i in range(1, len(sN)):
+        prev_val = float(sN.iloc[i-1])
+        curr_val = float(sN.iloc[i])
+        if prev_val > 0 and curr_val > 0:
+            growth_rate = (curr_val / prev_val) - 1.0
+            growth_rates.append(growth_rate)
+    
+    if len(growth_rates) >= min_points - 1:  # Necesitamos al menos min_points-1 crecimientos
+        return float(np.median(growth_rates))
+    
+    return None
+
+def _cagr_from_series(series: pd.Series, min_points: int = 3, max_points: int = 5) -> Optional[float]:
+    """
+    Alias para _cagr_from_series_robusta por compatibilidad.
+    """
+    return _cagr_from_series_robusta(series, min_points, max_points)
+
+def _clamp(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+def estimate_growth(ticker: str) -> Dict:
+    """
+    Estima g_years (fase explícita) y g_terminal a partir de:
+      - CAGR de ingresos (3-5y)
+      - CAGR de FCF (3-5y)
+      - Heurística por país/sector para g_terminal
+    Devuelve dict con sugerencias y diagnósticos.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info or {}
+        country = (info.get("country") or "USA").upper()
+        sector = info.get("sector", "") or ""
+        
+        # 1) CAGR de ingresos (anual)
+        try:
+            fin_a = stock.financials  # anual
+        except Exception:
+            fin_a = None
+        rev_series = _series_from_financials(fin_a, "Total Revenue")
+        rev_cagr = _cagr_from_series(rev_series, min_points=3, max_points=5)
+
+        # 2) CAGR de FCF (anual)
+        fcf_series = _series_fcf_annual(stock)
+        fcf_cagr = _cagr_from_series(fcf_series, min_points=3, max_points=5)
+
+        # 3) Fusión de señales para g_years:
+        #    - promediado con pesos (ingresos 60%, FCF 40%) si ambos existen.
+        #    - si falta uno, usa el otro.
+        if rev_cagr is not None and fcf_cagr is not None:
+            g_years_raw = 0.60 * rev_cagr + 0.40 * fcf_cagr
+        elif rev_cagr is not None:
+            g_years_raw = rev_cagr
+        elif fcf_cagr is not None:
+            g_years_raw = fcf_cagr
+        else:
+            # fallback por sector si no hay datos
+            if "Technology" in sector:
+                g_years_raw = 0.07
+            elif "Healthcare" in sector:
+                g_years_raw = 0.05
+            elif "Financial" in sector:
+                g_years_raw = 0.04
+            else:
+                g_years_raw = 0.05
+
+        # Saneado para no irnos a extremos en fase explícita
+        # (en empresas de alto crecimiento podrías ampliar el techo)
+        g_years_suggested = _clamp(g_years_raw, lo=0.00, hi=0.18)
+
+        # 4) g_terminal por país/sector con límites prudentes (1%–3%)
+        #    Regla base: PIB real + inflación objetivo (~2%–2.5% USA).
+        if "USA" in country:
+            base_gt = 0.022  # 2.2% como centro
+        elif country in ("IRELAND", "NETHERLANDS", "SINGAPORE", "SWITZERLAND"):
+            base_gt = 0.020
+        elif country in ("BRAZIL", "INDIA", "MEXICO", "INDONESIA"):
+            base_gt = 0.025  # economías con mayor crecimiento tendencial, pero prudentes
+        else:
+            base_gt = 0.020
+
+        # Ajuste leve por sector (tecnología global tiende algo > media)
+        if "Technology" in sector:
+            base_gt += 0.002  # +0.2 pp
+        elif "Utilities" in sector or "Energy" in sector:
+            base_gt -= 0.003  # -0.3 pp
+
+        g_terminal_suggested = _clamp(base_gt, lo=0.010, hi=0.030)
+
+        return {
+            "ticker": ticker.upper(),
+            "suggestions": {
+                "g_years": g_years_suggested,
+                "g_terminal": g_terminal_suggested
+            },
+            "diagnostics": {
+                "country": country,
+                "sector": sector,
+                "revenue_cagr_3to5y": rev_cagr,
+                "fcf_cagr_3to5y": fcf_cagr,
+                "revenue_series_recent": rev_series.iloc[:5].to_dict() if rev_series is not None and not rev_series.empty else {},
+                "fcf_series_recent": fcf_series.iloc[:5].to_dict() if fcf_series is not None and not fcf_series.empty else {}
+            }
+        }
+    except Exception as e:
+        return {"ticker": ticker.upper(), "error": f"estimate_growth failed: {e}"}
+
 # ================================ SCORING PRINCIPAL ================================
 
 def compute_score(ticker: str) -> Dict:
@@ -882,8 +1592,9 @@ def compute_score(ticker: str) -> Dict:
     # Incluir el ticker actual en los peers para comparación
     peers_data.append(ticker_data)
 
-    # Verificar disponibilidad relativa (excluyendo el propio)
-    relative_available = sum(1 for p in peers if p != ticker) >= MIN_PEERS
+    # Verificar disponibilidad relativa basada en peers válidos (excluyendo el propio)
+    valid_peer_count = sum(1 for p in peers_data if p['ticker'] != ticker and pd.notna(p.get('price')))
+    relative_available = valid_peer_count >= MIN_PEERS
 
     # Calcular subscores
     valuation_score, valuation_details = valuation_subscore(ticker_data, peers_data)
@@ -926,6 +1637,10 @@ def compute_score(ticker: str) -> Dict:
             'fcf_yield': ticker_data['fcf_yield'],
             'fcf_ttm': ticker_data.get('fcf_ttm', np.nan),
             'fcf_ev_yield': ticker_data.get('fcf_ev_yield', np.nan),
+            'fcfe_ttm': ticker_data.get('fcfe_ttm', np.nan),
+            'fcfe_yield': ticker_data.get('fcfe_yield', np.nan),
+            'fcff_ttm': ticker_data.get('fcff_ttm', np.nan),
+            'fcff_ev_yield': ticker_data.get('fcff_ev_yield', np.nan),
             'subscore': valuation_score,
             'detail': valuation_details
         },
@@ -956,7 +1671,7 @@ def compute_score(ticker: str) -> Dict:
         'conclusion': conclusion,
         'as_of': ticker_data['as_of'],
         'source': ticker_data['source'],
-        'peers_used': len([p for p in peers if p != ticker]),  # Excluye el propio ticker
+        'peers_used': valid_peer_count,       # peers válidos realmente usados
         'peers_scope': RELATIVE_SCOPE,
         'relative_available': relative_available,
         'meta': {
@@ -1043,13 +1758,15 @@ def render_stock_report(result: Dict) -> str:
     roe_str = "NM" if (equity_nonpos and pd.isna(roe_val)) else fmt_pct(roe_val)
     
     report += f"   P/B: {pb_str}\n"
-    report += f"   FCF Yield: {fmt_pct(valuation['fcf_yield'])}\n"
+    report += f"   FCFE Yield: {fmt_pct(valuation.get('fcfe_yield', np.nan))}\n"
     
-    # Nuevas métricas v4
-    if pd.notna(valuation.get('fcf_ttm', np.nan)):
-        report += f"   FCF TTM: ${fmt_int(valuation['fcf_ttm'])}\n"
-    if pd.notna(basics.get('ev_corp', np.nan)) and pd.notna(valuation.get('fcf_ev_yield', np.nan)):
-        report += f"   FCF/EV Yield: {fmt_pct(valuation['fcf_ev_yield'], fmt='{:.1%}')}\n"
+    # Métricas adicionales FCFE/FCFF
+    if pd.notna(valuation.get('fcfe_ttm', np.nan)):
+        report += f"   FCFE TTM: ${fmt_int(valuation['fcfe_ttm'])}\n"
+    if pd.notna(basics.get('ev_corp', np.nan)) and pd.notna(valuation.get('fcff_ev_yield', np.nan)):
+        report += f"   FCFF/EV Yield: {fmt_pct(valuation['fcff_ev_yield'], fmt='{:.1%}')}\n"
+    if pd.notna(valuation.get('fcff_ttm', np.nan)):
+        report += f"   FCFF TTM: ${fmt_int(valuation['fcff_ttm'])}\n"
     
     report += f"   Valuation Subscore: {fmt_num(valuation['subscore'], fmt='{:.2f}')}\n"
 
@@ -1085,7 +1802,7 @@ def render_stock_report(result: Dict) -> str:
     report += f"   Fecha de precios: {result['as_of']['price_date']}\n"
     report += f"   Fecha de fundamentales: {result['as_of']['fund_date']}\n"
     report += f"   Fuente: {result['source']}\n"
-    report += f"   Peers usados: {result['peers_used']} ({result['peers_scope']})\n"
+    report += f"   Peers usados (válidos): {result['peers_used']} ({result['peers_scope']})\n"
 
     report += f"\n{'='*60}\n"
 
@@ -1106,7 +1823,7 @@ def render_portfolio_summary(results: List[Dict]) -> str:
 
     # Header
     summary = f"\n{'='*80}\n"
-    summary += f"📊 RESUMEN DE PORTAFOLIO - VALORACIÓN v3\n"
+    summary += f"📊 RESUMEN DE PORTAFOLIO - VALORACIÓN v4\n"
     summary += f"{'='*80}\n"
 
     # Tabla de resultados
@@ -1175,14 +1892,14 @@ def analizar_portafolio(tickers: List[str]) -> List[Dict]:
 
     return results
 
-def crear_graficos_valoracion(result: Dict) -> None:
+def crear_graficos_valoracion(result: Dict, output_path: str = "./plots") -> None:
     """Crea gráficos de valoración para un stock."""
     if 'error' in result:
         print(f"❌ No se pueden crear gráficos para {result['ticker']}: {result['error']}")
         return
 
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle(f'Análisis de Valoración v3 - {result["ticker"]}', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Análisis de Valoración v4 - {result["ticker"]}', fontsize=16, fontweight='bold')
 
     # 1) Subscores por bloque
     blocks = ['Valoración', 'Calidad', 'Crecimiento', 'Momentum']
@@ -1203,13 +1920,12 @@ def crear_graficos_valoracion(result: Dict) -> None:
     axes[0, 0].legend()
     axes[0, 0].tick_params(axis='x', rotation=45)
 
-    # Añadir valores en las barras
     for bar, score in zip(bars, scores):
         height = bar.get_height()
         axes[0, 0].text(bar.get_x() + bar.get_width()/2., height + (0.01 if height >= 0 else -0.01),
                        f'{score:.2f}', ha='center', va='bottom' if height >= 0 else 'top')
 
-    # 2) Métricas de valoración (incluyendo v4)
+    # 2) Métricas de valoración
     val_metrics = ['P/E TTM', 'P/E FWD', 'EV/EBITDA', 'P/S', 'P/B', 'FCF Yield', 'FCF/EV Yield']
     val_values = [
         result['valuation']['pe_ttm'],
@@ -1221,11 +1937,10 @@ def crear_graficos_valoracion(result: Dict) -> None:
         result['valuation']['fcf_ev_yield'] * 100 if not np.isnan(result['valuation']['fcf_ev_yield']) else np.nan
     ]
 
-    # Filtrar valores válidos
     valid_metrics = []
     valid_values = []
     for m, v in zip(val_metrics, val_values):
-        if not np.isnan(v) and v is not None:
+        if v is not None and not np.isnan(v):
             valid_metrics.append(m)
             valid_values.append(v)
 
@@ -1244,11 +1959,10 @@ def crear_graficos_valoracion(result: Dict) -> None:
         result['quality']['roe'] * 100 if not np.isnan(result['quality']['roe']) else np.nan
     ]
 
-    # Filtrar valores válidos
     valid_qual_metrics = []
     valid_qual_values = []
     for m, v in zip(qual_metrics, qual_values):
-        if not np.isnan(v) and v is not None:
+        if v is not None and not np.isnan(v):
             valid_qual_metrics.append(m)
             valid_qual_values.append(v)
 
@@ -1267,11 +1981,10 @@ def crear_graficos_valoracion(result: Dict) -> None:
         result['momentum']['vol_252'] * 100 if not np.isnan(result['momentum']['vol_252']) else np.nan
     ]
 
-    # Filtrar valores válidos
     valid_mom_metrics = []
     valid_mom_values = []
     for m, v in zip(mom_metrics, mom_values):
-        if not np.isnan(v) and v is not None:
+        if v is not None and not np.isnan(v):
             valid_mom_metrics.append(m)
             valid_mom_values.append(v)
 
@@ -1282,7 +1995,6 @@ def crear_graficos_valoracion(result: Dict) -> None:
         axes[1, 1].set_ylabel('Valor')
         axes[1, 1].tick_params(axis='x', rotation=45)
 
-        # Líneas de referencia para RSI
         if 'RSI(14)' in valid_mom_metrics:
             axes[1, 1].axhline(y=70, color='red', linestyle='--', alpha=0.5, label='RSI > 70')
             axes[1, 1].axhline(y=30, color='green', linestyle='--', alpha=0.5, label='RSI < 30')
@@ -1290,14 +2002,13 @@ def crear_graficos_valoracion(result: Dict) -> None:
 
     plt.tight_layout()
     
-    # Crear directorio png si no existe
+    # Crear directorio de salida si no existe
     import os
-    png_dir = "projects/quant/tests/png"
-    os.makedirs(png_dir, exist_ok=True)
+    os.makedirs(output_path, exist_ok=True)
     
     # Guardar gráfico
     ticker = result['ticker']
-    filename = f"{png_dir}/analisis_valoracion_{ticker}.png"
+    filename = f"{output_path}/analisis_valoracion_{ticker}.png"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     print(f"📊 Gráfico guardado en: {filename}")
     
@@ -1337,7 +2048,7 @@ def comparar_stocks(tickers: List[str]) -> None:
         df = df.sort_values('Score Total', ascending=False)
 
         print(f"\n{'='*100}")
-        print(f"📊 COMPARACIÓN DE STOCKS - VALORACIÓN v3")
+        print(f"📊 COMPARACIÓN DE STOCKS - VALORACIÓN v4")
         print(f"{'='*100}")
 
         # Mostrar tabla principal
@@ -1352,7 +2063,6 @@ def comparar_stocks(tickers: List[str]) -> None:
 
         print(f"\n🏆 MÉTRICAS DE CALIDAD:")
         qual_cols = ['Ticker', 'ROIC', 'ROE']
-        # Formatear porcentajes manualmente
         qual_df = df[qual_cols].copy()
         for col in ['ROIC', 'ROE']:
             if col in qual_df.columns:
@@ -1481,6 +2191,94 @@ def test_scoring():
     print(f"   Percentil: {pct:.2f}")
     print(f"   ✅ Percentiles funcionando" if 0 <= pct <= 1 else "   ❌ Percentiles no funcionando")
 
+    # Tests extra v4: FCFE/FCFF y P/E forward
+    print("\n5️⃣ Test FCFE con CapEx negativo (simulado)")
+    _cfo = 300.0; _capex = -150.0
+    fcfe_expected = _cfo + _capex  # 150 (FCFE = CFO + CapEx)
+    fcfe_calc = _cfo + _capex
+    print(f"   Esperado: {fcfe_expected}, Calculado: {fcfe_calc}")
+    print("   ✅" if abs(fcfe_expected - fcfe_calc) < 1e-6 else "   ❌")
+
+    print("\n6️⃣ Test FCFF con Interest Expense (simulado)")
+    _cfo = 300.0; _capex = -150.0; _interest = -20.0; _tax_rate = 0.21
+    fcff_expected = _cfo + _capex + abs(_interest) * (1 - _tax_rate)  # 300 + (-150) + 20*0.79 = 165.8
+    fcff_calc = _cfo + _capex + abs(_interest) * (1 - _tax_rate)
+    print(f"   Esperado: {fcff_expected}, Calculado: {fcff_calc}")
+    print("   ✅" if abs(fcff_expected - fcff_calc) < 1e-6 else "   ❌")
+
+    print("\n7️⃣ Test peers P/E forward vs TTM (deben diferir)")
+    peers = [{'pe_ttm': 10, 'pe_fwd': 8}, {'pe_ttm': 20, 'pe_fwd': 18}]
+    v = {'pe_ttm': 15, 'pe_fwd': 12}
+    pct_ttm = percentile_rank(v['pe_ttm'], [p['pe_ttm'] for p in peers])
+    pct_fwd = percentile_rank(v['pe_fwd'], [p['pe_fwd'] for p in peers])
+    print(f"   pct_ttm={pct_ttm:.2f}, pct_fwd={pct_fwd:.2f}")
+    print("   ✅" if abs(pct_ttm - pct_fwd) > 1e-6 else "   ❌")
+
+    # Test 8: DCF smoke tests
+    print("\n8️⃣ Test DCF smoke (parámetros válidos)")
+    try:
+        # Test FCFF DCF
+        fcff_res = compute_dcf_for_ticker_fcff("AAPL", wacc=0.09, g_years=0.08, years=5, g_terminal=0.025)
+        if "error" not in fcff_res and fcff_res["outputs"]["fair_value_per_share"] > 0:
+            print("   ✅ DCF FCFF genera valor > 0")
+        else:
+            print("   ❌ DCF FCFF falló")
+        
+        # Test FCFE DCF
+        fcfe_res = compute_dcf_for_ticker_fcfe("AAPL", cost_of_equity=0.12, g_years=0.08, years=5, g_terminal=0.025)
+        if "error" not in fcfe_res and fcfe_res["outputs"]["fair_value_per_share"] > 0:
+            print("   ✅ DCF FCFE genera valor > 0")
+        else:
+            print("   ❌ DCF FCFE falló")
+    except Exception as e:
+        print(f"   ❌ DCF tests fallaron: {e}")
+
+    # Test 9: WACC validation
+    print("\n9️⃣ Test WACC validation")
+    try:
+        wacc_res = estimate_wacc("AAPL")
+        if "error" not in wacc_res:
+            we = wacc_res["weights"]["equity"]
+            wd = wacc_res["weights"]["debt"]
+            wacc = wacc_res["wacc"]
+            re = wacc_res["cost_of_equity"]
+            rd = wacc_res["cost_of_debt"]
+            
+            # Verificar pesos suman ~1
+            weights_ok = abs(we + wd - 1.0) < 0.01
+            # Verificar WACC está entre min y max de costes
+            wacc_range_ok = min(re, rd) <= wacc <= max(re, rd)
+            # Verificar Rd razonable
+            rd_ok = 0.01 <= rd <= 0.15
+            
+            print(f"   Pesos suman ~1: {weights_ok} (we={we:.3f}, wd={wd:.3f})")
+            print(f"   WACC en rango: {wacc_range_ok} (WACC={wacc:.3f}, Re={re:.3f}, Rd={rd:.3f})")
+            print(f"   Rd razonable: {rd_ok}")
+            print("   ✅" if weights_ok and wacc_range_ok and rd_ok else "   ❌")
+        else:
+            print("   ❌ WACC estimation falló")
+    except Exception as e:
+        print(f"   ❌ WACC test falló: {e}")
+
+    # Test 10: Mid-year DCF
+    print("\n🔟 Test mid-year vs end-year DCF")
+    try:
+        # Mismo ticker, mismos parámetros, solo cambia mid_year
+        res_mid = compute_dcf_for_ticker_fcff("AAPL", wacc=0.09, g_years=0.08, years=5, g_terminal=0.025, mid_year=True)
+        res_end = compute_dcf_for_ticker_fcff("AAPL", wacc=0.09, g_years=0.08, years=5, g_terminal=0.025, mid_year=False)
+        
+        if "error" not in res_mid and "error" not in res_end:
+            mid_val = res_mid["outputs"]["fair_value_per_share"]
+            end_val = res_end["outputs"]["fair_value_per_share"]
+            mid_higher = mid_val > end_val
+            print(f"   Mid-year: {mid_val:.2f}, End-year: {end_val:.2f}")
+            print(f"   Mid-year > End-year: {mid_higher}")
+            print("   ✅" if mid_higher else "   ❌")
+        else:
+            print("   ❌ Mid-year DCF test falló")
+    except Exception as e:
+        print(f"   ❌ Mid-year test falló: {e}")
+
     print("\n🎉 Tests completados!")
 
 def ejemplo_analisis_individual():
@@ -1522,7 +2320,7 @@ def menu_principal():
     """Menú principal del sistema de análisis."""
     while True:
         print("\n" + "="*60)
-        print("📊 SISTEMA DE ANÁLISIS DE VALORACIÓN DE STOCKS v3")
+        print("📊 SISTEMA DE ANÁLISIS DE VALORACIÓN DE STOCKS v4")
         print("="*60)
         print("1. Analizar stock individual")
         print("2. Comparar múltiples stocks")
@@ -1531,9 +2329,10 @@ def menu_principal():
         print("5. Validar métricas de valoración")
         print("6. Ejecutar tests del sistema")
         print("7. Salir")
+        print("8. Valorar por DCF (beta)")   # <--- NUEVO
         print("="*60)
         
-        opcion = input("Seleccione una opción (1-7): ").strip()
+        opcion = input("Seleccione una opción (1-8): ").strip()
         
         if opcion == "1":
             ticker = input("Ingrese el ticker del stock (ej: AAPL): ").strip().upper()
@@ -1580,11 +2379,57 @@ def menu_principal():
         elif opcion == "7":
             print("👋 ¡Hasta luego!")
             break
-            
-        else:
-            print("❌ Opción inválida. Por favor seleccione 1-7.")
-        
-        input("\nPresione Enter para continuar...")
+
+        elif opcion == "8":  # DCF con WACC y crecimientos auto
+            ticker = input("Ticker para DCF (ej: AAPL): ").strip().upper()
+            if not ticker:
+                print("❌ Ticker inválido")
+                continue
+
+            # 1) WACC auto
+            res_wacc = estimate_wacc(ticker)
+            if "error" in res_wacc:
+                wacc = 0.09
+                print("⚠️ WACC auto no disponible, usando 9%")
+            else:
+                wacc = res_wacc["wacc"]
+                print(f"📊 WACC estimado: {wacc:.2%} (β={res_wacc['beta']:.2f})")
+
+            # 2) Crecimientos auto
+            eg = estimate_growth(ticker)
+            if "error" in eg:
+                g_years_auto = 0.08
+                g_term_auto = 0.022
+                print("⚠️ Crecimientos auto no disponibles; usando 8% y 2.2%")
+            else:
+                g_years_auto = eg["suggestions"]["g_years"]
+                g_term_auto  = eg["suggestions"]["g_terminal"]
+                print(f"📈 Sugerencias de crecimiento → g_years={g_years_auto:.2%}, g_terminal={g_term_auto:.2%}")
+
+            # 3) Permitir override rápido
+            try:
+                g_years = float(input(f"Crecimiento años explícitos [{g_years_auto:.3f}]: ") or f"{g_years_auto:.6f}")
+                years   = int(input("Años explícitos (por defecto 5): ") or "5")
+                g_term  = float(input(f"Crecimiento terminal [{g_term_auto:.3f}]: ") or f"{g_term_auto:.6f}")
+            except Exception:
+                print("❌ Parámetros inválidos")
+                continue
+
+            # 4) Ejecutar DCF
+            res = compute_dcf_for_ticker(ticker, wacc=wacc, g_years=g_years, years=years, g_terminal=g_term)
+            if "error" in res:
+                print("❌", res["error"])
+            else:
+                out = res["outputs"]
+                print("\n🧮 RESULTADO DCF")
+                print(f"   Valor razonable/acción: {fmt_num(out['fair_value_per_share'])}")
+                if pd.notna(out.get("upside", np.nan)):
+                    print(f"   Upside: {fmt_pct(out['upside'])}")
+                if "enterprise_value" in out:
+                    print(f"   EV (PV): {fmt_int(out['enterprise_value'])} | Equity: {fmt_int(out['equity_value'])}")
+                else:
+                    print(f"   Equity Value: {fmt_int(out['equity_value'])}")
+                print(f"   Asumptions: WACC={wacc:.2%}, g_exp={g_years:.2%}, years={years}, gT={g_term:.2%}")
 
 def demo_automatico():
     """Ejecuta una demostración automática del sistema."""
@@ -1619,7 +2464,6 @@ def validar_metricas_valoracion(datos_metricas: List[Dict]) -> Dict:
     Returns:
         Dict con tabla formateada, CSV, alertas y metadatos
     """
-    # Procesar y formatear datos
     tabla_formateada = []
     alertas = []
     
@@ -1636,7 +2480,6 @@ def validar_metricas_valoracion(datos_metricas: List[Dict]) -> Dict:
         else:
             fcf_yield_pct = np.nan
         
-        # Formatear con decimales correctos
         fila = {
             'ticker': ticker,
             'pe_ttm': round(pe_ttm, 2) if pd.notna(pe_ttm) else np.nan,
@@ -1743,7 +2586,7 @@ def ejemplo_validacion_metricas():
 # ================================ MAIN ÚNICO ===============================
 
 if __name__ == "__main__":
-    print("📦 MÓDULO DE ANÁLISIS DE VALORACIÓN DE STOCKS v3")
+    print("📦 MÓDULO DE ANÁLISIS DE VALORACIÓN DE STOCKS v4")
     print("="*60)
     print("Sistema de valoración relativa por sector/industria")
     print("Con métricas de calidad, crecimiento y momentum")
@@ -1762,5 +2605,3 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"\n❌ Error inesperado: {e}")
             print("Por favor, reporte este error al desarrollador.")
-
-
