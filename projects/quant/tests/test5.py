@@ -149,6 +149,7 @@ def winsorize_against_peers(value: float, peers: List[float], p_low=0.01, p_high
     vals = np.array([v for v in peers if pd.notna(v)], dtype=float)
     if pd.isna(value) or vals.size == 0:
         return value
+        
     lo, hi = np.quantile(vals, [p_low, p_high])
     return float(np.clip(value, lo, hi))
 
@@ -211,13 +212,19 @@ def _clean_multiple(x: float, allow_zero: bool = False) -> float:
         return np.nan if x <= 0 else x
 
 # ---------- Formateo ----------
-def formatear_numero(x, formato="{:,.2f}", na="N/D"):
+def formatear_numero(x, formato="{:,.2f}", na="N/D", fmt=None):
     try:
+        # Si se pasa fmt, usar ese formato en lugar de formato
+        if fmt is not None:
+            formato = fmt
         return na if pd.isna(x) or not np.isfinite(float(x)) else formato.format(float(x))
     except Exception:
         return na
-def formatear_porcentaje(x, formato="{:.2%}", na="N/D"):
+def formatear_porcentaje(x, formato="{:.2%}", na="N/D", fmt=None):
     try:
+        # Si se pasa fmt, usar ese formato en lugar de formato
+        if fmt is not None:
+            formato = fmt
         return na if pd.isna(x) or not np.isfinite(float(x)) else formato.format(float(x))
     except Exception:
         return na
