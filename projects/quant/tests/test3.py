@@ -3,9 +3,9 @@ Optimizador de Cartera (Markowitz, ERC, BL, Restricciones, Frontera Eficiente, T
 - Descarga precios con yfinance
 - Convierte USD→EUR (EURUSD=X = USD por 1 EUR) cuando corresponde
 - Cálculo de métricas anualizadas
-- Optimiza: Máx. Sharpe, Mín. Var, ERC, Restricciones y Black–Litterman (μ posterior con Σ histórica)
-- Frontera eficiente (min-var para retornos objetivo)
-- Tracking Error frente a benchmark opcional (cálculo y restricción)
+- Optimiza: Máx. Sharpe, Mín. Var, ERC, MDR (antes "Constrained") y Black–Litterman (μ posterior con Σ histórica)
+- Frontera eficiente (min-var para retornos objetivo) + Frontera ACTIVA (Sharpe vs TE)
+- Tracking Error frente a benchmark externo (SP500/MSCI WORLD): restricción ex–ante y cálculo ex–post en backtest
 - Covarianza Ledoit–Wolf si está disponible (fallback a shrinkage simple)
 - Exporta gráficos a ./png
 Requisitos:
@@ -68,26 +68,35 @@ GROUP_MIN: Dict[str, float] = {
     # "Renta_Variable": 0.30, # ej: al menos 30% en RV
 }
 
-# ====== Benchmark y Tracking Error (opcional) ======
-# Define un benchmark como pesos sobre los MISMO activos (suma=1).
-# Si None, no se calcula TE.
-BENCH_WEIGHTS: Optional[Dict[str, float]] = {
-    # ejemplo: 60/40 "proxy" dentro del universo actual
-    # "0P0001CLDK.F": 0.60, "GLD": 0.40
-    # O usa un 25/25/25/25:
-    # a:0.25 para todos los activos presentes
+# ====== Benchmark externo y Tracking Error (opcional) ======
+# Elige: "SP500" o "MSCI_WORLD" o None
+BENCHMARK = "MSCI_WORLD"  # cambia a "SP500" si lo prefieres
+
+# Tickers candidatos (por orden de preferencia).
+# EUNL.DE cotiza en EUR (evita FX); los demás se convierten a EUR con EURUSD=X cuando son USD.
+BENCHMARK_TICKERS = {
+    "SP500": ["SPY", "^GSPC"],                             # SPY (ETF USD) o índice ^GSPC
+    "MSCI_WORLD": ["EUNL.DE", "URTH", "IWDA.AS", "SWDA.L"] # prioriza EUNL.DE (EUR)
 }
-# Si quieres restringir TE respecto al benchmark: establece un máximo (anual, en sigma)
-TE_MAX: Optional[float] = None  # ej: 0.06 significa TE anual ≤ 6%
+
+# Máximo Tracking Error anual permitido en la OPTIMIZACIÓN (None para desactivar)
+TE_MAX: Optional[float] = 0.06  # p.ej. 6% anual
+
+# --- Control de factibilidad y robustez del TE ---
+AUTO_RELAX_TE      = True   # si TE_MAX < TE_min, relajar automáticamente
+TE_RELAX_EPS_ABS   = 0.01   # +1% absoluto sobre TE_min
+TE_PENALTY_LAMBDA  = 10.0   # penalización suave (hinge) por exceder TE_MAX
+N_RANDOM_STARTS    = 6      # multistart
+
+# --- Black–Litterman: prior y vistas ---
+BL_USE_TRACKING_PRIOR = True  # usar w_TEmin como prior de mercado si está disponible
+MARKET_WEIGHTS: Optional[Dict[str, float]] = None   # se rellenará con w_TEmin si BL_USE_TRACKING_PRIOR=True
+VIEWS: Optional[Dict[str, float]] = None            # ej: {"AMZN": 0.12, "GLD": 0.04}
 
 # =============================
 # Helpers de datos
 # =============================
 def get_price_series(df: pd.DataFrame, ticker: Optional[str] = None) -> Optional[pd.Series]:
-    """
-    Devuelve la serie de precios priorizando 'Adj Close' y, si no existe, 'Close'.
-    Soporta DataFrames de yfinance con MultiIndex en cualquiera de las orientaciones.
-    """
     if df is None or df.empty:
         return None
 
@@ -121,9 +130,6 @@ def get_price_series(df: pd.DataFrame, ticker: Optional[str] = None) -> Optional
 
 def convert_usd_to_eur(price_series: Optional[pd.Series],
                        fx_series: Optional[pd.Series]) -> Optional[pd.Series]:
-    """
-    Convierte USD→EUR con EURUSD=X (USD por 1 EUR): EUR = USD / (USD/EUR).
-    """
     if price_series is None or fx_series is None or fx_series.empty:
         return price_series
     aligned_fx = fx_series.reindex(price_series.index).ffill().bfill()
@@ -131,7 +137,6 @@ def convert_usd_to_eur(price_series: Optional[pd.Series],
 
 
 def shrink_covariance_simple(cov: pd.DataFrame, lam: float) -> pd.DataFrame:
-    """Shrinkage simple hacia la diagonal: (1-λ)Σ + λ*diag(Σ)."""
     lam = float(lam)
     if lam <= 0:
         return cov
@@ -148,6 +153,93 @@ def weights_from_dict(assets: List[str], wdict: Dict[str, float]) -> np.ndarray:
         w = w / s
     return w
 
+def per_asset_bounds(assets: List[str],
+                     bounds_dict: Dict[str, Tuple[float, float]]
+                    ) -> Tuple[Tuple[float, float], ...]:
+    return tuple(bounds_dict.get(a, (0.0, 1.0)) for a in assets)
+
+
+def build_group_constraints(assets: List[str],
+                            groups: Dict[str, List[str]],
+                            gmax: Optional[Dict[str, float]] = None,
+                            gmin: Optional[Dict[str, float]] = None
+                           ) -> List[dict]:
+    cons: List[dict] = []
+    name_to_idx = {name: [assets.index(a) for a in members if a in assets]
+                   for name, members in groups.items()}
+
+    if gmax:
+        for name, cap in gmax.items():
+            idx = name_to_idx.get(name, [])
+            if idx:
+                cons.append({"type": "ineq",
+                             "fun": (lambda w, idx=idx, cap=cap: cap - np.sum(w[idx]))})
+
+    if gmin:
+        for name, floor in gmin.items():
+            idx = name_to_idx.get(name, [])
+            if idx:
+                cons.append({"type": "ineq",
+                             "fun": (lambda w, idx=idx, floor=floor: np.sum(w[idx]) - floor)})
+
+    return cons
+
+# ====== Helpers de benchmark y TE-índice ======
+def download_benchmark_series(benchmark: str,
+                              start: str, end: str,
+                              fx_series: Optional[pd.Series]) -> tuple[str, Optional[pd.Series]]:
+    tickers = BENCHMARK_TICKERS.get(benchmark, [])
+    for tk in tickers:
+        if tk.endswith(".L"):
+            continue
+        try:
+            df = yf.download(tk, start=start, end=end, auto_adjust=False,
+                             progress=False, group_by="ticker")
+            s = get_price_series(df, tk if isinstance(df.columns, pd.MultiIndex) else None)
+            if s is None or s.empty:
+                continue
+            needs_fx = False
+            if tk in {"SPY", "URTH"} or tk.startswith("^"):
+                needs_fx = True
+            if tk.endswith((".DE", ".PA", ".MI", ".AS", ".EU")):
+                needs_fx = False
+            if needs_fx and fx_series is not None:
+                s = convert_usd_to_eur(s, fx_series)
+            return tk, s.dropna().sort_index()
+        except Exception:
+            continue
+    return (tickers[0] if tickers else "N/A", None)
+
+
+def prepare_te_objects(assets_rets: pd.DataFrame,
+                       bench_rets: pd.Series) -> tuple[pd.DataFrame, pd.Series, float]:
+    df = assets_rets.join(bench_rets.rename("B"), how="inner")
+    R = df[assets_rets.columns]
+    B = df["B"]
+    Sigma_ann = R.cov() * 252.0
+    c_ann = R.apply(lambda x: x.cov(B)) * 252.0
+    var_b_ann = float(B.var() * 252.0)
+    return Sigma_ann, c_ann, var_b_ann
+
+
+def te_index_constraint_ineq(w: np.ndarray,
+                             Sigma_ann: pd.DataFrame,
+                             c_ann: pd.Series,
+                             var_b_ann: float,
+                             te_max: float) -> float:
+    w = np.asarray(w)
+    te2 = float(w @ Sigma_ann.values @ w - 2.0 * (w @ c_ann.values) + var_b_ann)
+    return float(te_max**2 - max(te2, 0.0))
+
+
+def te_index_ex_ante(w: np.ndarray,
+                     Sigma_ann: Optional[pd.DataFrame],
+                     c_ann: Optional[pd.Series],
+                     var_b_ann: Optional[float]) -> Optional[float]:
+    if Sigma_ann is None or c_ann is None or var_b_ann is None:
+        return None
+    te2 = float(w @ Sigma_ann.values @ w - 2.0 * (w @ c_ann.values) + var_b_ann)
+    return float(np.sqrt(max(te2, 0.0)))
 
 # =============================
 # Funciones de cartera
@@ -173,67 +265,28 @@ def portfolio_variance(w: np.ndarray, sigma: pd.DataFrame) -> float:
 
 
 def risk_parity_objective(w: np.ndarray, sigma: pd.DataFrame) -> float:
-    """
-    ERC: minimiza la desviación de las contribuciones porcentuales al riesgo respecto a 1/N.
-    """
     w = np.asarray(w)
     port_vol = np.sqrt(max(w @ sigma.values @ w, 1e-18))
     marginal = sigma.values @ w
     abs_contrib = w * marginal / (port_vol + 1e-12)
-    pct_contrib = abs_contrib / (port_vol + 1e-12)  # suma ~ 1
+    pct_contrib = abs_contrib / (port_vol + 1e-12)
     target = np.ones_like(w) / w.size
     return float(np.sum((pct_contrib - target) ** 2))
 
 
 def risk_contributions(w: np.ndarray, sigma: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-    """Devuelve (contribuciones absolutas, contribuciones porcentuales)."""
     port_vol = np.sqrt(max(w @ sigma.values @ w, 1e-18))
     marginal = sigma.values @ w
     abs_contrib = w * marginal / (port_vol + 1e-12)
     pct_contrib = abs_contrib / (port_vol + 1e-12)
     return abs_contrib, pct_contrib
 
-
-def tracking_error_annual(w: np.ndarray,
-                          w_bench: np.ndarray,
-                          sigma: pd.DataFrame) -> float:
-    diff = w - w_bench
-    var_te = float(max(diff @ sigma.values @ diff, 0.0))
-    return float(np.sqrt(var_te))
-
-
-def te_constraint_ineq(w: np.ndarray,
-                       w_bench: np.ndarray,
-                       sigma: pd.DataFrame,
-                       te_max: float) -> float:
-    """Devuelve >=0 si se cumple: TE_max^2 - (w-wb)'Σ(w-wb) ≥ 0"""
-    diff = w - w_bench
-    return float(te_max ** 2 - max(diff @ sigma.values @ diff, 0.0))
-
-
-def per_asset_bounds(assets: List[str],
-                     bounds_dict: Dict[str, Tuple[float, float]]) -> Tuple[Tuple[float, float], ...]:
-    return tuple(bounds_dict.get(a, (0.0, 1.0)) for a in assets)
-
-
-def build_group_constraints(assets: List[str],
-                            groups: Dict[str, List[str]],
-                            gmax: Optional[Dict[str, float]] = None,
-                            gmin: Optional[Dict[str, float]] = None) -> List[dict]:
-    cons = []
-    name_to_idx = {name: [assets.index(a) for a in members if a in assets] for name, members in groups.items()}
-    if gmax:
-        for name, cap in gmax.items():
-            idx = name_to_idx.get(name, [])
-            if idx:
-                cons.append({"type": "ineq", "fun": lambda w, idx=idx, cap=cap: cap - np.sum(w[idx])})
-    if gmin:
-        for name, floor in gmin.items():
-            idx = name_to_idx.get(name, [])
-            if idx:
-                cons.append({"type": "ineq", "fun": lambda w, idx=idx, floor=floor: np.sum(w[idx]) - floor})
-    return cons
-
+# --- Objetivo de Max Diversification Ratio (MDR)
+def neg_diversification_ratio(w: np.ndarray, Sigma_df: pd.DataFrame) -> float:
+    sigma_i = np.sqrt(np.diag(Sigma_df.values))
+    numer = float(np.dot(np.abs(w), sigma_i))
+    denom = float(np.sqrt(max(w @ Sigma_df.values @ w, 1e-18)))
+    return -(numer / (denom + 1e-12))
 
 # =============================
 # Descarga de datos
@@ -312,39 +365,183 @@ for a in assets:
     print(f"  {a}: Ret {mean_ret[a]*100:6.2f}% | Vol {vol[a]*100:6.2f}% | Sharpe {s:6.3f}")
 
 # =============================
+# Benchmark externo (índice) en EUR
+# =============================
+bench_price = None
+bench_ret = None
+bench_tk_used = None
+Sigma_te = None
+c_te = None
+varb_te = None
+
+if BENCHMARK is not None:
+    bench_tk_used, bench_price = download_benchmark_series(
+        BENCHMARK, FECHA_INICIO, FECHA_FIN, fx_series
+    )
+    if bench_price is not None:
+        bench_ret = np.log(bench_price).diff().dropna()
+        bench_ret = bench_ret.reindex(returns.index).dropna()
+        Sigma_te, c_te, varb_te = prepare_te_objects(returns[assets], bench_ret)
+        print(f"\n📏 Benchmark: {BENCHMARK} usando '{bench_tk_used}' (EUR).")
+        if TE_MAX is not None:
+            print(f"   Restricción de TE: TE ≤ {TE_MAX:.2%} (anual).")
+    else:
+        print(f"⚠️  No se pudo obtener el benchmark '{BENCHMARK}'. Se desactiva TE_MAX.")
+        TE_MAX = None
+
+# =============================
+# Factibilidad de TE, relajación y helpers
+# =============================
+def te_quadratic(w: np.ndarray, S_df: pd.DataFrame, c_ser: pd.Series) -> float:
+    S = S_df.values; c = c_ser.values
+    return float(w @ S @ w - 2.0 * (w @ c))
+
+def te_quadratic_grad(w: np.ndarray, S_df: pd.DataFrame, c_ser: pd.Series) -> np.ndarray:
+    S = S_df.values; c = c_ser.values
+    return 2.0 * (S @ w - c)
+
+def te_constraint_jac(w: np.ndarray, S_df: pd.DataFrame, c_ser: pd.Series) -> np.ndarray:
+    S = S_df.values; c = c_ser.values
+    return 2.0 * (c - S @ w)
+
+def make_te_ineq_with_jac(S_df, c_ser, var_b, te_max):
+    return {
+        "type": "ineq",
+        "fun":  lambda w, S=S_df, c=c_ser, vb=var_b, te=te_max: te_index_constraint_ineq(w, S, c, vb, te),
+        "jac":  lambda w, S=S_df, c=c_ser: te_constraint_jac(w, S, c),
+    }
+
+TE_min, w_TEmin = None, None
+if bench_ret is not None:
+    cons_te = [ {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},
+                *build_group_constraints(assets, GROUPS, GROUP_MAX, GROUP_MIN) ]
+    res_te = minimize(
+        fun=lambda w: te_quadratic(w, Sigma_te, c_te),
+        x0=np.full(len(assets), 1.0/len(assets)),
+        jac=lambda w: te_quadratic_grad(w, Sigma_te, c_te),
+        method="SLSQP",
+        bounds=per_asset_bounds(assets, PER_ASSET_BOUNDS),
+        constraints=cons_te,
+        options={"maxiter": 1000, "ftol": 1e-12}
+    )
+    if res_te.success:
+        w_TEmin = res_te.x
+        TE_min = te_index_ex_ante(w_TEmin, Sigma_te, c_te, varb_te)
+        print(f"\n🧭 TE mínimo factible con este universo: {TE_min*100:5.2f}%")
+        if TE_MAX is not None and TE_min is not None and TE_MAX < TE_min - 1e-6:
+            if AUTO_RELAX_TE:
+                old = TE_MAX
+                TE_MAX = float(TE_min + TE_RELAX_EPS_ABS)
+                print(f"⚠️  TE_MAX={old:.2%} inviable; ajusto a {TE_MAX:.2%} (= TE_min + {TE_RELAX_EPS_ABS:.2%}).")
+            else:
+                print(f"⚠️  TE_MAX={TE_MAX:.2%} inviable; desactívalo o amplía universo/bounds.")
+    else:
+        print(f"⚠️  No se pudo calcular TE mínimo: {res_te.message}")
+
+# Mostrar cartera de mínimo TE y preparar para strategies
+w_te_track = None; r_te = None; v_te = None; s_te = None
+if w_TEmin is not None:
+    print("\n🎯 Cartera de MÍNIMO TE (vs índice)")
+    print("  Pesos TE_min:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_TEmin)})
+    te_te = te_index_ex_ante(w_TEmin, Sigma_te, c_te, varb_te)
+    print(f"  TE vs índice (ex–ante): {te_te*100:5.2f}%")
+    r_te, v_te = portfolio_performance(w_TEmin, mean_ret[assets], cov.loc[assets, assets])
+    s_te = (r_te - RISK_FREE) / (v_te + 1e-12)
+    w_te_track = w_TEmin
+
+# Si queremos que BL use w_TEmin como prior de "mercado"
+if w_TEmin is not None and BL_USE_TRACKING_PRIOR:
+    MARKET_WEIGHTS = {a: float(w) for a, w in zip(assets, w_TEmin)}
+    print("🧩 BL prior: usando la cartera de mínimo TE como 'mercado' (MARKET_WEIGHTS).")
+
+# Penalización “suave” de TE para el objetivo
+def te_hinge_penalty(w: np.ndarray,
+                     S_te: Optional[pd.DataFrame],
+                     c_te: Optional[pd.Series],
+                     vb_te: Optional[float],
+                     te_cap: Optional[float],
+                     lam: float) -> float:
+    if S_te is None or c_te is None or vb_te is None or te_cap is None or lam <= 0:
+        return 0.0
+    te2 = float(w @ S_te.values @ w - 2.0 * (w @ c_te.values) + vb_te)
+    te = float(np.sqrt(max(te2, 0.0)))
+    return lam * max(0.0, te - te_cap)**2
+
+def neg_sharpe_with_pen(w, mu, Sigma, rf, S_te, c_te, vb_te, te_cap, lam):
+    return negative_sharpe(w, mu, Sigma, rf) + te_hinge_penalty(w, S_te, c_te, vb_te, te_cap, lam)
+
+def var_with_pen(w, Sigma, S_te, c_te, vb_te, te_cap, lam):
+    return portfolio_variance(w, Sigma) + te_hinge_penalty(w, S_te, c_te, vb_te, te_cap, lam)
+
+def erc_with_pen(w, Sigma, S_te, c_te, vb_te, te_cap, lam):
+    return risk_parity_objective(w, Sigma) + te_hinge_penalty(w, S_te, c_te, vb_te, te_cap, lam)
+
+# Multistart: generador de x0 factibles aleatorios
+def random_feasible_x0(bounds: Tuple[Tuple[float,float], ...], n: int = 6) -> List[np.ndarray]:
+    L = np.array([b[0] for b in bounds], dtype=float)
+    U = np.array([b[1] for b in bounds], dtype=float)
+    assert L.sum() <= 1.0 + 1e-9 and U.sum() >= 1.0 - 1e-9
+    xs = []
+    for _ in range(n):
+        w = L + np.random.dirichlet(np.ones(len(bounds))) * max(1.0 - L.sum(), 0.0)
+        for __ in range(50):
+            over = (w - U).clip(min=0.0)
+            if over.max() <= 1e-12:
+                break
+            w -= over
+            cap = (U - w).clip(min=0.0)
+            cap_sum = cap.sum()
+            if cap_sum <= 1e-12:
+                break
+            w += cap * (over.sum() / cap_sum)
+        w = np.minimum(np.maximum(w, L), U)
+        w /= w.sum()
+        xs.append(w)
+    return xs
+
+def optimize_with_restarts(fun, x0_list, bounds, constraints, args=(), options=None):
+    best = None
+    for seed_x0 in x0_list:
+        res = minimize(fun, x0=seed_x0, args=args, method="SLSQP",
+                       bounds=bounds, constraints=constraints,
+                       options=options or {"maxiter": 500, "ftol": 1e-9})
+        if best is None:
+            best = res
+        else:
+            if res.success and (not best.success or res.fun < best.fun):
+                best = res
+            elif (not best.success) and (res.fun < best.fun):
+                best = res
+    return best
+
+# =============================
 # Optimización base y restricciones
 # =============================
 N = len(assets)
-x0 = np.full(N, 1.0 / N)
-sum_to_one = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
 bnds = per_asset_bounds(assets, PER_ASSET_BOUNDS)
+
+x0_eq = np.full(N, 1.0 / N)
+x0_list = [x0_eq]
+if 'w_TEmin' in locals() and w_TEmin is not None:
+    x0_list.append(0.5 * x0_eq + 0.5 * w_TEmin)
+x0_list += random_feasible_x0(bnds, n=N_RANDOM_STARTS)
+
+sum_to_one = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
 group_cons = build_group_constraints(assets, GROUPS, GROUP_MAX, GROUP_MIN)
-
-opt_base = dict(method="SLSQP", bounds=bnds, constraints=(sum_to_one, *group_cons),
-                options={"maxiter": 500, "ftol": 1e-9})
-
-# Benchmark y TE
-w_bench = None
-if BENCH_WEIGHTS:
-    w_bench = weights_from_dict(assets, BENCH_WEIGHTS)
-    print("\n📏 Benchmark definido (sobre los mismos activos).")
-    print("   w_bench:", {a: round(w, 4) for a, w in zip(assets, w_bench)})
-    if TE_MAX is not None:
-        print(f"   Restricción de TE: TE ≤ {TE_MAX:.2%} (anual).")
 
 # =============================
 # 1) Máximo Sharpe
 # =============================
 print("\n🚀 1) Máximo Sharpe")
 cons_ms = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    cons_ms.append({"type": "ineq",
-                    "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+if bench_ret is not None and TE_MAX is not None:
+    cons_ms.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
-res_ms = minimize(negative_sharpe, x0=x0,
-                  args=(mean_ret[assets], cov.loc[assets, assets], RISK_FREE),
-                  method="SLSQP", bounds=bnds, constraints=cons_ms,
-                  options={"maxiter": 500, "ftol": 1e-9})
+res_ms = optimize_with_restarts(
+    fun=lambda w: neg_sharpe_with_pen(w, mean_ret[assets], cov.loc[assets, assets], RISK_FREE,
+                                      Sigma_te, c_te, varb_te, TE_MAX, TE_PENALTY_LAMBDA),
+    x0_list=x0_list, bounds=bnds, constraints=cons_ms
+)
 if not res_ms.success:
     print(f"⚠️  Máx. Sharpe no convergió: {res_ms.message}")
 w_ms = res_ms.x
@@ -352,101 +549,107 @@ ret_ms, vol_ms = portfolio_performance(w_ms, mean_ret[assets], cov.loc[assets, a
 shp_ms = (ret_ms - RISK_FREE) / (vol_ms + 1e-12)
 print("  Pesos MS:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_ms)})
 print(f"  Ret {ret_ms*100:6.2f}% | Vol {vol_ms*100:6.2f}% | Sharpe {shp_ms:6.3f}")
-if w_bench is not None:
-    te_ms = tracking_error_annual(w_ms, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_ms*100:5.2f}%")
+if bench_ret is not None:
+    te_ms = te_index_ex_ante(w_ms, Sigma_te, c_te, varb_te)
+    if te_ms is not None:
+        print(f"  TE vs índice (ex–ante): {te_ms*100:5.2f}%")
 
 # =============================
 # 1b) Mínima Varianza
 # =============================
 print("\n🛡️ 1b) Mínima Varianza")
 cons_mv = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    cons_mv.append({"type": "ineq",
-                    "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+if bench_ret is not None and TE_MAX is not None:
+    cons_mv.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
-res_mv = minimize(portfolio_variance, x0=x0,
-                  args=(cov.loc[assets, assets],),
-                  method="SLSQP", bounds=bnds, constraints=cons_mv,
-                  options={"maxiter": 500, "ftol": 1e-9})
+res_mv = optimize_with_restarts(
+    fun=lambda w: var_with_pen(w, cov.loc[assets, assets],
+                               Sigma_te, c_te, varb_te, TE_MAX, TE_PENALTY_LAMBDA),
+    x0_list=x0_list, bounds=bnds, constraints=cons_mv
+)
 if not res_mv.success:
     print(f"⚠️  Mín. Var no convergió: {res_mv.message}")
 w_mv = res_mv.x
 ret_mv, vol_mv = portfolio_performance(w_mv, mean_ret[assets], cov.loc[assets, assets])
 print("  Pesos MV:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_mv)})
 print(f"  Ret {ret_mv*100:6.2f}% | Vol {vol_mv*100:6.2f}%")
-if w_bench is not None:
-    te_mv = tracking_error_annual(w_mv, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_mv*100:5.2f}%")
+if bench_ret is not None:
+    te_mv = te_index_ex_ante(w_mv, Sigma_te, c_te, varb_te)
+    if te_mv is not None:
+        print(f"  TE vs índice (ex–ante): {te_mv*100:5.2f}%")
 
 # =============================
 # 2) Risk Parity (ERC)
 # =============================
 print("\n⚖️ 2) Risk Parity (ERC)")
 cons_rp = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    cons_rp.append({"type": "ineq",
-                    "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+if bench_ret is not None and TE_MAX is not None:
+    cons_rp.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
-res_rp = minimize(risk_parity_objective, x0=x0,
-                  args=(cov.loc[assets, assets],),
-                  method="SLSQP", bounds=bnds, constraints=cons_rp,
-                  options={"maxiter": 500, "ftol": 1e-9})
+res_rp = optimize_with_restarts(
+    fun=lambda w: erc_with_pen(w, cov.loc[assets, assets],
+                               Sigma_te, c_te, varb_te, TE_MAX, TE_PENALTY_LAMBDA),
+    x0_list=x0_list, bounds=bnds, constraints=cons_rp
+)
 if not res_rp.success:
     print(f"⚠️  ERC no convergió: {res_rp.message}")
 w_rp = res_rp.x
 ret_rp, vol_rp = portfolio_performance(w_rp, mean_ret[assets], cov.loc[assets, assets])
 print("  Pesos RP:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_rp)})
 print(f"  Ret {ret_rp*100:6.2f}% | Vol {vol_rp*100:6.2f}%")
-if w_bench is not None:
-    te_rp = tracking_error_annual(w_rp, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_rp*100:5.2f}%")
+if bench_ret is not None:
+    te_rp = te_index_ex_ante(w_rp, Sigma_te, c_te, varb_te)
+    if te_rp is not None:
+        print(f"  TE vs índice (ex–ante): {te_rp*100:5.2f}%")
 
 # =============================
-# 3) Restricciones (mismas cotas y grupos; Sharpe)
+# 3) Max Diversification Ratio (MDR) en lugar de "Constrained"
 # =============================
-print("\n🎯 3) Restricciones (Sharpe con cotas y grupos)")
-cons_cs = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    cons_cs.append({"type": "ineq",
-                    "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+print("\n🎯 3) Max Diversification Ratio (MDR) con cotas/grupos")
+cons_mdr = [sum_to_one, *group_cons]
+if bench_ret is not None and TE_MAX is not None:
+    cons_mdr.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
-res_cs = minimize(negative_sharpe, x0=x0,
-                  args=(mean_ret[assets], cov.loc[assets, assets], RISK_FREE),
-                  method="SLSQP", bounds=bnds, constraints=cons_cs,
-                  options={"maxiter": 500, "ftol": 1e-9})
-if not res_cs.success:
-    print(f"⚠️  Cartera restringida no convergió: {res_cs.message}")
-w_cs = res_cs.x
-ret_cs, vol_cs = portfolio_performance(w_cs, mean_ret[assets], cov.loc[assets, assets])
-shp_cs = (ret_cs - RISK_FREE) / (vol_cs + 1e-12)
-print("  Pesos CS:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_cs)})
-print(f"  Ret {ret_cs*100:6.2f}% | Vol {vol_cs*100:6.2f}% | Sharpe {shp_cs:6.3f}")
-if w_bench is not None:
-    te_cs = tracking_error_annual(w_cs, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_cs*100:5.2f}%")
+res_mdr = optimize_with_restarts(
+    fun=lambda w: neg_diversification_ratio(w, cov.loc[assets, assets]) +
+                  te_hinge_penalty(w, Sigma_te, c_te, varb_te, TE_MAX, TE_PENALTY_LAMBDA),
+    x0_list=x0_list, bounds=bnds, constraints=cons_mdr
+)
+if not res_mdr.success:
+    print(f"⚠️  MDR no convergió: {res_mdr.message}")
+w_mdr = res_mdr.x
+ret_mdr, vol_mdr = portfolio_performance(w_mdr, mean_ret[assets], cov.loc[assets, assets])
+shp_mdr = (ret_mdr - RISK_FREE) / (vol_mdr + 1e-12)
+print("  Pesos MDR:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_mdr)})
+print(f"  Ret {ret_mdr*100:6.2f}% | Vol {vol_mdr*100:6.2f}% | Sharpe {shp_mdr:6.3f}")
+if bench_ret is not None:
+    te_mdr = te_index_ex_ante(w_mdr, Sigma_te, c_te, varb_te)
+    if te_mdr is not None:
+        print(f"  TE vs índice (ex–ante): {te_mdr*100:5.2f}%")
 
 # =============================
-# 4) Black–Litterman (μ posterior, Σ histórica)
+# 4) Black–Litterman (μ posterior, Σ histórica) — CALIBRADO
 # =============================
-print("\n🧠 4) Black–Litterman (simplificado)")
+print("\n🧠 4) Black–Litterman (calibrado)")
 
-TAU = 0.05     # incertidumbre del prior
-DELTA = 2.5    # aversión al riesgo típica
-MARKET_WEIGHTS: Optional[Dict[str, float]] = None   # si se tienen
-VIEWS: Optional[Dict[str, float]] = None            # ej: {"AMZN": 0.12, "GLD": 0.04}
+# Calibración de TAU y DELTA
+T = len(returns)
+TAU = 1.0 / max(T, 1)   # regla típica
+if bench_ret is not None and len(bench_ret) > 50:
+    mkt_mu  = bench_ret.mean() * 252.0
+    mkt_var = bench_ret.var(ddof=1) * 252.0
+    DELTA = max((mkt_mu - RISK_FREE) / (mkt_var + 1e-18), 1e-3)
+else:
+    DELTA = 2.5  # fallback
 
 Sigma = cov.loc[assets, assets].values
-mu_hist = mean_ret[assets].values
-
-# prior de equilibrio
+N = len(assets)
 if MARKET_WEIGHTS:
     w_mkt = weights_from_dict(assets, MARKET_WEIGHTS)
 else:
     w_mkt = np.full(N, 1.0 / N)
 Pi = DELTA * (Sigma @ w_mkt)
 
-# views
 if not VIEWS:
     P = np.eye(N); Q = Pi.copy()
 else:
@@ -461,22 +664,22 @@ else:
         P = np.array(P_rows); Q = np.array(Q_vals)
 
 from numpy.linalg import inv
-Omega = np.diag(np.diag(Sigma)) * 0.25
+Omega = TAU * np.diag(np.diag(P @ Sigma @ P.T))
 A = inv(TAU * Sigma)
 middle = A + P.T @ inv(Omega) @ P
-Sigma_mu = inv(middle)                      # cov de la incertidumbre de μ (NO de riesgo)
+Sigma_mu = inv(middle)
 mu_bl = Sigma_mu @ (A @ Pi + P.T @ inv(Omega) @ Q)
 mu_bl_series = pd.Series(mu_bl, index=assets)
 
 cons_bl = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    cons_bl.append({"type": "ineq",
-                    "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+if bench_ret is not None and TE_MAX is not None:
+    cons_bl.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
-res_bl = minimize(negative_sharpe, x0=x0,
-                  args=(mu_bl_series, cov.loc[assets, assets], RISK_FREE),
-                  method="SLSQP", bounds=bnds, constraints=cons_bl,
-                  options={"maxiter": 500, "ftol": 1e-9})
+res_bl = optimize_with_restarts(
+    fun=lambda w: neg_sharpe_with_pen(w, mu_bl_series, cov.loc[assets, assets], RISK_FREE,
+                                      Sigma_te, c_te, varb_te, TE_MAX, TE_PENALTY_LAMBDA),
+    x0_list=x0_list, bounds=bnds, constraints=cons_bl
+)
 if not res_bl.success:
     print(f"⚠️  BL no convergió: {res_bl.message}")
 w_bl = res_bl.x
@@ -484,9 +687,10 @@ ret_bl, vol_bl = portfolio_performance(w_bl, mu_bl_series, cov.loc[assets, asset
 shp_bl = (ret_bl - RISK_FREE) / (vol_bl + 1e-12)
 print("  Pesos BL:", {a: f"{w*100:5.1f}%" for a, w in zip(assets, w_bl)})
 print(f"  Ret {ret_bl*100:6.2f}% | Vol {vol_bl*100:6.2f}% | Sharpe {shp_bl:6.3f}")
-if w_bench is not None:
-    te_bl = tracking_error_annual(w_bl, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_bl*100:5.2f}%")
+if bench_ret is not None:
+    te_bl = te_index_ex_ante(w_bl, Sigma_te, c_te, varb_te)
+    if te_bl is not None:
+        print(f"  TE vs índice (ex–ante): {te_bl*100:5.2f}%")
 
 # =============================
 # 5) Frontera Eficiente (min-var para retornos objetivo)
@@ -496,32 +700,84 @@ print("\n📐 5) Frontera eficiente")
 def min_var_for_target(mu: pd.Series, Sigma_df: pd.DataFrame,
                        r_target: float,
                        bounds: Tuple[Tuple[float, float], ...],
-                       base_cons: List[dict]) -> Optional[np.ndarray]:
+                       base_cons: List[dict],
+                       x0_list: List[np.ndarray]) -> Optional[np.ndarray]:
     cons = list(base_cons) + [{"type": "eq", "fun": lambda w, mu=mu, rt=r_target: float(np.dot(w, mu.values) - rt)}]
-    res = minimize(portfolio_variance, x0=x0,
-                   args=(Sigma_df,),
-                   method="SLSQP", bounds=bounds, constraints=cons,
-                   options={"maxiter": 500, "ftol": 1e-9})
-    if res.success:
+    res = optimize_with_restarts(
+        fun=lambda w: portfolio_variance(w, Sigma_df),
+        x0_list=x0_list, bounds=bounds, constraints=cons
+    )
+    if res and res.success:
         return res.x
     return None
 
-# rango de retornos objetivo (clamp dentro de percentiles razonables)
 mu_vals = mean_ret[assets].values
 r_min, r_max = np.percentile(mu_vals, 5), np.percentile(mu_vals, 95)
 targets = np.linspace(max(0.5*r_min, r_min - 0.02), r_max + 0.02, 40)
 
 base_cons_fe = [sum_to_one, *group_cons]
-if w_bench is not None and TE_MAX is not None:
-    base_cons_fe.append({"type": "ineq",
-                         "fun": lambda w, wb=w_bench, S=cov, te=TE_MAX: te_constraint_ineq(w, wb, S, te)})
+if bench_ret is not None and TE_MAX is not None:
+    base_cons_fe.append(make_te_ineq_with_jac(Sigma_te, c_te, varb_te, TE_MAX))
 
 ef_weights, ef_rets, ef_vols = [], [], []
 for rt in targets:
-    w_fe = min_var_for_target(mean_ret[assets], cov.loc[assets, assets], rt, bnds, base_cons_fe)
+    w_fe = min_var_for_target(mean_ret[assets], cov.loc[assets, assets], rt, bnds, base_cons_fe, x0_list)
     if w_fe is not None:
         r, v = portfolio_performance(w_fe, mean_ret[assets], cov.loc[assets, assets])
         ef_weights.append(w_fe); ef_rets.append(r); ef_vols.append(v)
+
+# =============================
+# 5b) Frontera ACTIVA (máx. Sharpe vs TE)
+# =============================
+if bench_ret is not None and Sigma_te is not None:
+    print("\n📈 5b) Frontera ACTIVA (Sharpe máximo vs TE)")
+
+    r_bench = bench_ret.mean() * 252.0
+
+    # grid de caps de TE (desde el mínimo factible + eps hasta algo más amplio)
+    te_low = (TE_min + TE_RELAX_EPS_ABS) if TE_min is not None else 0.02
+    te_high = max(te_low + 0.001, (TE_MAX or te_low) + 0.10)
+    te_grid = np.linspace(te_low, te_high, 8)
+
+    af_te, af_exret, af_ir = [], [], []
+    for te_cap in te_grid:
+        cons_af = [sum_to_one, *group_cons, make_te_ineq_with_jac(Sigma_te, c_te, varb_te, float(te_cap))]
+        res_af = optimize_with_restarts(
+            fun=lambda w: negative_sharpe(w, mean_ret[assets], cov.loc[assets, assets], RISK_FREE),
+            x0_list=x0_list, bounds=bnds, constraints=cons_af
+        )
+        if res_af and res_af.success:
+            w_star = res_af.x
+            r_p, v_p = portfolio_performance(w_star, mean_ret[assets], cov.loc[assets, assets])
+            te_p = te_index_ex_ante(w_star, Sigma_te, c_te, varb_te)
+            ex_ret = r_p - r_bench
+            ir = ex_ret / (te_p + 1e-12) if te_p is not None else np.nan
+            af_te.append(te_p); af_exret.append(ex_ret); af_ir.append(ir)
+
+    # Gráfico de Frontera ACTIVA (Exceso de retorno vs TE)
+    try:
+        if af_te:
+            from pathlib import Path
+            try:
+                base_dir = Path(__file__).resolve().parent
+            except NameError:
+                base_dir = Path.cwd()
+            png_dir = base_dir / "png"
+            png_dir.mkdir(parents=True, exist_ok=True)
+
+            fig_af, ax_af = plt.subplots(figsize=(9, 6))
+            ax_af.plot(af_te, af_exret, marker="o")
+            for x, y in zip(af_te, af_exret):
+                ax_af.annotate(f"{x*100:.1f}%", (x, y), textcoords="offset points", xytext=(6,6), fontsize=8)
+            ax_af.set_xlabel("Tracking Error (anual)")
+            ax_af.set_ylabel("Exceso de retorno (anual) vs benchmark")
+            ax_af.set_title("Frontera ACTIVA (máx. Sharpe)")
+            ax_af.grid(True, alpha=0.3)
+            fig_af.tight_layout()
+            fig_af.savefig(png_dir / "frontera_activa.png", dpi=300)
+            print("   - frontera_activa.png")
+    except Exception as _e:
+        pass
 
 # =============================
 # 6) Comparación, Recomendación y TE
@@ -531,17 +787,20 @@ strategies = {
     "Maximum Sharpe": (w_ms, ret_ms, vol_ms, shp_ms),
     "Minimum Variance": (w_mv, ret_mv, vol_mv, (ret_mv - RISK_FREE) / (vol_mv + 1e-12)),
     "Risk Parity": (w_rp, ret_rp, vol_rp, (ret_rp - RISK_FREE) / (vol_rp + 1e-12)),
-    "Constrained": (w_cs, ret_cs, vol_cs, shp_cs),
+    "Max Diversification Ratio": (w_mdr, ret_mdr, vol_mdr, shp_mdr),
     "Black–Litterman": (w_bl, ret_bl, vol_bl, shp_bl),
 }
+if w_te_track is not None:
+    strategies["Min TE (tracking)"] = (w_te_track, r_te, v_te, s_te)
 
 for name, (w, r, v, s) in strategies.items():
     print(f"\n{name}:")
     print("  Pesos:", {a: f"{wi*100:5.1f}%" for a, wi in zip(assets, w)})
     print(f"  Ret {r*100:6.2f}% | Vol {v*100:6.2f}% | Sharpe {s:6.3f}")
-    if w_bench is not None:
-        te = tracking_error_annual(w, w_bench, cov.loc[assets, assets])
-        print(f"  TE vs bench: {te*100:5.2f}%")
+    if bench_ret is not None:
+        te_xa = te_index_ex_ante(w, Sigma_te, c_te, varb_te)
+        if te_xa is not None:
+            print(f"  TE vs índice (ex–ante): {te_xa*100:5.2f}%")
 
 # Recomendación por Sharpe (histórico)
 print("\n🏆 RECOMENDACIÓN FINAL (máx. Sharpe histórico)")
@@ -560,9 +819,10 @@ for a, w in zip(assets, best_w):
 if abs(remanente) > 0:
     print(f"  Ajuste remanente: {remanente:+.0f} EUR/mes")
 
-if w_bench is not None:
-    te_best = tracking_error_annual(best_w, w_bench, cov.loc[assets, assets])
-    print(f"  TE vs bench: {te_best*100:5.2f}%")
+if bench_ret is not None:
+    te_best = te_index_ex_ante(best_w, Sigma_te, c_te, varb_te)
+    if te_best is not None:
+        print(f"  TE vs índice (ex–ante): {te_best*100:5.2f}%")
 
 # =============================
 # 7) Gráficos y exportación
@@ -576,20 +836,47 @@ except NameError:
 png_dir = base_dir / "png"
 png_dir.mkdir(parents=True, exist_ok=True)
 
-# Frontera eficiente + puntos de estrategias
+# Frontera eficiente + puntos de estrategias + índice + CML
 fig, ax = plt.subplots(figsize=(10, 7))
 if ef_vols:
     ax.plot(ef_vols, ef_rets, lw=2, label="Frontera Eficiente")
 # puntos de estrategias
-colors = {"Maximum Sharpe": "tab:green", "Minimum Variance": "tab:blue",
-          "Risk Parity": "tab:orange", "Constrained": "tab:red", "Black–Litterman": "tab:purple"}
+colors = {
+    "Maximum Sharpe": "tab:green",
+    "Minimum Variance": "tab:blue",
+    "Risk Parity": "tab:orange",
+    "Max Diversification Ratio": "tab:red",
+    "Black–Litterman": "tab:purple",
+    "Min TE (tracking)": "tab:brown",
+}
 for name, (w, r, v, s) in strategies.items():
     ax.scatter([v], [r], s=60, label=name, color=colors.get(name, None), zorder=3)
     ax.annotate(name, (v, r), textcoords="offset points", xytext=(6,6), fontsize=8)
-if w_bench is not None:
-    v_b, r_b = portfolio_performance(w_bench, mean_ret[assets], cov.loc[assets, assets])
-    ax.scatter([v_b], [r_b], s=60, label="Benchmark", marker="D", zorder=3)
-    ax.annotate("Benchmark", (v_b, r_b), textcoords="offset points", xytext=(6,-12), fontsize=8)
+# punto del índice (benchmark externo)
+r_b, v_b = None, None
+if bench_ret is not None:
+    r_b = bench_ret.mean() * 252.0
+    v_b = bench_ret.std(ddof=1) * np.sqrt(252.0)
+    ax.scatter([v_b], [r_b], s=60, label=f"Benchmark ({BENCHMARK})", marker="D", zorder=3)
+    ax.annotate(f"{BENCHMARK}", (v_b, r_b), textcoords="offset points", xytext=(6,-12), fontsize=8)
+
+# --- Capital Market Line (CML) usando la cartera tangente (Maximum Sharpe) ---
+try:
+    if vol_ms > 0:
+        candidates = [vol_ms]
+        if ef_vols:
+            candidates += list(ef_vols)
+        if v_b is not None:
+            candidates.append(v_b)
+        max_vol_plot = max(candidates) * 1.1
+
+        xs = np.linspace(0.0, max_vol_plot, 100)
+        slope = (ret_ms - RISK_FREE) / (vol_ms + 1e-12)
+        ys = RISK_FREE + slope * xs
+
+        ax.plot(xs, ys, linestyle="--", linewidth=1.6, label="Capital Market Line")
+except Exception:
+    pass
 
 ax.set_xlabel("Volatilidad anual")
 ax.set_ylabel("Retorno anual")
@@ -632,4 +919,189 @@ print(f"\n🖼️  Gráficos guardados en: {png_dir.resolve()}")
 print("   - frontera_eficiente.png")
 print("   - pesos_estrategias.png")
 print("   - contribuciones_riesgo.png")
-print("\n🎉 Optimización completada.")
+
+# =============================
+# 8) Backtest con aportaciones y rebalanceo periódico
+# =============================
+
+# Parámetros del backtest (ajusta a tu gusto)
+BT_INITIAL        = 10_000.0
+BT_MONTHLY_CONTR  = 300.0
+BT_REBAL_FREQ     = "M"
+BT_DRIFT_TOL      = 0.03
+BT_COST_BPS       = 10
+BT_SLIPPAGE_BPS   = 5
+BT_ROLL_SHARPE_WIN= 252
+
+def backtest_static_weights(returns_df: pd.DataFrame,
+                            target_w: np.ndarray,
+                            initial: float = 10_000.0,
+                            monthly_contrib: float = 300.0,
+                            rebalance_freq: str = "M",
+                            drift_tol: float = 0.03,
+                            cost_bps: float = 10.0,
+                            slip_bps: float = 5.0,
+                            bench_ret_series: pd.Series | None = None):
+    dates = returns_df.index
+    A = returns_df.values
+    target = np.array(target_w, dtype=float)
+    target = target / target.sum()
+
+    rebal_dates = set(returns_df.resample(rebalance_freq).last().index)
+
+    w = target.copy()
+    V = float(initial)
+    twr = 1.0
+
+    equity_twr, wealth, port_ret = [], [], []
+    turnover_sum = 0.0
+    n_rebals = 0
+
+    init_turnover = 1.0
+    init_cost = (cost_bps + slip_bps) * 1e-4 * (V * init_turnover)
+    V -= init_cost
+    if V <= 0:
+        raise RuntimeError("Costes iniciales excesivos; revisa bps.")
+
+    for t, dt in enumerate(dates):
+        r_vec = A[t, :]
+        r_p = float(np.dot(w, r_vec))
+        twr *= (1.0 + r_p)
+        V *= (1.0 + r_p)
+
+        denom = (1.0 + r_p)
+        if denom <= 0:
+            denom = max(denom, 1e-12)
+        w = (w * (1.0 + r_vec)) / denom
+
+        if dt in rebal_dates:
+            C = monthly_contrib
+            V_post = V + C
+            w_adj = w * (V / V_post)
+
+            l1 = float(np.abs(w_adj - target).sum())
+            drift = 0.5 * l1
+
+            if drift > drift_tol:
+                turnover_frac = 0.5 * l1
+                txn_cost = (cost_bps + slip_bps) * 1e-4 * (V_post * turnover_frac)
+                V_post -= txn_cost
+                w = target.copy()
+                turnover_sum += turnover_frac
+                n_rebals += 1
+            else:
+                w = w_adj.copy()
+            V = V_post
+
+        equity_twr.append(twr)
+        wealth.append(V)
+        port_ret.append(r_p)
+
+    equity_twr = pd.Series(equity_twr, index=dates, name="TWR_Index")
+    wealth = pd.Series(wealth, index=dates, name="Wealth")
+    port_ret = pd.Series(port_ret, index=dates, name="Port_Ret")
+
+    n_days = len(port_ret)
+    cagr_twr = equity_twr.iloc[-1] ** (252.0 / n_days) - 1.0
+    vol_ann = port_ret.std(ddof=1) * np.sqrt(252.0)
+    sharpe = (port_ret.mean() * 252.0 - RISK_FREE) / (vol_ann + 1e-12)
+    roll_max = equity_twr.cummax()
+    dd = equity_twr / roll_max - 1.0
+    mdd = dd.min()
+
+    realized_te = None
+    if bench_ret_series is not None:
+        aligned_bench = bench_ret_series.reindex(port_ret.index).dropna()
+        aligned_port = port_ret.reindex(aligned_bench.index)
+        diff = aligned_port.values - aligned_bench.values
+        realized_te = float(np.std(diff, ddof=1) * np.sqrt(252.0))
+
+    return {
+        "equity_twr": equity_twr,
+        "wealth": wealth,
+        "port_ret": port_ret,
+        "cagr_twr": float(cagr_twr),
+        "vol_ann": float(vol_ann),
+        "sharpe": float(sharpe),
+        "max_dd": float(mdd),
+        "turnover_sum": float(turnover_sum),
+        "n_rebals": int(n_rebals),
+        "realized_te": realized_te,
+    }
+
+# Ejecutar backtest para cada estrategia con pesos fijos
+bt_results = {}
+for name, (w, r, v, s) in strategies.items():
+    out = backtest_static_weights(
+        returns_df=returns[assets],
+        target_w=w,
+        initial=BT_INITIAL,
+        monthly_contrib=BT_MONTHLY_CONTR,
+        rebalance_freq=BT_REBAL_FREQ,
+        drift_tol=BT_DRIFT_TOL,
+        cost_bps=BT_COST_BPS,
+        slip_bps=BT_SLIPPAGE_BPS,
+        bench_ret_series=bench_ret,
+    )
+    bt_results[name] = out
+
+# =============================
+# 9) Métricas y gráficos del backtest
+# =============================
+print("\n🧪 RESULTADOS BACKTEST (TWR, aportaciones y costes)")
+for name, out in bt_results.items():
+    te_txt = f" | Realized TE: {out['realized_te']*100:5.2f}%" if out["realized_te"] is not None else ""
+    print(f"\n{name}:")
+    print(f"  CAGR (TWR): {out['cagr_twr']*100:6.2f}% | Vol: {out['vol_ann']*100:6.2f}% | Sharpe: {out['sharpe']:6.3f}")
+    print(f"  Max Drawdown: {out['max_dd']*100:6.2f}% | Turnover Σ: {out['turnover_sum']*100:6.2f}% | Rebalances: {out['n_rebals']}{te_txt}")
+    print(f"  Wealth final: €{out['wealth'].iloc[-1]:,.0f} (Inicial €{BT_INITIAL:,.0f} + aport.)")
+
+# Directorio de salida (ya creado antes)
+try:
+    base_dir = Path(__file__).resolve().parent
+except NameError:
+    base_dir = Path.cwd()
+png_dir = base_dir / "png"
+png_dir.mkdir(parents=True, exist_ok=True)
+
+# Curvas de TWR
+fig, ax = plt.subplots(figsize=(10, 7))
+for name, out in bt_results.items():
+    ax.plot(out["equity_twr"].index, out["equity_twr"].values, label=name, lw=1.8)
+ax.set_title("Equity TWR (sin flujos)")
+ax.set_ylabel("Índice TWR (base 1)")
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=8)
+fig.tight_layout()
+fig.savefig(png_dir / "backtest_equity_twr.png", dpi=300)
+
+# Curvas de Wealth (con aportaciones y costes)
+fig2, ax2 = plt.subplots(figsize=(10, 7))
+for name, out in bt_results.items():
+    ax2.plot(out["wealth"].index, out["wealth"].values, label=name, lw=1.8)
+ax2.set_title("Wealth con aportaciones y costes")
+ax2.set_ylabel("€")
+ax2.grid(True, alpha=0.3)
+ax2.legend(fontsize=8)
+fig2.tight_layout()
+fig2.savefig(png_dir / "backtest_wealth.png", dpi=300)
+
+# Sharpe rodante
+fig3, ax3 = plt.subplots(figsize=(10, 6))
+for name, out in bt_results.items():
+    pr = out["port_ret"]
+    mu = pr.rolling(BT_ROLL_SHARPE_WIN).mean() * 252.0
+    sd = pr.rolling(BT_ROLL_SHARPE_WIN).std(ddof=1) * np.sqrt(252.0)
+    roll_sharpe = (mu - RISK_FREE) / (sd + 1e-12)
+    ax3.plot(roll_sharpe.index, roll_sharpe.values, label=name, lw=1.2)
+ax3.axhline(0.0, color="k", lw=0.8, ls="--", alpha=0.6)
+ax3.set_title(f"Sharpe rodante ({BT_ROLL_SHARPE_WIN} días)")
+ax3.grid(True, alpha=0.3)
+ax3.legend(fontsize=8)
+fig3.tight_layout()
+fig3.savefig(png_dir / "backtest_sharpe_rodante.png", dpi=300)
+
+print("\n🖼️  Gráficos de backtest guardados:")
+print("   - backtest_equity_twr.png")
+print("   - backtest_wealth.png")
+print("   - backtest_sharpe_rodante.png")
