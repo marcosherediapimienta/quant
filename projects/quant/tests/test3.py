@@ -925,29 +925,42 @@ print("   - contribuciones_riesgo.png")
 # =============================
 
 # Parámetros del backtest (ajusta a tu gusto)
-BT_INITIAL        = 10_000.0
-BT_MONTHLY_CONTR  = 300.0
-BT_REBAL_FREQ     = "M"
-BT_DRIFT_TOL      = 0.03
-BT_COST_BPS       = 10
-BT_SLIPPAGE_BPS   = 5
-BT_ROLL_SHARPE_WIN= 252
+BT_INITIAL         = 10_000.0   # capital inicial
+BT_MONTHLY_CONTR   = 300.0      # aportación mensual total
+BT_CONTRIB_FREQ    = "M"        # frecuencia de aportación (mensual)
+BT_REBAL_FREQ      = "2Q"       # frecuencia de rebalanceo: "2Q" semestral | "A" anual | "Q" trimestral | "M" mensual
+BT_DRIFT_TOL       = 0.03       # no rebalancear si L1/2 < 3%
+BT_COST_BPS        = 10         # costes (brokeraje/fees) en bps
+BT_SLIPPAGE_BPS    = 5          # slippage en bps
+BT_ROLL_SHARPE_WIN = 252        # ventana para Sharpe rodante (días)
 
 def backtest_static_weights(returns_df: pd.DataFrame,
                             target_w: np.ndarray,
                             initial: float = 10_000.0,
                             monthly_contrib: float = 300.0,
-                            rebalance_freq: str = "M",
+                            contrib_freq: str = "M",
+                            rebalance_freq: str = "2Q",
                             drift_tol: float = 0.03,
                             cost_bps: float = 10.0,
                             slip_bps: float = 5.0,
                             bench_ret_series: pd.Series | None = None):
+    """
+    Backtest estático con:
+      - Pesos objetivo fijos 'target_w' (sum=1, >=0)
+      - Aportaciones periódicas según 'contrib_freq' (p.ej. 'M')
+      - Rebalanceo según 'rebalance_freq' (p.ej. '2Q' semestral o 'A' anual)
+      - Rebalancear sólo si la deriva (L1/2) > drift_tol
+      - Costes = (cost_bps + slip_bps) * turnover_dólares
+      - Devuelve dict con métricas y series (TWR, Wealth, Sharpe, TE ex-post si hay benchmark)
+    """
     dates = returns_df.index
     A = returns_df.values
     target = np.array(target_w, dtype=float)
     target = target / target.sum()
 
-    rebal_dates = set(returns_df.resample(rebalance_freq).last().index)
+    # Calendarios independientes
+    contrib_dates = set(returns_df.resample(contrib_freq).last().index)
+    rebal_dates   = set(returns_df.resample(rebalance_freq).last().index)
 
     w = target.copy()
     V = float(initial)
@@ -957,6 +970,7 @@ def backtest_static_weights(returns_df: pd.DataFrame,
     turnover_sum = 0.0
     n_rebals = 0
 
+    # coste inicial de entrar a los pesos objetivo
     init_turnover = 1.0
     init_cost = (cost_bps + slip_bps) * 1e-4 * (V * init_turnover)
     V -= init_cost
@@ -964,55 +978,58 @@ def backtest_static_weights(returns_df: pd.DataFrame,
         raise RuntimeError("Costes iniciales excesivos; revisa bps.")
 
     for t, dt in enumerate(dates):
+        # 1) Evolución diaria por retornos
         r_vec = A[t, :]
         r_p = float(np.dot(w, r_vec))
         twr *= (1.0 + r_p)
-        V *= (1.0 + r_p)
+        V   *= (1.0 + r_p)
 
         denom = (1.0 + r_p)
         if denom <= 0:
             denom = max(denom, 1e-12)
-        w = (w * (1.0 + r_vec)) / denom
+        w = (w * (1.0 + r_vec)) / denom  # nuevos pesos tras el día
 
-        if dt in rebal_dates:
+        # 2) Aportación en calendario de contribución (invertida hacia el objetivo)
+        if dt in contrib_dates:
             C = monthly_contrib
             V_post = V + C
-            w_adj = w * (V / V_post)
+            # Asigna la aportación con los pesos objetivo (empuja sin vender)
+            w = (w * V + C * target) / V_post
+            V = V_post
 
-            l1 = float(np.abs(w_adj - target).sum())
+        # 3) Rebalanceo en su propio calendario (tras haber aportado, si coincide)
+        if dt in rebal_dates:
+            l1 = float(np.abs(w - target).sum())
             drift = 0.5 * l1
-
             if drift > drift_tol:
                 turnover_frac = 0.5 * l1
-                txn_cost = (cost_bps + slip_bps) * 1e-4 * (V_post * turnover_frac)
-                V_post -= txn_cost
+                txn_cost = (cost_bps + slip_bps) * 1e-4 * (V * turnover_frac)
+                V -= txn_cost
                 w = target.copy()
                 turnover_sum += turnover_frac
                 n_rebals += 1
-            else:
-                w = w_adj.copy()
-            V = V_post
 
+        # 4) Guardar series
         equity_twr.append(twr)
         wealth.append(V)
         port_ret.append(r_p)
 
     equity_twr = pd.Series(equity_twr, index=dates, name="TWR_Index")
-    wealth = pd.Series(wealth, index=dates, name="Wealth")
-    port_ret = pd.Series(port_ret, index=dates, name="Port_Ret")
+    wealth     = pd.Series(wealth,     index=dates, name="Wealth")
+    port_ret   = pd.Series(port_ret,   index=dates, name="Port_Ret")
 
-    n_days = len(port_ret)
+    n_days  = len(port_ret)
     cagr_twr = equity_twr.iloc[-1] ** (252.0 / n_days) - 1.0
-    vol_ann = port_ret.std(ddof=1) * np.sqrt(252.0)
-    sharpe = (port_ret.mean() * 252.0 - RISK_FREE) / (vol_ann + 1e-12)
+    vol_ann  = port_ret.std(ddof=1) * np.sqrt(252.0)
+    sharpe   = (port_ret.mean() * 252.0 - RISK_FREE) / (vol_ann + 1e-12)
     roll_max = equity_twr.cummax()
-    dd = equity_twr / roll_max - 1.0
-    mdd = dd.min()
+    dd       = equity_twr / roll_max - 1.0
+    mdd      = dd.min()
 
     realized_te = None
     if bench_ret_series is not None:
         aligned_bench = bench_ret_series.reindex(port_ret.index).dropna()
-        aligned_port = port_ret.reindex(aligned_bench.index)
+        aligned_port  = port_ret.reindex(aligned_bench.index)
         diff = aligned_port.values - aligned_bench.values
         realized_te = float(np.std(diff, ddof=1) * np.sqrt(252.0))
 
@@ -1037,7 +1054,8 @@ for name, (w, r, v, s) in strategies.items():
         target_w=w,
         initial=BT_INITIAL,
         monthly_contrib=BT_MONTHLY_CONTR,
-        rebalance_freq=BT_REBAL_FREQ,
+        contrib_freq=BT_CONTRIB_FREQ,   # <-- aportación mensual
+        rebalance_freq=BT_REBAL_FREQ,   # <-- rebalanceo semestral/anual/etc.
         drift_tol=BT_DRIFT_TOL,
         cost_bps=BT_COST_BPS,
         slip_bps=BT_SLIPPAGE_BPS,
@@ -1057,6 +1075,7 @@ for name, out in bt_results.items():
     print(f"  Wealth final: €{out['wealth'].iloc[-1]:,.0f} (Inicial €{BT_INITIAL:,.0f} + aport.)")
 
 # Directorio de salida (ya creado antes)
+from pathlib import Path
 try:
     base_dir = Path(__file__).resolve().parent
 except NameError:
