@@ -31,14 +31,16 @@ from scipy.optimize import minimize
 # =============================
 # Parámetros del usuario
 # =============================
-TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR", "AAPL", "TSLA", "META", "MSFT", "IBM", "BAC", "AXP", 
-                        "KO", "MCO", "NVDA", "OXY", "CVX", "CB", "KHC", "DVA"]
-FECHA_INICIO = "2018-03-20"
-FECHA_FIN = "2025-09-02"
+TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM",
+            "AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
+
+FECHA_INICIO = "2018-01-01"
+FECHA_FIN = "2025-09-12"
 
 FX_TICKER = "EURUSD=X"      # USD por 1 EUR
-USD_TICKERS =  {"AMZN", "GLD", "AAPL", "TSLA", "META", "MSFT", "IBM", "BAC", "AXP", 
-                        "KO", "MCO", "NVDA", "OXY", "CVX", "CB", "KHC", "DVA"}
+
+USD_TICKERS =  {"NVDA","MSFT","AAPL","GOOGL","IBM",
+                "AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
 RISK_FREE = 0.045           # anual
 MONTHLY_CONTRIB = 300.0     # EUR/mes totales
@@ -51,9 +53,9 @@ SIMPLE_SHRINKAGE_LAMBDA = 0.05  # 0.0 para desactivar
 # ====== Restricciones por activo (ejemplos realistas) ======
 # Si un ticker no aparece en este dict, se usa (0,1) por defecto.
 PER_ASSET_BOUNDS: Dict[str, Tuple[float, float]] = {
-    "BTC-EUR": (0.00, 0.15),     # techo al cripto
-    "GLD": (0.00, 0.40),         # oro hasta 40%
-    "AMZN": (0.00, 0.35),        # single-stock hasta 35%
+    "BTC-EUR": (0.00, 0.00),     # techo al cripto
+    #"GLD": (0.00, 0.40),         # oro hasta 40%
+    #"AMZN": (0.00, 0.35),        # single-stock hasta 35%
     # "0P0001CLDK.F": (0.10, 0.80),  # ejemplo para un fondo
 }
 

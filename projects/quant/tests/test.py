@@ -27,13 +27,13 @@ except ImportError:
 # Configuración del análisis
 # =========================
 # Cartera diversificada (puedes cambiarla)
-TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR"]
+TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
 
 # Ticker para tipo de cambio USD/EUR (EUR por 1 USD -> ojo: en Yahoo es EURUSD=X = EUR por USD)
 FX_TICKER = "EURUSD=X"
 
 # Tickers que necesitan conversión de USD a EUR
-USD_TICKERS = {"AMZN", "GLD"}
+USD_TICKERS = {"NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "META", "TSLA", "JPM" ,"BRK-A","GLD"}
 
 # Tasa libre de riesgo (anual, en términos nominales)
 Rf = 0.045

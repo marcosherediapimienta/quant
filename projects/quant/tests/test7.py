@@ -24,32 +24,16 @@ from datetime import datetime
 # Configuración
 # =========================
 # Ejemplos de activos en EUR: bolsa española (.MC), francesa (.PA), alemana (.DE), BTC-EUR, etc.
-PORTFOLIO_TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR", "AAPL", "TSLA", "META", "MSFT", "IBM", "BAC", "AXP", 
-                        "KO", "MCO", "NVDA", "OXY", "CVX", "CB", "KHC", "DVA"]
+PORTFOLIO_TICKERS = ["0P0001CLDK.F", "NVDA", "MSFT", "GLD"]  
 PORTFOLIO_WEIGHTS = np.array([
-    0.644,  # 0P0001CLDK.F
-    0.000,  # AMZN
-    0.253,  # GLD
-    0.005,  # BTC-EUR
-    0.000,  # AAPL
-    0.000,  # TSLA
-    0.000,  # META
-    0.011,  # MSFT
-    0.000,  # IBM
-    0.000,  # BAC
-    0.000,  # AXP
-    0.000,  # KO
-    0.000,  # MCO
-    0.042,  # NVDA
-    0.000,  # OXY
-    0.000,  # CVX
-    0.045,  # CB
-    0.000,  # KHC
-    0.000   # DVA
+    0.674,  # 0P0001CLDK.F
+    0.044,  # NVDA
+    0.007,  # MSFT
+    0.275,  # GLD
 ])
 
 # Benchmark en USD (se convertirá a EUR automáticamente); si prefieres EU, prueba "^STOXX50E"
-BENCHMARK_TICKER = "^GSPC"
+BENCHMARK_TICKER = "EUNL.DE"
 
 # Tasa libre de riesgo ANUAL en EUR (ajústala a tu referencia: Bund/€STR, etc.)
 RISK_FREE_RATE = 0.0425
