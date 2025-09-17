@@ -258,16 +258,25 @@ class DataManager:
                         data[symbol] = bulk_data['Close']
                     elif 'Adj Close' in bulk_data.columns:
                         data[symbol] = bulk_data['Adj Close']
+                    else:
+                        # Si no hay Close ni Adj Close, usar la primera columna numérica disponible
+                        numeric_cols = bulk_data.select_dtypes(include=[np.number]).columns
+                        if len(numeric_cols) > 0:
+                            data[symbol] = bulk_data[numeric_cols[0]]
+                        else:
+                            failed_symbols.append(symbol)
                 else:
                     # Múltiples símbolos
                     for symbol in symbols:
                         try:
-                            if symbol in bulk_data.columns.get_level_values(0):
+                            if hasattr(bulk_data.columns, 'get_level_values') and symbol in bulk_data.columns.get_level_values(0):
                                 symbol_data = bulk_data[symbol]
                                 if 'Close' in symbol_data.columns:
                                     data[symbol] = symbol_data['Close']
                                 elif 'Adj Close' in symbol_data.columns:
                                     data[symbol] = symbol_data['Adj Close']
+                                else:
+                                    failed_symbols.append(symbol)
                             else:
                                 failed_symbols.append(symbol)
                         except Exception:
@@ -592,7 +601,10 @@ class DataManager:
                     cols_to_load = [col for col in requested_symbols_list if col in available_cols]
                     
                     if cols_to_load:
-                        df = pd.read_csv(latest_cache, index_col=0, parse_dates=True, usecols=[0] + cols_to_load)
+                        # Obtener el nombre de la columna del índice
+                        index_col_name = available_cols[0] if available_cols else 'Date'
+                        usecols_list = [index_col_name] + cols_to_load
+                        df = pd.read_csv(latest_cache, index_col=0, parse_dates=True, usecols=usecols_list)
                     else:
                         df = pd.read_csv(latest_cache, index_col=0, parse_dates=True)
                     
