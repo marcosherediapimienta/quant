@@ -19,6 +19,7 @@ statsmodels>=0.14.0
 
 # Financial data
 yfinance>=0.2.18
+pandas_datareader>=0.10.0
 
 # Configuration
 PyYAML>=6.0.1
