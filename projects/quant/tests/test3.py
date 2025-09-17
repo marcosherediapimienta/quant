@@ -31,12 +31,14 @@ from scipy.optimize import minimize
 # =============================
 # Parámetros del usuario
 # =============================
-TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR"]
+TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR", "AAPL", "TSLA", "META", "MSFT", "IBM", "BAC", "AXP", 
+                        "KO", "MCO", "NVDA", "OXY", "CVX", "CB", "KHC", "DVA"]
 FECHA_INICIO = "2018-03-20"
 FECHA_FIN = "2025-09-02"
 
 FX_TICKER = "EURUSD=X"      # USD por 1 EUR
-USD_TICKERS = {"AMZN", "GLD"}
+USD_TICKERS =  {"AMZN", "GLD", "AAPL", "TSLA", "META", "MSFT", "IBM", "BAC", "AXP", 
+                        "KO", "MCO", "NVDA", "OXY", "CVX", "CB", "KHC", "DVA"}
 
 RISK_FREE = 0.045           # anual
 MONTHLY_CONTRIB = 300.0     # EUR/mes totales
