@@ -31,16 +31,14 @@ from scipy.optimize import minimize
 # =============================
 # Parámetros del usuario
 # =============================
-TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM",
-            "AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
+TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
 
-FECHA_INICIO = "2018-01-01"
-FECHA_FIN = "2025-09-12"
+FECHA_INICIO = "2018-03-20"
+FECHA_FIN = "2025-09-02"
 
 FX_TICKER = "EURUSD=X"      # USD por 1 EUR
 
-USD_TICKERS =  {"NVDA","MSFT","AAPL","GOOGL","IBM",
-                "AMZN","META","TSLA","JPM","BRK-A","GLD"}
+USD_TICKERS = {"NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
 RISK_FREE = 0.045           # anual
 MONTHLY_CONTRIB = 300.0     # EUR/mes totales
@@ -84,7 +82,7 @@ BENCHMARK_TICKERS = {
 }
 
 # Máximo Tracking Error anual permitido en la OPTIMIZACIÓN (None para desactivar)
-TE_MAX: Optional[float] = 0.06  # p.ej. 6% anual
+TE_MAX: Optional[float] = None  # p.ej. 6% anual
 
 # --- Control de factibilidad y robustez del TE ---
 AUTO_RELAX_TE      = True   # si TE_MAX < TE_min, relajar automáticamente

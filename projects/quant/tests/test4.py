@@ -40,15 +40,15 @@ from typing import Optional, Dict, List, Tuple
 # ----------------------
 # Parámetros del usuario
 # ----------------------
-TICKERS = ["0P0001CLDK.F", "NVDA", "MSFT", "GLD"]       # Cartera diversificada
+TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
 FX_TICKER = "EURUSD=X"                   # USD por 1 EUR
 Rf = 0.045                               # Tasa libre de riesgo anual (p.ej. 4.5%)
-START = "2018-01-01"
-END = "2025-09-02"                       # Ajusta según necesites
+START = "2018-03-20"
+END = "2025-09-02"                  # Ajusta según necesites
 PORTFOLIO_WEIGHTS = np.array([0.674, 0.044, 0.007, 0.275])  # Ajusta a tus pesos actuales
 
 # Benchmark (MSCI)
-BENCH_TICKER = "EUNL.DE"      # Proxy MSCI ACWI (USD). Cambia a tu MSCI preferido (p.ej., "EUNL.DE" en EUR)
+BENCH_TICKER = "MSCI_WORLD"      # Proxy MSCI ACWI (USD). Cambia a tu MSCI preferido (p.ej., "EUNL.DE" en EUR)
 BENCH_IN_USD = False        # Pon a False si el benchmark ya cotiza en EUR
 
 # Semilla para Monte Carlo (reproducible)

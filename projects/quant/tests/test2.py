@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use('Agg')  # Usar backend no interactivo
 
 # Parámetros
-tickers = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR"]  # Cartera diversificada
+tickers = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
 aportacion = 300.0        # Aportación mensual en EUR por cada fondo
 dia_mes = 1               # Día del mes para aportar (1-28 recomendado)
 fecha_inicio = "2018-03-20"
@@ -26,7 +26,7 @@ fecha_fin = "2025-09-02"
 # Ticker para tipo de cambio USD/EUR
 FX_TICKER = "EURUSD=X"
 # Tickers que necesitan conversión de USD a EUR
-USD_TICKERS = {"AMZN", "GLD"}
+USD_TICKERS = {"NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
 print(f"📊 Analizando tickers: {', '.join(tickers)}")
 print(f"💰 Aportación mensual: {aportacion} EUR por cada fondo")

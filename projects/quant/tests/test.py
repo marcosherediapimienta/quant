@@ -33,7 +33,7 @@ TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA
 FX_TICKER = "EURUSD=X"
 
 # Tickers que necesitan conversión de USD a EUR
-USD_TICKERS = {"NVDA", "MSFT", "AAPL", "GOOGL", "AMZN", "META", "TSLA", "JPM" ,"BRK-A","GLD"}
+USD_TICKERS = {"NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
 # Tasa libre de riesgo (anual, en términos nominales)
 Rf = 0.045

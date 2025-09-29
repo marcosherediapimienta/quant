@@ -63,8 +63,8 @@ YF_TICKERS = {
 }
 
 # Cartera (se renormalizan pesos a los presentes)
-PORTFOLIO_TICKERS = ["0P0001CLDK.F", "AMZN", "GLD", "BTC-EUR"]
-PORTFOLIO_WEIGHTS = np.array([0.8, 0.05, 0.10, 0.05])
+PORTFOLIO_TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
+PORTFOLIO_WEIGHTS = np.array([0.514, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.486])
 
 # ================================ HELPERS =====================================
 

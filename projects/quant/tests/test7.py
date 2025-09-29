@@ -24,13 +24,8 @@ from datetime import datetime
 # Configuración
 # =========================
 # Ejemplos de activos en EUR: bolsa española (.MC), francesa (.PA), alemana (.DE), BTC-EUR, etc.
-PORTFOLIO_TICKERS = ["0P0001CLDK.F", "NVDA", "MSFT", "GLD"]  
-PORTFOLIO_WEIGHTS = np.array([
-    0.674,  # 0P0001CLDK.F
-    0.044,  # NVDA
-    0.007,  # MSFT
-    0.275,  # GLD
-])
+PORTFOLIO_TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
+PORTFOLIO_WEIGHTS = np.array([0.514, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.486])
 
 # Benchmark en USD (se convertirá a EUR automáticamente); si prefieres EU, prueba "^STOXX50E"
 BENCHMARK_TICKER = "EUNL.DE"
