@@ -40,7 +40,7 @@ FX_TICKER = "EURUSD=X"      # USD por 1 EUR
 
 USD_TICKERS = {"NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
-RISK_FREE = 0.045           # anual
+RISK_FREE = 0.0375           # anual
 MONTHLY_CONTRIB = 300.0     # EUR/mes totales
 
 # Covarianza: usar Ledoit–Wolf si hay sklearn

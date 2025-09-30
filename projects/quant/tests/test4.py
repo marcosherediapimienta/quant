@@ -42,7 +42,7 @@ from typing import Optional, Dict, List, Tuple
 # ----------------------
 TICKERS = ["0P0001CLDK.F","NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","BTC-EUR","GLD"]
 FX_TICKER = "EURUSD=X"                   # USD por 1 EUR
-Rf = 0.045                               # Tasa libre de riesgo anual (p.ej. 4.5%)
+Rf = 0.0375                               # Tasa libre de riesgo anual (p.ej. 4.5%)
 START = "2018-03-20"
 END = "2025-09-02"                  # Ajusta según necesites
 PORTFOLIO_WEIGHTS = np.array([0.674, 0.044, 0.007, 0.275])  # Ajusta a tus pesos actuales

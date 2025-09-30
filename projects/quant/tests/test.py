@@ -2,7 +2,7 @@
 """
 Análisis de rendimientos históricos con conversión automática USD→EUR
 - Descarga datos con yfinance
-- Convierte AMZN y GLD de USD a EUR usando EURUSD=X (si está disponible)
+- Convierte de USD a EUR usando EURUSD=X (si está disponible)
 - Calcula rendimientos logarítmicos
 - Genera 4 gráficos: precios normalizados, rendimientos diarios, histograma y correlación
 - Imprime estadísticas y correlaciones
@@ -36,7 +36,7 @@ FX_TICKER = "EURUSD=X"
 USD_TICKERS = {"NVDA","MSFT","AAPL","GOOGL","IBM","AMZN","META","TSLA","JPM","BRK-A","GLD"}
 
 # Tasa libre de riesgo (anual, en términos nominales)
-Rf = 0.045
+Rf = 0.0375
 
 # Rango temporal
 START_DATE = "2004-01-01"
