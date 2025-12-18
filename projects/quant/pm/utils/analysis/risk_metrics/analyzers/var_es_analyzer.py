@@ -4,7 +4,6 @@ from typing import Dict, Tuple, List
 from ..components.var import VaRCalculator
 from ..components.es import ESCalculator
 
-
 class VarEsAnalyzer:
     
     def __init__(self, annual_factor: float = 252.0):

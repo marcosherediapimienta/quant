@@ -9,7 +9,6 @@ from ..components.helpers import (
     annualize_volatility
 )
 
-
 class RatioAnalyzer:
 
     def __init__(self, annual_factor: float = 252.0):

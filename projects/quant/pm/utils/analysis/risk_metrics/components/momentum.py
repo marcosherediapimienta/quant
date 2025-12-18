@@ -4,7 +4,6 @@ from scipy.stats import jarque_bera
 from typing import Dict
 from .helpers import calculate_portfolio_returns
 
-
 class DistributionMoments:
 
     def __init__(self):

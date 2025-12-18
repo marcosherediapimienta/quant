@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from .helpers import calculate_portfolio_returns, annualize_return, annualize_volatility
 
-
 class SharpeCalculator:
 
     def __init__(self, annual_factor: float = 252.0):

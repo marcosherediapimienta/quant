@@ -4,7 +4,6 @@ from scipy import stats
 from typing import Dict, Literal
 from .helpers import calculate_portfolio_returns
 
-
 class ESCalculator:
 
     def __init__(self, annual_factor: float = 252.0):
