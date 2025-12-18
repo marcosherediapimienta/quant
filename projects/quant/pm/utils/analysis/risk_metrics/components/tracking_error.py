@@ -5,7 +5,7 @@ from .helpers import calculate_portfolio_returns
 
 
 class TrackingErrorCalculator:
-    
+
     def __init__(self, annual_factor: float = 252.0):
         self.annual_factor = annual_factor
     
@@ -30,7 +30,7 @@ class TrackingErrorCalculator:
                 'information_ratio': np.nan,
                 'excess_return_annual': np.nan
             }
-        
+
         active_returns = df['portfolio'] - df['benchmark']
         te_daily = float(active_returns.std(ddof=ddof))
         te_annual = float(te_daily * np.sqrt(self.annual_factor))

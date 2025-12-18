@@ -35,7 +35,7 @@ class DrawdownCalculator:
 
         annual_return = annualize_return(portfolio_ret, self.annual_factor)
         calmar = float(annual_return / abs(max_dd)) if max_dd < 0 else np.nan
-        dd_monthly = drawdown.resample('M').min()
+        dd_monthly = drawdown.resample('ME').min()
         worst_3 = dd_monthly.nsmallest(3)
         
         if len(worst_3) >= 1 and worst_3.mean() < 0:
