@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List
 
 
 class VarEsAnalyzer:
-
+    
     def __init__(self, risk_analysis):
         self.risk_analysis = risk_analysis
         self.var_calc = risk_analysis.var
@@ -15,11 +15,11 @@ class VarEsAnalyzer:
         returns: pd.DataFrame,
         weights: np.ndarray,
         confidence_levels: Tuple[float, ...] = (0.95, 0.99),
-        methods: Optional[List[str]] = None,
+        methods: List[str] | None = None,
         n_simulations: int = 10000,
         seed: int = 42
     ) -> Dict[float, Dict[str, Dict[str, float]]]:
-  
+
         if methods is None:
             methods = ['historical', 'parametric', 'monte_carlo']
         
