@@ -19,9 +19,6 @@ class BenchmarkLoader:
     ) -> pd.Series:
 
         ticker = validate_benchmark(benchmark_name, self.benchmarks)
-        
-        print(f"Descargando benchmark '{benchmark_name}' ({ticker})...")
-        
         data = self.loader.download_single(ticker, start_date, end_date, **kwargs)
         close_series = extract_close_price(data, ticker)
         

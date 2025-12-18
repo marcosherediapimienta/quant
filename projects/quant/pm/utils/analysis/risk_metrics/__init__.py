@@ -1,4 +1,3 @@
-from .risk_analysis import RiskAnalysis
 from .components import (
     VaRCalculator,
     ESCalculator,
@@ -9,7 +8,6 @@ from .components import (
 )
 
 __all__ = [
-    'RiskAnalysis',
     'VaRCalculator',
     'ESCalculator',
     'SharpeCalculator',

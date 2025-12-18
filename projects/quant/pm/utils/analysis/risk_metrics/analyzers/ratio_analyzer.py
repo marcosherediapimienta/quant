@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from typing import Dict
+from ..components.sharpe import SharpeCalculator
+from ..components.sortino import SortinoCalculator
 from ..components.helpers import (
     calculate_portfolio_returns,
     annualize_return,
@@ -10,11 +12,10 @@ from ..components.helpers import (
 
 class RatioAnalyzer:
 
-    def __init__(self, risk_analysis):
-        self.risk_analysis = risk_analysis
-        self.sharpe_calc = risk_analysis.sharpe
-        self.sortino_calc = risk_analysis.sortino
-        self.annual_factor = risk_analysis.annual_factor
+    def __init__(self, annual_factor: float = 252.0):
+        self.annual_factor = annual_factor
+        self.sharpe_calc = SharpeCalculator(annual_factor)
+        self.sortino_calc = SortinoCalculator(annual_factor)
     
     def calculate_all_ratios(
         self,
@@ -29,7 +30,6 @@ class RatioAnalyzer:
         annual_vol = annualize_volatility(portfolio_ret, self.annual_factor, ddof)
         excess_return = annual_return - risk_free_rate
         downside_returns = portfolio_ret[portfolio_ret < 0]
-
         if len(downside_returns) > 0:
             downside_vol = downside_returns.std(ddof=ddof) * np.sqrt(self.annual_factor)
         else:

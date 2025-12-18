@@ -21,7 +21,6 @@ class DataLoader:
         threads = threads if threads is not None else DOWNLOAD_DEFAULTS['threads']
         progress = progress if progress is not None else DOWNLOAD_DEFAULTS['progress']
         
-        print(f"Descargando {len(tickers)} ticker(s)...")
         print(f"Período: {start_date} → {end_date}")
         
         try:
@@ -37,8 +36,6 @@ class DataLoader:
             
             if data.empty:
                 raise ValueError("No se descargaron datos")
-            
-            print(f"Descarga completada: {len(data)} observaciones\n")
             return data
             
         except Exception as e:

@@ -50,7 +50,6 @@ class DataManager:
         benchmark_aligned = benchmark.loc[common_dates]
         
         print(f"Portafolio descargado: {len(tickers)} activos + benchmark")
-        print(f"Fechas comunes: {len(common_dates)}\n")
         
         return assets_aligned, benchmark_aligned
     

@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
 from typing import Dict
+from ..components.momentum import DistributionMoments
 
 
 class DistributionAnalyzer:
 
-    def __init__(self, risk_analysis):
-        self.risk_analysis = risk_analysis
-        self.moments_calc = risk_analysis.moments
+    def __init__(self):
+        self.moments_calc = DistributionMoments()
     
     def analyze(
         self,
