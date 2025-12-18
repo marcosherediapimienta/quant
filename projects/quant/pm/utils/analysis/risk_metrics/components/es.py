@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-from typing import Literal, Dict
-from .portfolio_helpers import calculate_portfolio_returns
+from typing import Dict, Literal
+from .helpers import calculate_portfolio_returns
 
 
 class ESCalculator:
@@ -49,7 +49,6 @@ class ESCalculator:
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         alpha = 1.0 - confidence_level
-        
         mu = portfolio_ret.mean()
         sigma = portfolio_ret.std(ddof=0)
         z = stats.norm.ppf(alpha)
@@ -75,14 +74,11 @@ class ESCalculator:
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         alpha = 1.0 - confidence_level
-        
         mu = portfolio_ret.mean()
         sigma = portfolio_ret.std(ddof=0)
-        
-        # Simulaciones
         rng = np.random.default_rng(seed)
         simulations = rng.normal(mu, sigma, n_simulations)
-        
+    
         if var_value is None:
             var_value = np.quantile(simulations, alpha)
         
@@ -96,6 +92,34 @@ class ESCalculator:
             'es_daily_pct': float(es_daily * 100),
             'es_annual_pct': float(es_annual * 100)
         }
+    
+    def calculate(
+        self,
+        returns: pd.DataFrame,
+        weights: np.ndarray,
+        confidence_level: float = 0.95,
+        method: Literal['historical', 'parametric', 'monte_carlo'] = 'historical',
+        n_simulations: int = 10000,
+        seed: int = 42,
+        var_value: float = None
+    ) -> Dict[str, float]:
+
+        if method == 'historical':
+            return self.calculate_historical(returns, weights, confidence_level, var_value=var_value)
+        elif method == 'parametric':
+            return self.calculate_parametric(returns, weights, confidence_level)
+        elif method == 'monte_carlo':
+            return self.calculate_monte_carlo(
+                returns, weights, confidence_level, 
+                n_simulations=n_simulations, 
+                seed=seed, 
+                var_value=var_value
+            )
+        else:
+            raise ValueError(
+                f"Método '{method}' no válido. "
+                f"Usa: 'historical', 'parametric' o 'monte_carlo'"
+            )
     
     def calculate_all(
         self,

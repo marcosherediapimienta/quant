@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from typing import Literal, Dict
-from .portfolio_helpers import calculate_portfolio_returns
+from .helpers import calculate_portfolio_returns
 
 
 class VaRCalculator:

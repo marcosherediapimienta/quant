@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
-
 def calculate_portfolio_returns(
     returns: pd.DataFrame,
     weights: np.ndarray

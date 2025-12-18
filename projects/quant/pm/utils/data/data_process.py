@@ -2,6 +2,7 @@ from typing import List
 import pandas as pd
 from .components.data_loader import DataLoader
 from .components.benchmark_loader import BenchmarkLoader
+from .components.helpers import extract_adj_close_prices  
 
 
 class DataManager:
@@ -17,7 +18,11 @@ class DataManager:
         end_date: str,
         **kwargs
     ) -> pd.DataFrame:
-        return self.data_loader.download(tickers, start_date, end_date, **kwargs)
+
+        raw_data = self.data_loader.download(tickers, start_date, end_date, **kwargs)
+        adj_close_df = extract_adj_close_prices(raw_data, tickers)
+        
+        return adj_close_df
     
     def download_benchmark(
         self,
