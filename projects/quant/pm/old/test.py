@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+                                            # -*- coding: utf-8 -*-
 """
 Análisis de rendimientos históricos con conversión automática USD→EUR
 - Descarga datos con yfinance

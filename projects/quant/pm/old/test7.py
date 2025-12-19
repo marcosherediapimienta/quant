@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+                                # -*- coding: utf-8 -*-
 """
 ANÁLISIS CAPM CON FRONTERA EFICIENTE - BASE EUR (pipeline corregido + alpha significance)
 ========================================================================================
