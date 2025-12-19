@@ -3,7 +3,10 @@ from .visualizers import (
     BenchmarkVisualizer,
     DistributionVisualizer,
     DrawdownVisualizer,
-    VarEsVisualizer
+    VarEsVisualizer,
+    CAPMVisualizer,
+    PortfolioOptimizationVisualizer,
+    MultiAssetCAPMVisualizer
 )
 
 __all__ = [
@@ -11,5 +14,8 @@ __all__ = [
     'BenchmarkVisualizer',
     'DistributionVisualizer',
     'DrawdownVisualizer',
-    'VarEsVisualizer'
+    'VarEsVisualizer',
+    'CAPMVisualizer',
+    'PortfolioOptimizationVisualizer',
+    'MultiAssetCAPMVisualizer'
 ]
