@@ -21,6 +21,15 @@ from .analyzers import (
     CorrelationAnalyzer
 )
 
+from .reporters import (
+    VarEsReporter,
+    RatioReporter,
+    DrawdownReporter,
+    BenchmarkReporter,
+    DistributionReporter,
+    CorrelationReporter
+)
+
 __all__ = [
     'VaRCalculator',
     'ESCalculator',
@@ -38,5 +47,11 @@ __all__ = [
     'DistributionAnalyzer',
     'BenchmarkAnalyzer',
     'DrawdownAnalyzer',
-    'CorrelationAnalyzer'
+    'CorrelationAnalyzer',
+    'VarEsReporter',
+    'RatioReporter',
+    'DrawdownReporter',
+    'BenchmarkReporter',
+    'DistributionReporter',
+    'CorrelationReporter'
 ]
