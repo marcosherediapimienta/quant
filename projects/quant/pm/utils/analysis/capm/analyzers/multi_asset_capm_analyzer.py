@@ -18,8 +18,7 @@ class MultiAssetCAPMAnalyzer:
     ) -> pd.DataFrame:
 
         results = []
-        
-        # Alinear índices
+
         common_idx = returns.index.intersection(market_returns.index)
         returns_aligned = returns.loc[common_idx]
         market_aligned = market_returns.loc[common_idx]
@@ -27,8 +26,7 @@ class MultiAssetCAPMAnalyzer:
         for asset in returns_aligned.columns:
             asset_ret = returns_aligned[asset].values
             market_ret = market_aligned.values
-            
-            # Remover NaN
+ 
             mask = ~(np.isnan(asset_ret) | np.isnan(market_ret))
             asset_ret = asset_ret[mask]
             market_ret = market_ret[mask]

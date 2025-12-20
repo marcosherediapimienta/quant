@@ -40,8 +40,7 @@ class EfficientFrontierCalculator:
         
         def portfolio_return(w):
             return float(np.sum(w * mean_ret.values))
-        
-        # Rango de retornos objetivo
+
         targets = np.linspace(mean_ret.min(), mean_ret.max(), n_points)
         
         eff_returns = []

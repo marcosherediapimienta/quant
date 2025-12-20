@@ -20,14 +20,9 @@ class CAPMAnalyzer:
     ) -> Dict:
  
         rf_daily = daily_risk_free_rate(risk_free_rate, self.annual_factor)
-        
-        # CAPM básico
         capm = self.capm_calc.calculate(asset_returns, market_returns, rf_daily)
-        
-        # Test de significancia
         alpha_test = self.alpha_test.test(asset_returns, market_returns, rf_daily)
         
-        # Calcular R²
         try:
             r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
         except:

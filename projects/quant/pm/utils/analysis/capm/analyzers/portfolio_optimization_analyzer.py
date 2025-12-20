@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from typing import Dict, Optional
-from ..components.efficient_frontier import EfficientFrontierCalculator, FrontierResult
-from ..components.cml_calculator import CMLCalculator, CMLResult
+from ..components.efficient_frontier import EfficientFrontierCalculator
+from ..components.cml_calculator import CMLCalculator
 from ..components.sml_calculator import SMLCalculator, SMLResult
 
 
@@ -22,7 +22,6 @@ class PortfolioOptimizationAnalyzer:
         allow_short: bool = False
     ) -> Dict:
 
-        # Frontera eficiente
         frontier = self.frontier_calc.calculate(returns, n_points, allow_short)
         
         if len(frontier.returns) == 0:
@@ -31,16 +30,14 @@ class PortfolioOptimizationAnalyzer:
                 'cml': None,
                 'tangent_portfolio': None
             }
-        
-        # CML
+
         cml = self.cml_calc.calculate(
             frontier.returns,
             frontier.volatilities,
             risk_free_rate,
             n_points=100
         )
-        
-        # Portafolio tangente
+
         tangent_weights = None
         if cml.tangent_index >= 0 and cml.tangent_index < len(frontier.weights):
             tangent_weights = frontier.weights[cml.tangent_index]

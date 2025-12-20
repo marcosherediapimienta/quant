@@ -39,8 +39,7 @@ class CAPMCalculator:
             corr = float(np.corrcoef(x, y)[0, 1])
         except Exception:
             corr = np.nan
-        
-        # Jensen's Alpha anualizado
+
         jensen_alpha = self._annualize_alpha(alpha_daily)
         
         return CAPMResult(alpha_daily, beta, corr, jensen_alpha)

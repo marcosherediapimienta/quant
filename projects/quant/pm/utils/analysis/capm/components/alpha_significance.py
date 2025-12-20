@@ -34,7 +34,6 @@ class AlphaSignificanceTest:
         if len(asset_returns) != len(market_returns) or len(asset_returns) < 30:
             return AlphaTestResult(np.nan, np.nan, np.nan, np.nan, False, np.nan)
         
-        # Excess returns
         y = asset_returns - risk_free_rate_daily
         x = market_returns - risk_free_rate_daily
         
