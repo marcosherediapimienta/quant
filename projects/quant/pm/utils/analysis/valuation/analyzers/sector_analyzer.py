@@ -5,7 +5,6 @@ from typing import Dict, List, Callable
 from dataclasses import dataclass
 from .company_analyzer import CompanyAnalyzer
 
-
 @dataclass
 class PercentileInterpretation:
 
@@ -25,7 +24,6 @@ class PercentileInterpretation:
                 'below': 'Por debajo del promedio',
                 'bottom': 'Rezagado del sector'
             }
-
 
 class SectorAnalyzer:
 
@@ -69,7 +67,6 @@ class SectorAnalyzer:
         fetch_peers: bool = True
     ) -> Dict:
 
-        # Analizar empresa objetivo
         company_result = self.company_analyzer.analyze(ticker)
         
         if not company_result.get('success'):
@@ -77,27 +74,20 @@ class SectorAnalyzer:
         
         sector = company_result.get('sector')
         industry = company_result.get('industry')
-        
-        # Obtener peers si no se proveen
+   
         if peers is None and fetch_peers:
             peers = self._peer_fetcher(ticker, industry, sector)
         
         peers = peers or []
-        
-        # Filtrar el ticker objetivo de peers
         peers = [p for p in peers if p.upper() != ticker.upper()][:self.max_peers]
-        
-        # Analizar peers
         peer_results = {}
         if peers:
             peer_results = self.company_analyzer.analyze_multiple(peers)
-        
-        # Calcular posición relativa
+
         relative_position = self._calculate_relative_position(
             company_result, peer_results
         )
-        
-        # Percentiles
+
         percentiles = self._calculate_percentiles(company_result, peer_results)
         
         return {
@@ -178,8 +168,7 @@ class SectorAnalyzer:
         
         if len(all_scores) < 2:
             return {'note': 'Datos insuficientes para percentil'}
-        
-        # Calcular percentil
+
         below_count = sum(1 for s in all_scores if s < company_score)
         percentile = (below_count / len(all_scores)) * 100
         

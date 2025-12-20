@@ -1,7 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
 
-
 @dataclass
 class CMLResult:
     cml_returns: np.ndarray
@@ -10,7 +9,6 @@ class CMLResult:
     tangent_volatility: float
     tangent_index: int
     slope: float
-
 
 class CMLCalculator:
 

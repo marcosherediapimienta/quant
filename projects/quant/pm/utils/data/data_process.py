@@ -4,7 +4,6 @@ from .components.data_loader import DataLoader
 from .components.benchmark_loader import BenchmarkLoader
 from .components.helpers import extract_adj_close_prices  
 
-
 class DataManager:
 
     def __init__(self):

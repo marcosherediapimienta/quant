@@ -4,7 +4,6 @@ from ..components.capm_calculator import CAPMCalculator
 from ..components.alpha_significance import AlphaSignificanceTest
 from ..components.helpers import daily_risk_free_rate
 
-
 class CAPMAnalyzer:
 
     def __init__(self, annual_factor: float = 252.0, significance_level: float = 0.05):
@@ -22,7 +21,7 @@ class CAPMAnalyzer:
         rf_daily = daily_risk_free_rate(risk_free_rate, self.annual_factor)
         capm = self.capm_calc.calculate(asset_returns, market_returns, rf_daily)
         alpha_test = self.alpha_test.test(asset_returns, market_returns, rf_daily)
-        
+
         try:
             r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
         except:

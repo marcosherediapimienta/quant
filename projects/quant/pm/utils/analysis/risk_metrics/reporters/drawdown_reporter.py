@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from ..analyzers.drawdown_analyzer import DrawdownAnalyzer
 
-
 class DrawdownReporter:
 
     def __init__(self, drawdown_analyzer: DrawdownAnalyzer):

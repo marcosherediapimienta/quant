@@ -3,7 +3,6 @@ import pandas as pd
 from typing import  List
 from .capm_analyzer import CAPMAnalyzer
 
-
 class MultiAssetCAPMAnalyzer:
     
     def __init__(self, annual_factor: float = 252.0, significance_level: float = 0.05):

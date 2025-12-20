@@ -4,7 +4,6 @@ import numpy as np
 from ...visualizations.components.capm_plotter import CAPMPlotter
 from ...analysis.capm.analyzers.multi_asset_capm_analyzer import MultiAssetCAPMAnalyzer
 
-
 class MultiAssetCAPMVisualizer:
 
     def __init__(self, multi_asset_analyzer: MultiAssetCAPMAnalyzer):
@@ -29,16 +28,14 @@ class MultiAssetCAPMVisualizer:
         
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
-        
-        # 1. Alpha vs Beta
+
         ax1 = fig.add_subplot(gs[0, :])
         self.plotter.plot_alpha_beta_comparison(
             results_df,
             title="Alpha vs Beta - Comparación Multi-Activo",
             ax=ax1
         )
-        
-        # 2. Top 10 Alphas
+
         ax2 = fig.add_subplot(gs[1, 0])
         top10 = results_df.nlargest(10, 'alpha_annual')
         colors = ['green' if sig else 'gray' for sig in top10['is_significant']]
@@ -49,8 +46,6 @@ class MultiAssetCAPMVisualizer:
         ax2.set_title('Top 10 Alphas', fontsize=12, fontweight='bold')
         ax2.axvline(x=0, color='k', linestyle='-', linewidth=1)
         ax2.grid(True, alpha=0.3, axis='x')
-        
-        # 3. Distribución de Betas
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.hist(results_df['beta'], bins=15, alpha=0.7, edgecolor='black')
         ax3.axvline(x=1, color='r', linestyle='--', linewidth=2, label='β=1 (Mercado)')

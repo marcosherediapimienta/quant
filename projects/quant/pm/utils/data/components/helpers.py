@@ -13,9 +13,7 @@ def extract_close_price(data: pd.DataFrame, ticker: str) -> pd.Series:
     
     raise ValueError(f"No se encontró columna de cierre para {ticker}")
 
-
 def extract_adj_close_prices(data: pd.DataFrame, tickers: list) -> pd.DataFrame:
-
     result = {}
 
     if isinstance(data.columns, pd.MultiIndex):
@@ -47,7 +45,6 @@ def extract_adj_close_prices(data: pd.DataFrame, tickers: list) -> pd.DataFrame:
     
     df = pd.DataFrame(result)
     return df.dropna(how='all').sort_index()
-
 
 def validate_benchmark(benchmark_name: str, available_benchmarks: dict) -> str:
     if benchmark_name not in available_benchmarks:

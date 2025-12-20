@@ -3,7 +3,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.benchmark_analyzer import BenchmarkAnalyzer
 
-
 class BenchmarkReporter:
 
     def __init__(self, benchmark_analyzer: BenchmarkAnalyzer):
@@ -30,7 +29,7 @@ class BenchmarkReporter:
         print(f"  Tracking Error (anual):   {results['tracking_error_annual']*100:>8.2f}%")
         self._interpret_te(results['tracking_error_annual']) 
         
-        print("\nINFORMATION RATIO")
+        print("INFORMATION RATIO")
         print(f"  Information Ratio:        {results['information_ratio']:>8.3f}")
         self._interpret_ir(results['information_ratio'])
         
@@ -46,9 +45,7 @@ class BenchmarkReporter:
         print(f"  Retorno benchmark:        {results['benchmark_return_annual']*100:>8.2f}%")
         print(f"  Retorno esperado (CAPM):  {results['expected_return']*100:>8.2f}%")
         self._interpret_alpha(results['alpha_annual'])  
-        
-    print("="*60)
-    
+
     def _interpret_te(self, te: float) -> None:
 
         te_pct = te * 100

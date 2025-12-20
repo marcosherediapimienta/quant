@@ -4,7 +4,6 @@ from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, score_metric
 
-
 @dataclass
 class EfficiencyThresholds:
     asset_turnover: Dict[str, float] = None
@@ -31,23 +30,14 @@ class EfficiencyMetrics:
         receivables = nan_if_missing(data.get('netReceivables'))
         cogs = nan_if_missing(data.get('costOfRevenue'))
         employees = nan_if_missing(data.get('fullTimeEmployees'))
-        
-        # Asset Turnover - usar precalculado o calcular
         asset_turnover = nan_if_missing(data.get('assetTurnover'))
         if pd.isna(asset_turnover) and pd.notna(total_revenue) and pd.notna(total_assets) and total_assets != 0:
             asset_turnover = total_revenue / total_assets
-        
-        # Inventory Turnover = COGS / Inventory
+
         inventory_turnover = safe_div(cogs, inventory)
-        
-        # Receivables Turnover = Revenue / Receivables
         receivables_turnover = safe_div(total_revenue, receivables)
-        
-        # Days calculations
         dso = safe_div(365, receivables_turnover)
         dio = safe_div(365, inventory_turnover)
-        
-        # Revenue per Employee
         revenue_per_employee = safe_div(total_revenue, employees)
         
         metrics = {
@@ -68,8 +58,7 @@ class EfficiencyMetrics:
             'dio_class': self._classify_value(dio, self.thresholds.dio, higher_is_better=False),
             'inventory_turnover_class': self._classify_value(inventory_turnover, self.thresholds.inventory_turnover, higher_is_better=True)
         }
-        
-        # Score compuesto (0-100)
+
         score = self._calculate_score(metrics)
         
         return {
@@ -101,19 +90,16 @@ class EfficiencyMetrics:
         scores = []
         weights = []
         
-        # Asset Turnover (40%)
         if pd.notna(metrics['asset_turnover']):
             at_score = score_metric(metrics['asset_turnover'], 0.2, 2.0, higher_is_better=True)
             scores.append(at_score)
             weights.append(0.40)
-        
-        # DSO (30%) - menor es mejor
+
         if pd.notna(metrics['days_sales_outstanding']):
             dso_score = score_metric(metrics['days_sales_outstanding'], 20, 90, higher_is_better=False)
             scores.append(dso_score)
             weights.append(0.30)
-        
-        # DIO (30%) - menor es mejor
+
         if pd.notna(metrics['days_inventory_outstanding']):
             dio_score = score_metric(metrics['days_inventory_outstanding'], 20, 120, higher_is_better=False)
             scores.append(dio_score)

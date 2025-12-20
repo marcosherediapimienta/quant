@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
+from typing import Dict
 from ..components.efficient_frontier import EfficientFrontierCalculator
 from ..components.cml_calculator import CMLCalculator
 from ..components.sml_calculator import SMLCalculator, SMLResult
-
 
 class PortfolioOptimizationAnalyzer:
 

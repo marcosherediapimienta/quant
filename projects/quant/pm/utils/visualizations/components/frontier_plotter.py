@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Optional, List
+from typing import Optional
 from ...analysis.capm.components.efficient_frontier import FrontierResult
 from ...analysis.capm.components.cml_calculator import CMLResult
 from ...analysis.capm.components.sml_calculator import SMLResult
-
 
 class FrontierPlotter:
 
@@ -45,8 +44,7 @@ class FrontierPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Frontera eficiente
+
         ax.plot(
             frontier.volatilities * 100,
             frontier.returns * 100,
@@ -54,8 +52,7 @@ class FrontierPlotter:
             linewidth=2,
             label='Frontera Eficiente'
         )
-        
-        # CML
+
         ax.plot(
             cml.cml_volatilities * 100,
             cml.cml_returns * 100,
@@ -63,8 +60,7 @@ class FrontierPlotter:
             linewidth=2,
             label='Capital Market Line (CML)'
         )
-        
-        # Portafolio tangente
+
         if not np.isnan(cml.tangent_return):
             ax.scatter(
                 cml.tangent_volatility * 100,
@@ -77,8 +73,7 @@ class FrontierPlotter:
                 edgecolors='black',
                 linewidth=1.5
             )
-        
-        # Tasa libre de riesgo
+
         ax.scatter(
             0,
             risk_free_rate * 100,
@@ -110,8 +105,7 @@ class FrontierPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # SML
+
         ax.plot(
             sml.beta_axis,
             sml.expected_returns * 100,
@@ -120,13 +114,10 @@ class FrontierPlotter:
             label=f'SML (Pendiente={sml.slope*100:.2f}%)'
         )
         
-        # Activos si se proporcionan
         if asset_betas is not None and asset_returns is not None:
             for asset, beta in asset_betas.items():
                 expected = sml.risk_free_rate + sml.slope * beta
                 actual = asset_returns.get(asset, expected)
-                
-                # Color según si está sobre/under valorado
                 color = 'green' if actual > expected else 'red'
                 marker = '^' if actual > expected else 'v'
                 
@@ -140,8 +131,7 @@ class FrontierPlotter:
                     edgecolors='black',
                     linewidth=1.5
                 )
-                
-                # Línea vertical al SML
+
                 ax.plot(
                     [beta, beta],
                     [expected * 100, actual * 100],
@@ -158,8 +148,7 @@ class FrontierPlotter:
                     xytext=(5, 5),
                     textcoords='offset points'
                 )
-        
-        # Marcadores de referencia
+
         ax.axvline(x=1, color='k', linestyle='--', linewidth=1, alpha=0.5, label='β=1 (Mercado)')
         ax.scatter(
             1,

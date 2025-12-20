@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from ..components.drawdown import DrawdownCalculator
 
-
 class DrawdownAnalyzer:
 
     def __init__(self, annual_factor: float = 252.0):

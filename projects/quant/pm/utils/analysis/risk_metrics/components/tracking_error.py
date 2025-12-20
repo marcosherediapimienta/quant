@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from .helpers import calculate_portfolio_returns
 
-
 class TrackingErrorCalculator:
 
     def __init__(self, annual_factor: float = 252.0):

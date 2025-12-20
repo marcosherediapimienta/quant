@@ -3,7 +3,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.distribution_analyzer import DistributionAnalyzer
 
-
 class DistributionReporter:
 
     def __init__(self, distribution_analyzer: DistributionAnalyzer):

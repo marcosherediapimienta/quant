@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 
-
 class CorrelationCalculator:
 
     def __init__(self):

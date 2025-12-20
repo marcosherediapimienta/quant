@@ -8,7 +8,6 @@ from .formatters import (
     separator, FormatConfig
 )
 
-
 @dataclass 
 class ReportSections:
     summary: bool = True
@@ -36,11 +35,8 @@ class CompanyReporter:
             return self._render_error(result)
         
         lines = []
-        
-        # Header
         lines.append(self._render_header(result))
-        
-        # Secciones
+
         if self.sections.summary:
             lines.append(self._render_summary(result))
         
@@ -61,10 +57,8 @@ class CompanyReporter:
         
         if self.sections.alerts:
             lines.append(self._render_alerts(result))
-        
-        # Footer
+
         lines.append(self._render_footer(result))
-        
         return "\n".join(filter(None, lines))
     
     def _render_error(self, result: Dict) -> str:
@@ -169,7 +163,7 @@ class CompanyReporter:
         
         lines = [
             separator("─", w),
-            f"📈 CRECIMIENTO (Score: {fmt_num(score, 1)})",
+            f"CRECIMIENTO (Score: {fmt_num(score, 1)})",
             separator("─", w),
             f"  Revenue YoY:      {fmt_pct(g['revenue_growth_yoy']):<12} {cls['revenue_growth_class']}",
             f"  Earnings YoY:     {fmt_pct(g['earnings_growth_yoy']):<12} {cls['earnings_growth_class']}",
@@ -217,7 +211,7 @@ class CompanyReporter:
             f"  P/B:              {fmt_multiple(v['pb_ratio']):<12} {cls['pb_class']}",
             f"  P/S:              {fmt_multiple(v['ps_ratio'])}",
             f"  FCF Yield:        {fmt_pct(v['fcf_yield']):<12} {cls['fcf_yield_class']}",
-            f"  📊 Valoración:    {cls['overall']}",
+            f"  Valoración:    {cls['overall']}",
             ""
         ]
         return "\n".join(lines)

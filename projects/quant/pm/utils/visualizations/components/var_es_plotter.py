@@ -52,16 +52,13 @@ class VarEsPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=self.figsize)
-        
-        # Retornos
+
         ax.plot(returns.index, returns.values, linewidth=1, 
                 label='Retornos', alpha=0.7)
-        
-        # Línea del VaR
+
         ax.axhline(y=var_threshold/100, color='red', linestyle='--', 
                    linewidth=2, label=f'VaR Threshold ({var_threshold:.2f}%)')
-        
-        # Marcar violaciones
+
         breaches = returns[returns < var_threshold/100]
         if len(breaches) > 0:
             ax.scatter(breaches.index, breaches.values, 
@@ -72,8 +69,7 @@ class VarEsPlotter:
         ax.set_xlabel('Fecha', fontsize=12)
         ax.legend()
         ax.grid(True, alpha=0.3)
-        
-        # Añadir estadísticas
+
         breach_count = len(breaches)
         breach_rate = (breach_count / len(returns)) * 100
         ax.text(0.02, 0.98, f'Violaciones: {breach_count} ({breach_rate:.2f}%)',

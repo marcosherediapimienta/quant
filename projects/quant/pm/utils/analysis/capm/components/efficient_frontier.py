@@ -4,14 +4,12 @@ from scipy.optimize import minimize
 from dataclasses import dataclass
 from typing import List
 
-
 @dataclass
 class FrontierResult:
     returns: np.ndarray
     volatilities: np.ndarray
     weights: np.ndarray
     assets: List[str]
-
 
 class EfficientFrontierCalculator:
 

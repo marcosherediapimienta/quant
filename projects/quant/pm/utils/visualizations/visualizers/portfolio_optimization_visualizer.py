@@ -3,7 +3,6 @@ import pandas as pd
 from ...visualizations.components.frontier_plotter import FrontierPlotter
 from ...analysis.capm.analyzers.portfolio_optimization_analyzer import PortfolioOptimizationAnalyzer
 
-
 class PortfolioOptimizationVisualizer:
     
     def __init__(self, portfolio_analyzer: PortfolioOptimizationAnalyzer):
@@ -29,8 +28,7 @@ class PortfolioOptimizationVisualizer:
         
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
-        
-        # 1. Frontera + CML
+
         ax1 = fig.add_subplot(gs[0, :])
         if cml is not None:
             self.plotter.plot_frontier_with_cml(
@@ -40,8 +38,7 @@ class PortfolioOptimizationVisualizer:
             )
         else:
             self.plotter.plot_efficient_frontier(frontier, ax=ax1)
-        
-        # 2. Composición del portafolio tangente
+
         ax2 = fig.add_subplot(gs[1, 0])
         if tangent and tangent['weights'] is not None:
             weights_df = pd.DataFrame({
@@ -57,8 +54,7 @@ class PortfolioOptimizationVisualizer:
         else:
             ax2.text(0.5, 0.5, 'No disponible', ha='center', va='center', transform=ax2.transAxes)
             ax2.set_title('Composición Portafolio Tangente', fontsize=12, fontweight='bold')
-        
-        #3. Estadísticas del portafolio tangente
+
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.axis('off')
         if tangent:

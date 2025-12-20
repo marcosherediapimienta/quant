@@ -24,11 +24,9 @@ class VarEsVisualizer:
         
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
-        
-        # Obtener resultados del nivel de confianza especificado
+
         methods_results = var_es_results[confidence_level]
-        
-        # 1. Comparación de métodos (VaR diario)
+
         ax1 = fig.add_subplot(gs[0, 0])
         self.var_es_plotter.plot_var_es_comparison(
             portfolio_ret,
@@ -37,8 +35,7 @@ class VarEsVisualizer:
             title='VaR y ES Diarios',
             ax=ax1
         )
-        
-        # 2. Comparación de métodos (VaR anual)
+
         ax2 = fig.add_subplot(gs[0, 1])
         var_annual_results = {
             method: {
@@ -54,8 +51,7 @@ class VarEsVisualizer:
             title='VaR y ES Anualizados',
             ax=ax2
         )
-        
-        # 3-5. Análisis de violaciones para cada método
+
         methods = ['historical', 'parametric', 'monte_carlo']
         for idx, method in enumerate(methods):
             ax = fig.add_subplot(gs[1 + idx // 2, idx % 2])

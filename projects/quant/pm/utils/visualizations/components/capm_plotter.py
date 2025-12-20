@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import Optional
 
-
 class CAPMPlotter:
 
     def plot_regression(
@@ -19,19 +18,15 @@ class CAPMPlotter:
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 8))
         
-        # Excess returns
         market_excess = market_returns - risk_free_rate
         asset_excess = asset_returns - risk_free_rate
-        
-        # Scatter plot
+
         ax.scatter(market_excess, asset_excess, alpha=0.5, s=20, label='Observaciones')
-        
-        # Línea de regresión
+
         x_line = np.linspace(market_excess.min(), market_excess.max(), 100)
         y_line = alpha + beta * x_line
         ax.plot(x_line, y_line, 'r-', linewidth=2, label=f'CAPM: α={alpha:.4f}, β={beta:.3f}')
-        
-        # Línea de mercado (beta=1)
+
         ax.plot(x_line, x_line, 'k--', linewidth=1, alpha=0.5, label='Mercado (β=1)')
         
         ax.set_xlabel('Retorno Exceso del Mercado', fontsize=12)
@@ -51,8 +46,7 @@ class CAPMPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Scatter plot
+
         ax.scatter(
             results_df['beta'],
             results_df['alpha_annual'] * 100,
@@ -63,8 +57,7 @@ class CAPMPlotter:
             edgecolors='black',
             linewidth=1
         )
-        
-        # Etiquetas
+
         for asset in results_df.index:
             ax.annotate(
                 asset,
@@ -72,8 +65,7 @@ class CAPMPlotter:
                 fontsize=9,
                 alpha=0.8
             )
-        
-        # Líneas de referencia
+
         ax.axhline(y=0, color='k', linestyle='--', linewidth=1, alpha=0.5)
         ax.axvline(x=1, color='k', linestyle='--', linewidth=1, alpha=0.5, label='β=1')
         

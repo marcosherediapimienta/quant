@@ -2,7 +2,6 @@ import numpy as np
 import statsmodels.api as sm
 from dataclasses import dataclass
 
-
 @dataclass
 class AlphaTestResult:
     alpha_daily: float
@@ -11,7 +10,6 @@ class AlphaTestResult:
     p_value: float
     is_significant: bool
     jensen_alpha: float
-
 
 class AlphaSignificanceTest:
 

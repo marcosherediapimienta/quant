@@ -19,12 +19,10 @@ class DistributionPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=self.figsize)
-        
-        # Histograma
+
         ax.hist(returns, bins=bins, density=True, alpha=0.7, 
                 color='steelblue', edgecolor='black', label='Retornos')
-        
-        # Distribución normal teórica
+
         mu, sigma = returns.mean(), returns.std()
         x = np.linspace(returns.min(), returns.max(), 100)
         normal = stats.norm.pdf(x, mu, sigma)

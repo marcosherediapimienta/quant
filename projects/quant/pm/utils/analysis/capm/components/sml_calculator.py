@@ -1,7 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
 
-
 @dataclass
 class SMLResult:
     beta_axis: np.ndarray
@@ -9,7 +8,6 @@ class SMLResult:
     market_return: float
     risk_free_rate: float
     slope: float
-
 
 class SMLCalculator:
 

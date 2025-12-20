@@ -4,7 +4,6 @@ from ...visualizations.components.capm_plotter import CAPMPlotter
 from ...analysis.capm.analyzers.capm_analyzer import CAPMAnalyzer
 from ...analysis.capm.components.helpers import daily_risk_free_rate
 
-
 class CAPMVisualizer:
 
     def __init__(self, capm_analyzer: CAPMAnalyzer):
@@ -25,8 +24,7 @@ class CAPMVisualizer:
         
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
-        
-        # 1. Regresión CAPM
+
         ax1 = fig.add_subplot(gs[0, :])
         self.plotter.plot_regression(
             market_returns,
@@ -37,8 +35,7 @@ class CAPMVisualizer:
             title=f"Regresión CAPM: {asset_name}",
             ax=ax1
         )
-        
-        # 2. Estadísticas (texto)
+
         ax2 = fig.add_subplot(gs[1, 0])
         ax2.axis('off')
         stats_text = f"""

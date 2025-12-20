@@ -2,12 +2,10 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, safe_div, score_metric, classify_metric
-
+from .helpers import nan_if_missing, score_metric, classify_metric
 
 @dataclass
 class ProfitabilityThresholds:
-
     roic: Dict[str, float] = None
     roe: Dict[str, float] = None
     roa: Dict[str, float] = None
@@ -58,8 +56,7 @@ class ProfitabilityMetrics:
             'operating_margin_class': classify_metric(operating_margin, self.thresholds.operating_margin),
             'net_margin_class': classify_metric(net_margin, self.thresholds.net_margin)
         }
-        
-        # Score compuesto (0-100)
+
         scores = []
         if pd.notna(roic):
             scores.append(score_metric(roic, -0.10, 0.30) * 0.30) 
@@ -81,7 +78,6 @@ class ProfitabilityMetrics:
         }
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-  
         alerts = []
         
         if pd.notna(metrics['roic']) and metrics['roic'] < 0.08:

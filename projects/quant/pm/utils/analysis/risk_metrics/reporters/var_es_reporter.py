@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from ..analyzers.var_es_analyzer import VarEsAnalyzer
 
-
 class VarEsReporter:
 
     def __init__(self, var_es_analyzer: VarEsAnalyzer):
@@ -52,7 +51,7 @@ class VarEsReporter:
 
         print(f"ANÁLISIS VaR y ES (Nivel de confianza: {confidence_level*100:.0f}%)".center(70))
 
-        print("\nCOMPARACIÓN DE MÉTODOS")
+        print("COMPARACIÓN DE MÉTODOS")
         print(f"{'Método':<15} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
         
         for method, row in comparison.iterrows():
@@ -62,7 +61,6 @@ class VarEsReporter:
                   f"{row['ES_daily_%']:>7.2f}%      "
                   f"{row['ES_annual_%']:>7.2f}%")
 
-        # Interpretación
         avg_var_daily = comparison['VaR_daily_%'].mean()
         avg_es_daily = comparison['ES_daily_%'].mean()
         
@@ -70,8 +68,7 @@ class VarEsReporter:
         print(f"VaR promedio diario:     {avg_var_daily:.2f}%")
         print(f"ES promedio diario:      {avg_es_daily:.2f}%")
         print(f"Pérdida máxima esperada: {avg_es_daily:.2f}% en un día adverso")
-        
-        # Interpretación de riesgo
+ 
         if abs(avg_var_daily) < 2:
             risk_level = "Bajo"
         elif abs(avg_var_daily) < 5:
@@ -103,7 +100,7 @@ class VarEsReporter:
         )
         
         print(f"VaR y ES - Método: {method.capitalize()}".center(70))
-        print(f"\n{'Confianza':<12} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
+        print(f"{'Confianza':<12} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
 
         for cl in confidence_levels:
             values = results[cl][method]

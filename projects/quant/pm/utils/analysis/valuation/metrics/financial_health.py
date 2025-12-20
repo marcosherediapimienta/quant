@@ -4,7 +4,6 @@ from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, score_metric, classify_metric
 
-
 @dataclass
 class FinancialHealthThresholds:
     debt_ebitda: Dict[str, float] = None
@@ -63,7 +62,6 @@ class FinancialHealthMetrics:
             'net_cash_class': 'positive' if pd.notna(net_cash) and net_cash > 0 else 'negative' if pd.notna(net_cash) else 'N/A'
         }
         
-        # Score compuesto
         score = self._calculate_score(metrics)
         
         return {
@@ -119,32 +117,27 @@ class FinancialHealthMetrics:
     def _calculate_score(self, metrics: Dict) -> float:
         scores = []
         weights = []
-        
-        # Debt/EBITDA (25%) - menor es mejor
+
         if pd.notna(metrics['debt_ebitda']):
             score = score_metric(metrics['debt_ebitda'], 0, 6, higher_is_better=False)
             scores.append(score)
             weights.append(0.25)
-        
-        # Debt/Equity (20%) - menor es mejor
+
         if pd.notna(metrics['debt_equity']):
             score = score_metric(metrics['debt_equity'], 0, 3, higher_is_better=False)
             scores.append(score)
             weights.append(0.20)
-        
-        # Current Ratio (20%) - mayor es mejor (hasta cierto punto)
+
         if pd.notna(metrics['current_ratio']):
             score = score_metric(metrics['current_ratio'], 0.5, 3.0, higher_is_better=True)
             scores.append(score)
             weights.append(0.20)
-        
-        # Net Cash/EBITDA (20%)
+
         if pd.notna(metrics['net_cash_ebitda']):
             score = score_metric(metrics['net_cash_ebitda'], -3, 3, higher_is_better=True)
             scores.append(score)
             weights.append(0.20)
-        
-        # FCF (15%) - positivo = 100, negativo = 0
+
         if pd.notna(metrics['free_cash_flow']):
             fcf_score = 100 if metrics['free_cash_flow'] > 0 else 0
             scores.append(fcf_score)
@@ -160,26 +153,22 @@ class FinancialHealthMetrics:
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
         alerts = []
-        
-        # Alerta de deuda alta
         debt_ebitda = metrics['debt_ebitda']
+
         if pd.notna(debt_ebitda):
             if debt_ebitda > 4:
                 alerts.append(f"Deuda/EBITDA muy alta ({debt_ebitda:.1f}x): riesgo de insolvencia")
             elif debt_ebitda > 3:
                 alerts.append(f"Deuda/EBITDA elevada ({debt_ebitda:.1f}x): vigilar capacidad de pago")
-        
-        # Alerta de liquidez
+ 
         current_ratio = metrics['current_ratio']
         if pd.notna(current_ratio) and current_ratio < 1.0:
             alerts.append(f"Current Ratio bajo ({current_ratio:.2f}): problemas de liquidez")
-        
-        # Alerta de FCF negativo
+
         fcf = metrics['free_cash_flow']
         if pd.notna(fcf) and fcf < 0:
             alerts.append("Free Cash Flow negativo: la empresa consume caja")
-        
-        # Alerta de caja neta negativa
+
         net_cash = metrics['net_cash']
         if pd.notna(net_cash) and net_cash < 0:
             alerts.append("Posición de caja neta negativa (más deuda que caja)")

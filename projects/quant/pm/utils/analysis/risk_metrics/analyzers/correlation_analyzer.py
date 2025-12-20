@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from ..components.correlation import CorrelationCalculator
 
-
 class CorrelationAnalyzer:
 
     def __init__(self):

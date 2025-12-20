@@ -1,14 +1,12 @@
 import numpy as np
 from dataclasses import dataclass
 
-
 @dataclass
 class CAPMResult:
     alpha_daily: float
     beta: float
     correlation: float
     jensen_alpha: float
-
 
 class CAPMCalculator:
     def __init__(self, annual_factor: float = 252.0):

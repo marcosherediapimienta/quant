@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from ..analyzers.ratio_analyzer import RatioAnalyzer
 
-
 class RatioReporter:
 
     def __init__(self, ratio_analyzer: RatioAnalyzer):
@@ -30,11 +29,11 @@ class RatioReporter:
         print(f"  Valor:                   {results['sharpe_ratio']:>8.3f}")
         self._interpret_sharpe(results['sharpe_ratio'])
         
-        print("ORTINO RATIO")
+        print("SORTINO RATIO")
         print(f"  Valor:                   {results['sortino_ratio']:>8.3f}")
         self._interpret_sortino(results['sortino_ratio'])
         
-        print("\nMÉTRICAS ADICIONALES")
+        print("MÉTRICAS ADICIONALES")
         print(f"  Retorno Anual:           {results['annual_return']*100:>8.2f}%")
         print(f"  Volatilidad Anual:       {results['annual_volatility']*100:>8.2f}%")
         print(f"  Volatilidad Downside:    {results['downside_volatility']*100:>8.2f}%")
@@ -69,13 +68,13 @@ class RatioReporter:
 
         print("RESUMEN DE MÉTRICAS ROLLING".center(60))
         
-        print("\nSHARPE RATIO ROLLING")
+        print("SHARPE RATIO ROLLING")
         print(f"  Promedio:                {rolling_data['sharpe_rolling'].mean():>8.3f}")
         print(f"  Mínimo:                  {rolling_data['sharpe_rolling'].min():>8.3f}")
         print(f"  Máximo:                  {rolling_data['sharpe_rolling'].max():>8.3f}")
         print(f"  Último:                  {rolling_data['sharpe_rolling'].iloc[-1]:>8.3f}")
         
-        print("\nSORTINO RATIO ROLLING")
+        print("SORTINO RATIO ROLLING")
         print(f"  Promedio:                {rolling_data['sortino_rolling'].mean():>8.3f}")
         print(f"  Mínimo:                  {rolling_data['sortino_rolling'].min():>8.3f}")
         print(f"  Máximo:                  {rolling_data['sortino_rolling'].max():>8.3f}")

@@ -5,7 +5,6 @@ from ..components.tracking_error import TrackingErrorCalculator
 from ..components.beta import BetaCalculator
 from ..components.alpha import AlphaCalculator
 
-
 class BenchmarkAnalyzer:
 
     def __init__(self, annual_factor: float = 252.0):

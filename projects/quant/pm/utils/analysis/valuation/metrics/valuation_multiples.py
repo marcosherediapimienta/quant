@@ -4,7 +4,6 @@ from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, score_metric
 
-
 @dataclass
 class ValuationThresholds:
 
@@ -14,7 +13,6 @@ class ValuationThresholds:
     fcf_yield: Dict[str, float] = None
     
     def __post_init__(self):
-        # Para múltiplos, menor suele ser mejor (más barato)
         self.pe_ratio = self.pe_ratio or {'cheap': 12, 'fair': 18, 'expensive': 25, 'very_expensive': 35}
         self.ev_ebitda = self.ev_ebitda or {'cheap': 8, 'fair': 12, 'expensive': 16, 'very_expensive': 20}
         self.pb_ratio = self.pb_ratio or {'cheap': 1.5, 'fair': 3.0, 'expensive': 5.0, 'very_expensive': 8.0}
@@ -35,13 +33,9 @@ class ValuationMultiples:
         ev_ebitda = nan_if_missing(data.get('enterpriseToEbitda'))
         ev_revenue = nan_if_missing(data.get('enterpriseToRevenue'))
         peg = nan_if_missing(data.get('pegRatio'))
-        
-        # FCF Yield calculation
         market_cap = nan_if_missing(data.get('marketCap'))
         fcf = nan_if_missing(data.get('freeCashflow'))
         fcf_yield = safe_div(fcf, market_cap)
-        
-        # Earnings Yield (inverso del P/E)
         earnings_yield = safe_div(1, pe_ttm) if pd.notna(pe_ttm) and pe_ttm > 0 else np.nan
         
         metrics = {
@@ -65,7 +59,6 @@ class ValuationMultiples:
             'overall': self._overall_valuation(metrics)
         }
         
-        # Score (0-100, donde 100 = muy barato)
         scores = []
         if pd.notna(pe_ttm) and pe_ttm > 0:
             scores.append(score_metric(pe_ttm, 5, 40, higher_is_better=False) * 0.25)
@@ -131,7 +124,6 @@ class ValuationMultiples:
         return 'poor'
     
     def _overall_valuation(self, metrics: Dict) -> str:
-
         cheap_count = 0
         expensive_count = 0
         

@@ -5,10 +5,8 @@ from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, score_metric, classify_metric
 
-
 @dataclass
 class GrowthThresholds:
-
     revenue_growth: Dict[str, float] = None
     earnings_growth: Dict[str, float] = None
     
@@ -16,14 +14,12 @@ class GrowthThresholds:
         self.revenue_growth = self.revenue_growth or {'excellent': 0.25, 'good': 0.15, 'fair': 0.08, 'poor': 0.03}
         self.earnings_growth = self.earnings_growth or {'excellent': 0.30, 'good': 0.20, 'fair': 0.10, 'poor': 0.05}
 
-
 class GrowthMetrics:
     
     def __init__(self, thresholds: GrowthThresholds = None):
         self.thresholds = thresholds or GrowthThresholds()
     
     def calculate(self, data: Dict) -> Dict:
-
         revenue_growth = nan_if_missing(data.get('revenueGrowth'))
         earnings_growth = nan_if_missing(data.get('earningsGrowth'))
         earnings_quarterly_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
@@ -40,8 +36,7 @@ class GrowthMetrics:
             'revenue_growth_class': classify_metric(revenue_growth, self.thresholds.revenue_growth),
             'earnings_growth_class': classify_metric(earnings_growth, self.thresholds.earnings_growth)
         }
-        
-        # Score compuesto (0-100)
+
         scores = []
         if pd.notna(revenue_growth):
             scores.append(score_metric(revenue_growth, -0.20, 0.40) * 0.50)
@@ -50,8 +45,6 @@ class GrowthMetrics:
         
         total_weight = sum([0.50, 0.50][:len(scores)])
         growth_score = sum(scores) / total_weight if total_weight > 0 else np.nan
-        
-        # Análisis de sostenibilidad
         sustainability = self._analyze_sustainability(metrics)
         
         return {
@@ -70,14 +63,12 @@ class GrowthMetrics:
             'is_sustainable': True,
             'concerns': []
         }
-        
-        # Si earnings crecen mucho más que revenue, puede ser insostenible
+
         if pd.notna(rev_g) and pd.notna(earn_g):
             if earn_g > rev_g * 2 and earn_g > 0.20:
                 analysis['concerns'].append("Earnings crecen más rápido que ventas - verificar si es sostenible")
                 analysis['is_sustainable'] = False
-        
-        # Crecimiento negativo
+
         if pd.notna(rev_g) and rev_g < -0.05:
             analysis['concerns'].append("Ventas en declive")
             analysis['is_sustainable'] = False

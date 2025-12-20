@@ -17,7 +17,6 @@ from ..metrics import (
     ValuationThresholds
 )
 
-
 @dataclass
 class AnalysisWeights:
     profitability: float = 0.25
@@ -35,7 +34,6 @@ class AnalysisWeights:
             self.growth /= total
             self.efficiency /= total
             self.valuation /= total
-
 
 @dataclass
 class ConclusionThresholds:
@@ -78,20 +76,12 @@ class CompanyAnalyzer:
         try:
             stock = yf.Ticker(ticker)
             info = stock.info or {}
-            
-            # Empezar con datos de info
+   
             data = {**info}
-            
-            # Añadir datos del balance sheet
+
             self._add_balance_sheet_data(stock, data)
-            
-            # Añadir datos del cashflow
             self._add_cashflow_data(stock, data)
-            
-            # Añadir datos del income statement
             self._add_financials_data(stock, data)
-            
-            # Calcular métricas derivadas que yfinance no provee
             self._calculate_derived_metrics(data)
             
             return {
@@ -117,11 +107,8 @@ class CompanyAnalyzer:
             bs = stock.balance_sheet
             if bs is None or bs.empty:
                 return
-            
-            # Obtener columna más reciente
+
             latest = bs.iloc[:, 0]
-            
-            # Mapeo de keys
             mappings = {
                 'totalAssets': ['Total Assets'],
                 'totalCurrentAssets': ['Total Current Assets', 'Current Assets'],
@@ -174,8 +161,7 @@ class CompanyAnalyzer:
             for key, possible_names in mappings.items():
                 if key not in data or pd.isna(data.get(key)):
                     data[key] = self._get_from_series(latest, possible_names)
-            
-            # Total Revenue si no viene en info
+
             if 'totalRevenue' not in data or pd.isna(data.get('totalRevenue')):
                 data['totalRevenue'] = self._get_from_series(latest, ['Total Revenue', 'Revenue'])
                     
@@ -194,20 +180,17 @@ class CompanyAnalyzer:
         return np.nan
     
     def _calculate_derived_metrics(self, data: Dict):        
-        # Asset Turnover = Revenue / Total Assets
+
         if pd.isna(data.get('assetTurnover')):
             revenue = data.get('totalRevenue')
             assets = data.get('totalAssets')
             if pd.notna(revenue) and pd.notna(assets) and assets != 0:
                 data['assetTurnover'] = revenue / assets
-        
-        # ROIC = NOPAT / Invested Capital
+
         if pd.isna(data.get('returnOnCapital')):
             ebit = data.get('ebit')
             if pd.notna(ebit):
-                nopat = ebit * (1 - 0.21)  # Tax rate 21%
-                
-                # Invested Capital = Debt + Equity - Cash
+                nopat = ebit * (1 - 0.21)  
                 debt = data.get('totalDebt', 0) or 0
                 equity = data.get('totalStockholderEquity')
                 cash = data.get('totalCash', 0) or 0
@@ -216,8 +199,7 @@ class CompanyAnalyzer:
                     invested_capital = debt + equity - cash
                     if invested_capital > 0:
                         data['returnOnCapital'] = nopat / invested_capital
-        
-        # Free Cash Flow si no viene
+
         if pd.isna(data.get('freeCashflow')):
             ocf = data.get('operatingCashflow')
             capex = data.get('capitalExpenditures', 0) or 0
@@ -248,15 +230,12 @@ class CompanyAnalyzer:
             }
         
         raw_data = company['data']
-        
-        # Calcular todas las métricas
+
         profitability_result = self.profitability.calculate(raw_data)
         health_result = self.health.calculate(raw_data)
         growth_result = self.growth.calculate(raw_data)
         efficiency_result = self.efficiency.calculate(raw_data)
         valuation_result = self.valuation.calculate(raw_data)
-        
-        # Calcular score compuesto
         total_score = self._calculate_total_score(
             profitability_result['score'],
             health_result['score'],
@@ -264,11 +243,8 @@ class CompanyAnalyzer:
             efficiency_result['score'],
             valuation_result['score']
         )
-        
-        # Determinar conclusión
+
         conclusion = self._determine_conclusion(total_score)
-        
-        # Consolidar alertas
         all_alerts = self._consolidate_alerts(
             profitability=profitability_result,
             financial_health=health_result,
@@ -356,7 +332,6 @@ class CompanyAnalyzer:
         return labels.get('critical', 'CRÍTICA')
     
     def _consolidate_alerts(self, **category_results) -> Dict[str, List[str]]:
-        """Consolida alertas de todas las categorías."""
         alerts = {}
         for category, result in category_results.items():
             if result.get('alerts'):
@@ -364,7 +339,6 @@ class CompanyAnalyzer:
         return alerts
     
     def get_summary_df(self, results: Dict[str, Dict]) -> pd.DataFrame:
-        """Crea DataFrame resumen de múltiples análisis."""
         rows = []
         for ticker, data in results.items():
             if not data.get('success', False):

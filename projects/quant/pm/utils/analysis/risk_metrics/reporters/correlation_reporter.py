@@ -3,7 +3,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.correlation_analyzer import CorrelationAnalyzer
 
-
 class CorrelationReporter:
 
     def __init__(self, correlation_analyzer: CorrelationAnalyzer):

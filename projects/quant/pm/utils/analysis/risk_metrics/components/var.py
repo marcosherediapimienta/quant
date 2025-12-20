@@ -43,8 +43,7 @@ class VaRCalculator:
         mu = portfolio_ret.mean()
         sigma = portfolio_ret.std(ddof=0)
         z = stats.norm.ppf(alpha)
-        
-        # VaR paramétrico
+
         var_daily = mu + sigma * z
         var_annual = var_daily * np.sqrt(self.annual_factor)
         
@@ -69,8 +68,7 @@ class VaRCalculator:
         
         mu = portfolio_ret.mean()
         sigma = portfolio_ret.std(ddof=0)
-        
-        # Simulaciones
+
         rng = np.random.default_rng(seed)
         simulations = rng.normal(mu, sigma, n_simulations)
         

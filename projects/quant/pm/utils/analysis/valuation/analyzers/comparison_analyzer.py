@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict, List
 from .company_analyzer import CompanyAnalyzer, AnalysisWeights, ConclusionThresholds
 
-
 class ComparisonAnalyzer:
     
     def __init__(self, company_analyzer: CompanyAnalyzer = None):
@@ -25,11 +24,7 @@ class ComparisonAnalyzer:
         return cls(company_analyzer=analyzer)
     
     def compare(self, tickers: List[str]) -> Dict:
-
-        # Analizar todas las empresas
         results = self.company_analyzer.analyze_multiple(tickers)
-        
-        # Filtrar resultados exitosos
         valid_results = {
             t: r for t, r in results.items() 
             if r.get('success', False)
@@ -41,14 +36,9 @@ class ComparisonAnalyzer:
                 'individual_results': results,
                 'success': False
             }
-        
-        # Crear ranking
+
         ranking = self._create_ranking(valid_results)
-        
-        # Identificar mejor/peor por categoría
         category_leaders = self._identify_leaders(valid_results)
-        
-        # Calcular estadísticas del grupo
         group_stats = self._calculate_group_stats(valid_results)
         
         return {
@@ -73,18 +63,15 @@ class ComparisonAnalyzer:
                     'score': score,
                     'conclusion': result.get('conclusion')
                 })
-        
-        # Ordenar por score descendente
+
         ranking_data.sort(key=lambda x: x['score'], reverse=True)
-        
-        # Añadir posición
+
         for i, item in enumerate(ranking_data, 1):
             item['rank'] = i
         
         return ranking_data
     
     def _identify_leaders(self, results: Dict[str, Dict]) -> Dict:
-
         categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']
         leaders = {}
         
@@ -113,7 +100,6 @@ class ComparisonAnalyzer:
         return leaders
     
     def _calculate_group_stats(self, results: Dict[str, Dict]) -> Dict:
-        
         categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation', 'total']
         stats = {}
         

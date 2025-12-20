@@ -17,12 +17,10 @@ class DrawdownPlotter:
 
         if ax is None:
             fig, ax = plt.subplots(figsize=self.figsize)
-        
-        # Retornos acumulados
+
         ax.plot(cumulative_returns.index, cumulative_returns.values, 
                 linewidth=1.5, label='Retornos Acumulados', color='steelblue')
-        
-        # Drawdown (área sombreada)
+
         ax.fill_between(drawdown_series.index, 0, drawdown_series.values,
                         alpha=0.3, color='red', label='Drawdown')
         

@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Dict
 from .helpers import calculate_portfolio_returns
 
-
 class BetaCalculator:
 
     def __init__(self):
