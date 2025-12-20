@@ -24,12 +24,17 @@ class DrawdownCalculator:
         underwater = drawdown < 0
         current_duration = 0
         max_duration = 0
-        
-        for is_underwater in underwater:
+        in_drawdown = False
+
+        for date, is_underwater in underwater.items():
             if is_underwater:
+                if not in_drawdown:
+                    in_drawdown = True
+                    drawdown_start = date
                 current_duration += 1
                 max_duration = max(max_duration, current_duration)
             else:
+                in_drawdown = False
                 current_duration = 0
 
         annual_return = annualize_return(portfolio_ret, self.annual_factor)

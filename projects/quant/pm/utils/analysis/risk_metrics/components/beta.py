@@ -66,11 +66,11 @@ class BetaCalculator:
                 return np.nan
             p = window_data['portfolio'].values
             b = window_data['benchmark'].values
+            if len(p) < 2 or len(b) < 2:
+                return np.nan
             cov_matrix = np.cov(p, b, ddof=ddof)
             return cov_matrix[0, 1] / cov_matrix[1, 1] if cov_matrix[1, 1] > 0 else np.nan
-        
+
         beta_rolling = df.rolling(window=window).apply(
-            lambda x: rolling_beta(df.loc[x.index]), raw=False
+            lambda x: rolling_beta(x), raw=False
         )['portfolio']
-        
-        return beta_rolling

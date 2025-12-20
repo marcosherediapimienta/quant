@@ -24,9 +24,9 @@ class CAPMAnalyzer:
 
         try:
             r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
-        except:
+        except (TypeError, ValueError, OverflowError):
             r_squared = np.nan
-        
+            
         return {
             'alpha_daily': capm.alpha_daily,
             'alpha_annual': capm.jensen_alpha,

@@ -19,8 +19,8 @@ class CAPMCalculator:
         risk_free_rate_daily: float
     ) -> CAPMResult:
 
-        if len(asset_returns) != len(market_returns) or len(asset_returns) < 2:
-            return CAPMResult(np.nan, np.nan, np.nan, np.nan)
+        if not isinstance(asset_returns, np.ndarray) or not isinstance(market_returns, np.ndarray):
+            raise TypeError("Los retornos deben ser numpy arrays")
 
         y = asset_returns - risk_free_rate_daily
         x = market_returns - risk_free_rate_daily
@@ -31,8 +31,7 @@ class CAPMCalculator:
             beta = float(params[1])
         except Exception:
             return CAPMResult(np.nan, np.nan, np.nan, np.nan)
-        
-        # Correlación
+
         try:
             corr = float(np.corrcoef(x, y)[0, 1])
         except Exception:
