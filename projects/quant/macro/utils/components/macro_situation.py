@@ -1,0 +1,245 @@
+import numpy as np
+import pandas as pd
+from typing import Dict
+
+def analyze_yield_curve_usa(factors_data: Dict[str, pd.Series]) -> Dict:
+    curve = {}
+    rates = {}
+    tenors_map = {
+        'RATE_2Y': '2Y',
+        'RATE_5Y': '5Y',
+        'RATE_10Y': '10Y',
+        'RATE_30Y': '30Y'
+    }
+    
+    for factor, label in tenors_map.items():
+        if factor in factors_data and len(factors_data[factor]) > 0:
+            rates[label] = factors_data[factor].iloc[-1] 
+
+    spreads = {}
+    if '10Y' in rates and '2Y' in rates:
+        spreads['10Y-2Y'] = rates['10Y'] - rates['2Y']
+    if '10Y' in rates and '5Y' in rates:
+        spreads['10Y-5Y'] = rates['10Y'] - rates['5Y']
+    if '30Y' in rates and '10Y' in rates:
+        spreads['30Y-10Y'] = rates['30Y'] - rates['10Y']
+
+    spread_10_2 = spreads.get('10Y-2Y', 1.0)
+    if spread_10_2 < 0:
+        interpretation = "INVERTIDA - Señal de recesión"
+        risk_level = "Alto"
+    elif spread_10_2 < 0.3:
+        interpretation = "PLANA - Posible desaceleración"
+        risk_level = "Moderado"
+    elif spread_10_2 > 2.0:
+        interpretation = "EMPINADA - Expansión económica"
+        risk_level = "Bajo"
+    else:
+        interpretation = "NORMAL - Crecimiento estable"
+        risk_level = "Bajo"
+    
+    return {
+        'levels': rates,
+        'spreads': spreads,
+        'interpretation': interpretation,
+        'risk_level': risk_level
+    }
+
+def analyze_inflation_signals(factors_data: Dict[str, pd.Series]) -> Dict:
+    signals = {}
+    
+    commodities = {
+        'GOLD': 'Oro',
+        'SILVER': 'Plata',
+        'OIL': 'Petróleo',
+        'COPPER': 'Cobre',
+        'WHEAT': 'Trigo',
+        'CORN': 'Maíz'
+    }
+    
+    changes = []
+    
+    for factor, name in commodities.items():
+        if factor in factors_data and len(factors_data[factor]) >= 252:
+            series = factors_data[factor]
+            current = series.iloc[-1]
+            year_ago = series.iloc[-252]
+            
+            if year_ago > 0:
+                change_1y = (current / year_ago - 1) * 100
+                signals[f'{factor.lower()}_change_1y'] = change_1y
+                signals[f'{factor.lower()}_name'] = name
+                changes.append(change_1y)
+
+    if changes:
+        avg_change = np.mean(changes)
+        
+        if avg_change > 15:
+            pressure = "ALTA - Presión inflacionaria fuerte"
+        elif avg_change > 5:
+            pressure = "MODERADA - Inflación controlada"
+        elif avg_change > -5:
+            pressure = "BAJA - Inflación contenida"
+        else:
+            pressure = "DEFLACIÓN - Caída de precios"
+        
+        signals['inflation_pressure'] = pressure
+        signals['avg_commodity_change'] = avg_change
+    else:
+        signals['inflation_pressure'] = "N/A"
+        signals['avg_commodity_change'] = np.nan
+    
+    return signals
+
+
+def analyze_credit_conditions(factors_data: Dict[str, pd.Series]) -> Dict:
+    credit = {}
+
+    if 'VIX' in factors_data and len(factors_data['VIX']) > 0:
+        vix = factors_data['VIX'].iloc[-1]
+        credit['vix_level'] = vix
+        
+        if vix > 35:
+            condition = "PÁNICO - Estrés extremo"
+        elif vix > 25:
+            condition = "ESTRÉS - Tensión alta"
+        elif vix > 20:
+            condition = "TENSIÓN - Nerviosismo"
+        elif vix > 15:
+            condition = "NORMAL - Volatilidad controlada"
+        else:
+            condition = "COMPLACENCIA - Volatilidad muy baja"
+        
+        credit['market_condition'] = condition
+
+    if 'HYG' in factors_data and 'LQD' in factors_data:
+        if len(factors_data['HYG']) > 0 and len(factors_data['LQD']) > 0:
+            hyg = factors_data['HYG'].iloc[-1]
+            lqd = factors_data['LQD'].iloc[-1]
+            credit['hyg_level'] = hyg
+            credit['lqd_level'] = lqd
+    
+    return credit
+
+def analyze_global_bonds(factors_data: Dict[str, pd.Series]) -> Dict:
+    bonds = {}  
+    regions = {
+        'USA': 'GOVT_20Y',
+        'Japón': 'JPN_BOND',
+        'Europa': 'EUR_BOND',
+        'Alemania': 'GER_BOND',
+        'UK': 'UK_BOND',
+        'Emergentes': 'EM_BOND'
+    }
+    
+    for region, factor in regions.items():
+        if factor in factors_data and len(factors_data[factor]) > 0:
+            series = factors_data[factor]
+            current = series.iloc[-1]
+            bond_data = {'level': current}
+
+            if len(series) >= 252:
+                year_ago = series.iloc[-252]
+                if year_ago > 0:
+                    change_1y = (current / year_ago - 1) * 100
+                    bond_data['change_1y'] = change_1y
+                else:
+                    bond_data['change_1y'] = np.nan
+            else:
+                bond_data['change_1y'] = np.nan
+
+            if len(series) >= 21:
+                month_ago = series.iloc[-21]
+                if month_ago > 0:
+                    change_1m = (current / month_ago - 1) * 100
+                    bond_data['change_1m'] = change_1m
+                else:
+                    bond_data['change_1m'] = np.nan
+            else:
+                bond_data['change_1m'] = np.nan
+            
+            bonds[region] = bond_data
+    
+    return bonds
+
+def analyze_risk_sentiment(factors_data: Dict[str, pd.Series]) -> Dict:
+    sentiment = {}
+
+    if 'VIX' in factors_data and len(factors_data['VIX']) > 0:
+        vix = factors_data['VIX'].iloc[-1]
+        sentiment['vix'] = vix
+        
+        if vix > 35:
+            fear = "PÁNICO"
+        elif vix > 25:
+            fear = "ALTO MIEDO"
+        elif vix > 20:
+            fear = "NERVIOSISMO"
+        elif vix > 15:
+            fear = "MODERADO"
+        else:
+            fear = "COMPLACENCIA"
+        
+        sentiment['fear_level'] = fear
+
+    dxy_trend = None
+    gold_trend = None
+    
+    if 'DXY' in factors_data and len(factors_data['DXY']) >= 63:
+        dxy = factors_data['DXY']
+        current = dxy.iloc[-1]
+        quarter_ago = dxy.iloc[-63]
+        
+        if quarter_ago > 0:
+            dxy_trend = (current / quarter_ago - 1) * 100
+            sentiment['dxy_trend'] = dxy_trend
+
+    if 'GOLD' in factors_data and len(factors_data['GOLD']) >= 63:
+        gold = factors_data['GOLD']
+        current = gold.iloc[-1]
+        quarter_ago = gold.iloc[-63]
+        
+        if quarter_ago > 0:
+            gold_trend = (current / quarter_ago - 1) * 100
+            sentiment['gold_trend'] = gold_trend
+
+    if dxy_trend is not None:
+        if dxy_trend > 5:
+            if gold_trend is not None and gold_trend > 5:
+                strength = "FUERTE (flight to safety)"
+            elif gold_trend is not None and gold_trend < -2:
+                strength = "FUERTE (fortaleza económica/política monetaria)"
+            else:
+                strength = "FUERTE"
+        elif dxy_trend > 0:
+            strength = "MODERADO"
+        elif dxy_trend > -5:
+            strength = "DÉBIL"
+        else:
+            strength = "MUY DÉBIL"
+        
+        sentiment['dollar_strength'] = strength
+
+    if gold_trend is not None:
+        if gold_trend > 10:
+            sentiment['safe_haven'] = "ALTA demanda de refugio"
+        elif gold_trend > 5:
+            sentiment['safe_haven'] = "MODERADA demanda de refugio"
+        elif gold_trend > 0:
+            sentiment['safe_haven'] = "BAJA demanda de refugio"
+        else:
+            sentiment['safe_haven'] = "SIN demanda de refugio"
+    
+    return sentiment
+
+def get_current_snapshot(factors_data: Dict[str, pd.Series]) -> Dict:
+    snapshot = {}
+    
+    for name, series in factors_data.items():
+        if len(series) > 0:
+            snapshot[name] = {
+                'current': series.iloc[-1],
+                'date': series.index[-1]
+            }
+    
+    return snapshot
