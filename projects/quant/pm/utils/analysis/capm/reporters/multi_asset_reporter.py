@@ -1,7 +1,6 @@
 import pandas as pd
 from ..analyzers.multi_asset_capm_analyzer import MultiAssetCAPMAnalyzer
 
-
 class MultiAssetReporter:
 
     def __init__(self, multi_asset_analyzer: MultiAssetCAPMAnalyzer):

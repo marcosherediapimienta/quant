@@ -2,7 +2,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.capm_analyzer import CAPMAnalyzer
 
-
 class CAPMReporter:
 
     def __init__(self, capm_analyzer: CAPMAnalyzer):

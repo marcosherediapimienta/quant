@@ -1,13 +1,14 @@
 import pandas as pd
+from ...tools.config import ADJ_CLOSE_COL, CLOSE_COL 
 
 def extract_close_price(data: pd.DataFrame, ticker: str) -> pd.Series:
 
     if isinstance(data.columns, pd.MultiIndex):
-        for col in ['Adj Close', 'Close']:
+        for col in [ADJ_CLOSE_COL, CLOSE_COL]:
             if (ticker, col) in data.columns:
                 return data[(ticker, col)].dropna()
     else:
-        for col in ['Adj Close', 'Close']:
+        for col in [ADJ_CLOSE_COL, CLOSE_COL]:
             if col in data.columns:
                 return data[col].dropna()
     
@@ -18,7 +19,7 @@ def extract_adj_close_prices(data: pd.DataFrame, tickers: list) -> pd.DataFrame:
 
     if isinstance(data.columns, pd.MultiIndex):
         for ticker in tickers:
-            for col_name in ['Adj Close', 'Close']:
+            for col_name in [ADJ_CLOSE_COL, CLOSE_COL]:
                 col = (ticker, col_name)
                 if col in data.columns:
                     result[ticker] = data[col].dropna()
@@ -27,7 +28,7 @@ def extract_adj_close_prices(data: pd.DataFrame, tickers: list) -> pd.DataFrame:
                 raise ValueError(f"No se encontró precio de cierre para {ticker}")
     else:
         if len(tickers) == 1:
-            for col_name in ['Adj Close', 'Close']:
+            for col_name in [ADJ_CLOSE_COL, CLOSE_COL]:
                 if col_name in data.columns:
                     result[tickers[0]] = data[col_name].dropna()
                     break

@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 from typing import List, Tuple
+from ....tools.config import ANNUAL_FACTOR
 
-def daily_risk_free_rate(annual_rate: float, annual_factor: float = 252.0) -> float:
+def daily_risk_free_rate(annual_rate: float, annual_factor: float = ANNUAL_FACTOR) -> float:
     return (1 + annual_rate) ** (1 / annual_factor) - 1
 
 def annualize_return(daily_returns: np.ndarray, annual_factor: float = 252.0) -> float:

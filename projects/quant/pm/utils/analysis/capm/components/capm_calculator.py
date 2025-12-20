@@ -1,5 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
+from ....tools.config import ANNUAL_FACTOR
 
 @dataclass
 class CAPMResult:
@@ -9,7 +10,7 @@ class CAPMResult:
     jensen_alpha: float
 
 class CAPMCalculator:
-    def __init__(self, annual_factor: float = 252.0):
+    def __init__(self, annual_factor: float = ANNUAL_FACTOR):
         self.annual_factor = annual_factor
     
     def calculate(

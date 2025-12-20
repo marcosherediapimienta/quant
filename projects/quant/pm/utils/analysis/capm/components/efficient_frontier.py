@@ -3,6 +3,8 @@ import pandas as pd
 from scipy.optimize import minimize
 from dataclasses import dataclass
 from typing import List
+from ....tools.config import FRONTIER_POINTS
+from ....tools.config import OPTIMIZATION_METHOD
 
 @dataclass
 class FrontierResult:
@@ -19,7 +21,7 @@ class EfficientFrontierCalculator:
     def calculate(
         self,
         returns: pd.DataFrame,
-        n_points: int = 60,
+        n_points: int = FRONTIER_POINTS,
         allow_short: bool = False
     ) -> FrontierResult:
 
@@ -96,7 +98,7 @@ class EfficientFrontierCalculator:
         result = minimize(
             portfolio_variance,
             x0=np.full(n, 1.0 / n),
-            method="SLSQP",
+            method="OPTIMIZATION_METHOD",
             bounds=bounds,
             constraints=constraints
         )

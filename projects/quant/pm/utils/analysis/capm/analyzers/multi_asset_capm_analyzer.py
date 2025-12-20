@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import  List
 from .capm_analyzer import CAPMAnalyzer
+from ....tools.config import MIN_OBSERVATIONS
 
 class MultiAssetCAPMAnalyzer:
     
@@ -30,7 +31,7 @@ class MultiAssetCAPMAnalyzer:
             asset_ret = asset_ret[mask]
             market_ret = market_ret[mask]
             
-            if len(asset_ret) < 30:  
+            if len(asset_ret) < MIN_OBSERVATIONS:  
                 continue
             
             analysis = self.capm_analyzer.analyze(asset_ret, market_ret, risk_free_rate)

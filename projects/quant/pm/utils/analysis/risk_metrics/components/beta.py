@@ -61,16 +61,28 @@ class BetaCalculator:
         if df.empty or len(df) < window:
             return pd.Series(dtype=float)
 
-        def rolling_beta(window_data):
-            if len(window_data) < 2:
+        def calculate_beta_for_window(window_df):
+            """Calcula beta para una ventana del DataFrame"""
+            if len(window_df) < 2:
                 return np.nan
-            p = window_data['portfolio'].values
-            b = window_data['benchmark'].values
+            
+            p = window_df['portfolio'].values
+            b = window_df['benchmark'].values
+            
             if len(p) < 2 or len(b) < 2:
                 return np.nan
-            cov_matrix = np.cov(p, b, ddof=ddof)
-            return cov_matrix[0, 1] / cov_matrix[1, 1] if cov_matrix[1, 1] > 0 else np.nan
+            
+            try:
+                cov_matrix = np.cov(p, b, ddof=ddof)
+                cov_pb = cov_matrix[0, 1]
+                var_b = cov_matrix[1, 1]
+                return cov_pb / var_b if var_b > 0 else np.nan
+            except:
+                return np.nan
 
         beta_rolling = df.rolling(window=window).apply(
-            lambda x: rolling_beta(x), raw=False
+            lambda x: calculate_beta_for_window(df.loc[x.index]),
+            raw=False
         )['portfolio']
+        
+        return beta_rolling

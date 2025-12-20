@@ -3,7 +3,8 @@ import pandas as pd
 from scipy import stats
 from typing import Literal, Dict
 from .helpers import calculate_portfolio_returns
-
+from ....tools.config import DEFAULT_CONFIDENCE_LEVEL
+from ....tools.config import DEFAULT_CONFIDENCE_LEVEL, MONTE_CARLO_SIMULATIONS, MONTE_CARLO_SEED
 
 class VaRCalculator:
 
@@ -14,7 +15,7 @@ class VaRCalculator:
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
-        confidence_level: float = 0.95
+        confidence_level: float = DEFAULT_CONFIDENCE_LEVEL
     ) -> Dict[str, float]:
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)
@@ -58,9 +59,9 @@ class VaRCalculator:
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
-        confidence_level: float = 0.95,
-        n_simulations: int = 10000,
-        seed: int = 42
+        confidence_level: float = DEFAULT_CONFIDENCE_LEVEL,
+        n_simulations: int = MONTE_CARLO_SIMULATIONS,
+        seed: int = MONTE_CARLO_SEED
     ) -> Dict[str, float]:
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)

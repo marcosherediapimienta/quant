@@ -3,13 +3,16 @@ from typing import Dict
 from ..components.capm_calculator import CAPMCalculator
 from ..components.alpha_significance import AlphaSignificanceTest
 from ..components.helpers import daily_risk_free_rate
+from ....tools.config import ANNUAL_FACTOR, SIGNIFICANCE_LEVEL
+
 
 class CAPMAnalyzer:
 
-    def __init__(self, annual_factor: float = 252.0, significance_level: float = 0.05):
+    def __init__(self, annual_factor: float = ANNUAL_FACTOR, significance_level: float = SIGNIFICANCE_LEVEL):
         self.annual_factor = annual_factor
-        self.capm_calc = CAPMCalculator(annual_factor)
-        self.alpha_test = AlphaSignificanceTest(annual_factor, significance_level)
+        self.significance_level = significance_level
+        self.capm_calc = CAPMCalculator()
+        self.alpha_test = AlphaSignificanceTest()
     
     def analyze(
         self,
@@ -26,7 +29,7 @@ class CAPMAnalyzer:
             r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
         except (TypeError, ValueError, OverflowError):
             r_squared = np.nan
-            
+
         return {
             'alpha_daily': capm.alpha_daily,
             'alpha_annual': capm.jensen_alpha,

@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, score_metric, classify_metric
+from ....tools.config import VALUATION_THRESHOLDS, SCORING_WEIGHTS, ALERT_THRESHOLDS
 
 @dataclass
 class ProfitabilityThresholds:
@@ -14,18 +15,20 @@ class ProfitabilityThresholds:
     net_margin: Dict[str, float] = None
     
     def __post_init__(self):
-        self.roic = self.roic or {'excellent': 0.20, 'good': 0.15, 'fair': 0.10, 'poor': 0.05}
-        self.roe = self.roe or {'excellent': 0.25, 'good': 0.15, 'fair': 0.10, 'poor': 0.05}
-        self.roa = self.roa or {'excellent': 0.15, 'good': 0.10, 'fair': 0.05, 'poor': 0.02}
-        self.gross_margin = self.gross_margin or {'excellent': 0.50, 'good': 0.35, 'fair': 0.20, 'poor': 0.10}
-        self.operating_margin = self.operating_margin or {'excellent': 0.25, 'good': 0.15, 'fair': 0.10, 'poor': 0.05}
-        self.net_margin = self.net_margin or {'excellent': 0.20, 'good': 0.10, 'fair': 0.05, 'poor': 0.02}
+        profitability_thresholds = VALUATION_THRESHOLDS['profitability']
+        self.roic = self.roic or profitability_thresholds['roic']
+        self.roe = self.roe or profitability_thresholds['roe']
+        self.roa = self.roa or profitability_thresholds['roa']
+        self.gross_margin = self.gross_margin or profitability_thresholds['gross_margin']
+        self.operating_margin = self.operating_margin or profitability_thresholds['operating_margin']
+        self.net_margin = self.net_margin or profitability_thresholds['net_margin']
 
 
 class ProfitabilityMetrics:
     
     def __init__(self, thresholds: ProfitabilityThresholds = None):
         self.thresholds = thresholds or ProfitabilityThresholds()
+        self.weights = SCORING_WEIGHTS['profitability']
     
     def calculate(self, data: Dict) -> Dict:
         roic = nan_if_missing(data.get('returnOnCapital'))
@@ -58,16 +61,25 @@ class ProfitabilityMetrics:
         }
 
         scores = []
-        if pd.notna(roic):
-            scores.append(score_metric(roic, -0.10, 0.30) * 0.30) 
-        if pd.notna(roe):
-            scores.append(score_metric(roe, -0.10, 0.35) * 0.20)  
-        if pd.notna(operating_margin):
-            scores.append(score_metric(operating_margin, -0.10, 0.30) * 0.25)  
-        if pd.notna(net_margin):
-            scores.append(score_metric(net_margin, -0.10, 0.25) * 0.25)  
+        weights_used = []
         
-        total_weight = sum([0.30, 0.20, 0.25, 0.25][:len(scores)])
+        if pd.notna(roic):
+            scores.append(score_metric(roic, -0.10, 0.30) * self.weights['roic'])
+            weights_used.append(self.weights['roic'])
+        
+        if pd.notna(roe):
+            scores.append(score_metric(roe, -0.10, 0.35) * self.weights['roe'])
+            weights_used.append(self.weights['roe'])
+        
+        if pd.notna(operating_margin):
+            scores.append(score_metric(operating_margin, -0.10, 0.30) * self.weights['operating_margin'])
+            weights_used.append(self.weights['operating_margin'])
+        
+        if pd.notna(net_margin):
+            scores.append(score_metric(net_margin, -0.10, 0.25) * self.weights['net_margin'])
+            weights_used.append(self.weights['net_margin'])
+        
+        total_weight = sum(weights_used)
         profitability_score = sum(scores) / total_weight if total_weight > 0 else np.nan
         
         return {
@@ -79,14 +91,15 @@ class ProfitabilityMetrics:
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
         alerts = []
+        alert_thresholds = ALERT_THRESHOLDS['profitability']
         
-        if pd.notna(metrics['roic']) and metrics['roic'] < 0.08:
+        if pd.notna(metrics['roic']) and metrics['roic'] < alert_thresholds['roic_low']:
             alerts.append("ROIC bajo: la empresa no genera retornos suficientes sobre el capital invertido")
         
         if pd.notna(metrics['roe']) and metrics['roe'] < 0:
             alerts.append("ROE negativo: la empresa está perdiendo dinero")
         
-        if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < 0.05:
+        if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_thresholds['operating_margin_low']:
             alerts.append("Margen operativo muy bajo: problemas de eficiencia operativa")
         
         if pd.notna(metrics['net_margin']) and metrics['net_margin'] < 0:

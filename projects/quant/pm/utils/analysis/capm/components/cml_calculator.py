@@ -1,5 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
+from ....tools.config import EPSILON
 
 @dataclass
 class CMLResult:
@@ -25,7 +26,7 @@ class CMLCalculator:
                 np.array([]), np.array([]), np.nan, np.nan, -1, np.nan
             )
 
-        sharpe = (frontier_returns - risk_free_rate) / np.maximum(frontier_volatilities, 1e-12)
+        sharpe = (frontier_returns - risk_free_rate) / np.maximum(frontier_volatilities, EPSILON)
 
         tangent_idx = int(np.argmax(sharpe))
         tangent_ret = frontier_returns[tangent_idx]

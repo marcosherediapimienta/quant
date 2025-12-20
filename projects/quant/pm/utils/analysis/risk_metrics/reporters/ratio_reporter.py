@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from ..analyzers.ratio_analyzer import RatioAnalyzer
+from ....tools.config import RATIO_INTERPRETATION
 
 class RatioReporter:
 
@@ -41,18 +42,14 @@ class RatioReporter:
 
     
     def _interpret_sharpe(self, sharpe: float) -> None:
- 
-        if sharpe > 2.0:
+        thresholds = RATIO_INTERPRETATION['sharpe']
+        if sharpe > thresholds['excellent']:
             print("  Interpretación:          Excelente")
-        elif sharpe > 1.0:
+        elif sharpe > thresholds['very_good']:
             print("  Interpretación:          Muy bueno")
-        elif sharpe > 0.5:
+        elif sharpe > thresholds['acceptable']:
             print("  Interpretación:          Aceptable")
-        elif sharpe > 0:
-            print("  Interpretación:          Subóptimo")
-        else:
-            print("  Interpretación:          Pobre (pérdidas)")
-    
+
     def _interpret_sortino(self, sortino: float) -> None:
 
         if sortino > 2.0:

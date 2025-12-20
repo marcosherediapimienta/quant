@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from ..analyzers.drawdown_analyzer import DrawdownAnalyzer
+from ....tools.config import DRAWDOWN_RISK_LEVELS, RATIO_INTERPRETATION
 
 class DrawdownReporter:
 
@@ -23,8 +24,8 @@ class DrawdownReporter:
 
         print("MAX DRAWDOWN")
         print(f"  Magnitud:                {results['max_drawdown']*100:>8.2f}%")
-        print(f"  Fecha:                   {results['max_drawdown_date']}")  # ✅ Corregido
-        print(f"  Duración:                {results['max_underwater_duration']} días")  # ✅ Corregido
+        print(f"  Fecha:                   {results['max_drawdown_date']}")
+        print(f"  Duración:                {results['max_underwater_duration']} días")
         
         print("RATIOS DE DRAWDOWN")
         print(f"  Calmar Ratio:            {results['calmar_ratio']:>8.3f}")
@@ -40,21 +41,23 @@ class DrawdownReporter:
         print("INTERPRETACIÓN")
         
         max_dd = abs(results['max_drawdown']) * 100
-        if max_dd < 10:
+        if max_dd < DRAWDOWN_RISK_LEVELS['low']:
             risk_level = "Bajo"
-        elif max_dd < 20:
+        elif max_dd < DRAWDOWN_RISK_LEVELS['moderate']:
             risk_level = "Moderado"
-        elif max_dd < 30:
+        elif max_dd < DRAWDOWN_RISK_LEVELS['high']:
             risk_level = "Alto"
-        else:
+        else: 
             risk_level = "Muy Alto"
         
         print(f"  Nivel de riesgo:         {risk_level}")
-        
+
+        calmar_thresholds = RATIO_INTERPRETATION['calmar']
         calmar = results['calmar_ratio']
-        if calmar > 1.0:
+        
+        if calmar > calmar_thresholds['excellent']:
             print(f"  Calmar:                  Excelente retorno vs drawdown")
-        elif calmar > 0.5:
+        elif calmar > calmar_thresholds['good']:
             print(f"  Calmar:                  Buena compensación")
         else:
             print(f"  Calmar:                  Riesgo elevado para el retorno")

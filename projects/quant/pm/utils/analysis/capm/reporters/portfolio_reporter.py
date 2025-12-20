@@ -1,7 +1,6 @@
 import pandas as pd
 from ..analyzers.portfolio_optimization_analyzer import PortfolioOptimizationAnalyzer
 
-
 class PortfolioReporter:
 
     def __init__(self, portfolio_analyzer: PortfolioOptimizationAnalyzer):
