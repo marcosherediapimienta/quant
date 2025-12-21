@@ -182,50 +182,79 @@ def analyze_risk_sentiment(factors_data: Dict[str, pd.Series]) -> Dict:
         
         sentiment['fear_level'] = fear
 
-    dxy_trend = None
-    gold_trend = None
+    dxy_trend_3m = None
+    dxy_trend_1m = None
+    dxy_trend_1w = None
     
-    if 'DXY' in factors_data and len(factors_data['DXY']) >= 63:
+    if 'DXY' in factors_data and len(factors_data['DXY']) > 0:
         dxy = factors_data['DXY']
         current = dxy.iloc[-1]
-        quarter_ago = dxy.iloc[-63]
-        
-        if quarter_ago > 0:
-            dxy_trend = (current / quarter_ago - 1) * 100
-            sentiment['dxy_trend'] = dxy_trend
 
-    if 'GOLD' in factors_data and len(factors_data['GOLD']) >= 63:
+        if len(dxy) >= 63 and dxy.iloc[-63] > 0:
+            dxy_trend_3m = (current / dxy.iloc[-63] - 1) * 100
+            sentiment['dxy_trend_3m'] = dxy_trend_3m
+        
+        if len(dxy) >= 21 and dxy.iloc[-21] > 0:
+            dxy_trend_1m = (current / dxy.iloc[-21] - 1) * 100
+            sentiment['dxy_trend_1m'] = dxy_trend_1m
+
+        if len(dxy) >= 5 and dxy.iloc[-5] > 0:
+            dxy_trend_1w = (current / dxy.iloc[-5] - 1) * 100
+            sentiment['dxy_trend_1w'] = dxy_trend_1w
+
+        sentiment['dxy_trend'] = dxy_trend_3m
+
+    gold_trend_3m = None
+    gold_trend_1m = None
+    gold_trend_1w = None
+    
+    if 'GOLD' in factors_data and len(factors_data['GOLD']) > 0:
         gold = factors_data['GOLD']
         current = gold.iloc[-1]
-        quarter_ago = gold.iloc[-63]
-        
-        if quarter_ago > 0:
-            gold_trend = (current / quarter_ago - 1) * 100
-            sentiment['gold_trend'] = gold_trend
 
-    if dxy_trend is not None:
-        if dxy_trend > 5:
-            if gold_trend is not None and gold_trend > 5:
+        if len(gold) >= 63 and gold.iloc[-63] > 0:
+            gold_trend_3m = (current / gold.iloc[-63] - 1) * 100
+            sentiment['gold_trend_3m'] = gold_trend_3m
+
+        if len(gold) >= 21 and gold.iloc[-21] > 0:
+            gold_trend_1m = (current / gold.iloc[-21] - 1) * 100
+            sentiment['gold_trend_1m'] = gold_trend_1m
+        
+        if len(gold) >= 5 and gold.iloc[-5] > 0:
+            gold_trend_1w = (current / gold.iloc[-5] - 1) * 100
+            sentiment['gold_trend_1w'] = gold_trend_1w
+
+        sentiment['gold_trend'] = gold_trend_3m
+
+    if dxy_trend_3m is not None:
+        if dxy_trend_3m > 5:
+            if gold_trend_3m is not None and gold_trend_3m > 5:
                 strength = "FUERTE (flight to safety)"
-            elif gold_trend is not None and gold_trend < -2:
+            elif gold_trend_3m is not None and gold_trend_3m < -2:
                 strength = "FUERTE (fortaleza económica/política monetaria)"
             else:
                 strength = "FUERTE"
-        elif dxy_trend > 0:
+        elif dxy_trend_3m > 0:
             strength = "MODERADO"
-        elif dxy_trend > -5:
+        elif dxy_trend_3m > -5:
             strength = "DÉBIL"
         else:
             strength = "MUY DÉBIL"
+
+        if dxy_trend_1m is not None:
+            if dxy_trend_1m < -2 and dxy_trend_3m > 0:
+                strength += " (debilitándose recientemente)"
+            elif dxy_trend_1m > 2 and dxy_trend_3m < 0:
+                strength += " (fortaleciéndose recientemente)"
         
         sentiment['dollar_strength'] = strength
 
-    if gold_trend is not None:
-        if gold_trend > 10:
+    if gold_trend_3m is not None:
+        if gold_trend_3m > 10:
             sentiment['safe_haven'] = "ALTA demanda de refugio"
-        elif gold_trend > 5:
+        elif gold_trend_3m > 5:
             sentiment['safe_haven'] = "MODERADA demanda de refugio"
-        elif gold_trend > 0:
+        elif gold_trend_3m > 0:
             sentiment['safe_haven'] = "BAJA demanda de refugio"
         else:
             sentiment['safe_haven'] = "SIN demanda de refugio"

@@ -142,15 +142,31 @@ class MacroSituationReporter:
 
         if 'dollar_strength' in sentiment:
             dollar = sentiment['dollar_strength']
-            trend = sentiment.get('dxy_trend', np.nan)
-            trend_str = f"({trend:+.2f}% últimos 3 meses)" if not np.isnan(trend) else ""
+
+            trends = []
+            if 'dxy_trend_1w' in sentiment:
+                trends.append(f"1 sem: {sentiment['dxy_trend_1w']:+.2f}%")
+            if 'dxy_trend_1m' in sentiment:
+                trends.append(f"1 mes: {sentiment['dxy_trend_1m']:+.2f}%")
+            if 'dxy_trend_3m' in sentiment:
+                trends.append(f"3 mes: {sentiment['dxy_trend_3m']:+.2f}%")
+            
+            trend_str = f"({', '.join(trends)})" if trends else ""
             print(f"  Fortaleza del dólar:      {dollar} {trend_str}")
 
         if 'safe_haven' in sentiment:
             safe_haven = sentiment['safe_haven']
-            gold_trend = sentiment.get('gold_trend', np.nan)
-            gold_str = f"({gold_trend:+.2f}% últimos 3 meses)" if not np.isnan(gold_trend) else ""
-            print(f"  Demanda de refugio:       {safe_haven} {gold_str}")
+            
+            trends = []
+            if 'gold_trend_1w' in sentiment:
+                trends.append(f"1 sem: {sentiment['gold_trend_1w']:+.2f}%")
+            if 'gold_trend_1m' in sentiment:
+                trends.append(f"1 mes: {sentiment['gold_trend_1m']:+.2f}%")
+            if 'gold_trend_3m' in sentiment:
+                trends.append(f"3 mes: {sentiment['gold_trend_3m']:+.2f}%")
+            
+            trend_str = f"({', '.join(trends)})" if trends else ""
+            print(f"  Demanda de refugio:       {safe_haven} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
         print("SNAPSHOT MACRO".center(60))
