@@ -8,8 +8,7 @@ from ..components.macro_regression import (
     RegressionResult
 )
 from ..components.macro_correlation import (
-    best_lagged_correlation,
-    rolling_correlation
+    best_lagged_correlation
 )
 from ..tools.config import REGRESSION_MIN_OBS
 
@@ -30,7 +29,7 @@ class MacroFactorAnalyzer:
                 f"Observaciones insuficientes: {len(portfolio_returns)}"
             )
 
-        regression_result = multifactor_regression(
+        regression_result: RegressionResult = multifactor_regression(
             portfolio_returns,
             macro_factors,
             self.annual_factor,
