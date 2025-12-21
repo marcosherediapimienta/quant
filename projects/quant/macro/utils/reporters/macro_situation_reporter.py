@@ -2,7 +2,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.macro_situation_analyzer import MacroSituationAnalyzer
 
-
 class MacroSituationReporter:
     
     def __init__(self, analyzer: MacroSituationAnalyzer = None):
