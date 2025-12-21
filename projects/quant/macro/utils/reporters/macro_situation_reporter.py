@@ -56,6 +56,52 @@ class MacroSituationReporter:
                 symbol = "🔴" if value < 0 else "🟢"
                 print(f"    {symbol} {spread_name:>10}: {value:>+6.2f} pp")
 
+        # Mostrar cambios en las tasas
+        rate_changes = curve.get('rate_changes', {})
+        if rate_changes:
+            print("\n  Cambios en tasas:")
+            print(f"    {'Tenor':<6} {'1 Mes':<12} {'3 Meses':<12} {'1 Año':<12}")
+            for tenor in sorted(rate_changes.keys()):
+                changes = rate_changes[tenor]
+                change_1m = changes.get('1m', np.nan)
+                change_3m = changes.get('3m', np.nan)
+                change_1y = changes.get('1y', np.nan)
+                
+                change_1m_str = f"{change_1m:>+6.2f} pp" if not np.isnan(change_1m) else "N/A"
+                change_3m_str = f"{change_3m:>+6.2f} pp" if not np.isnan(change_3m) else "N/A"
+                change_1y_str = f"{change_1y:>+6.2f} pp" if not np.isnan(change_1y) else "N/A"
+                
+                print(f"    {tenor:<6} {change_1m_str:<12} {change_3m_str:<12} {change_1y_str:<12}")
+
+        divergence = curve.get('divergence_analysis', {})
+        if divergence:
+            print("\n  📊 Divergencia Corto vs Largo Plazo:")
+            if '3m' in divergence:
+                d3m = divergence['3m']
+                print(f"    3 meses:")
+                print(f"      Corto (2Y): {d3m['short']:>+6.2f} pp")
+                print(f"      Largo (10Y): {d3m['long']:>+6.2f} pp")
+                print(f"      Divergencia: {d3m['divergence']:>+6.2f} pp", end="")
+                if d3m['divergence'] > 0.5:
+                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                elif d3m['divergence'] < -0.5:
+                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                else:
+                    print(" ⚪ (Movimientos alineados)")
+            
+            if '1y' in divergence:
+                d1y = divergence['1y']
+                print(f"    1 año:")
+                print(f"      Corto (2Y): {d1y['short']:>+6.2f} pp")
+                print(f"      Largo (10Y): {d1y['long']:>+6.2f} pp")
+                print(f"      Divergencia: {d1y['divergence']:>+6.2f} pp", end="")
+                if d1y['divergence'] > 0.5:
+                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                elif d1y['divergence'] < -0.5:
+                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                else:
+                    print(" ⚪ (Movimientos alineados)")
+
         interpretation = curve.get('interpretation', 'N/A')
         print(f"\n  💡 {interpretation}")
     
