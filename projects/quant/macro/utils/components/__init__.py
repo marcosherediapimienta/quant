@@ -39,6 +39,8 @@ from .macro_situation import (
     get_current_snapshot,
 )
 
+from .factor_collinearity import FactorCollinearityAnalyzer
+
 __all__ = [
     'MacroDataLoader',
     'download_macro_factors',
@@ -69,4 +71,5 @@ __all__ = [
     'analyze_global_bonds',
     'analyze_risk_sentiment',
     'get_current_snapshot',
+    'FactorCollinearityAnalyzer',
 ]

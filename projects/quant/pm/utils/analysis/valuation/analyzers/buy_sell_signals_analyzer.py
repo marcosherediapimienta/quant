@@ -42,7 +42,7 @@ class BuySellSignalsAnalyzer:
 
         analysis = self.company_analyzer.analyze(ticker, company_data['data'])
 
-        hist = self.data_loader.download_single(ticker, "2020-01-01", "2024-12-31")
+        hist = self.data_loader.download_single(ticker, "2020-01-01", "2025-12-22")
         
         if not hist.empty:
             if isinstance(hist.columns, pd.MultiIndex):
