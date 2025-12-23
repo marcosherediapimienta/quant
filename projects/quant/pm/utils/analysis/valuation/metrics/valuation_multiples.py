@@ -65,7 +65,7 @@ class ValuationMultiples:
         if pd.notna(ev_ebitda) and ev_ebitda > 0:
             scores.append(score_metric(ev_ebitda, 4, 25, higher_is_better=False) * 0.25)
         if pd.notna(pb) and pb > 0:
-            scores.append(score_metric(pb, 0.5, 8, higher_is_better=False) * 0.20)
+            scores.append(score_metric(pb, 1.5, 8, higher_is_better=False) * 0.20)
         if pd.notna(fcf_yield):
             scores.append(score_metric(fcf_yield, -0.02, 0.12) * 0.30)
         
@@ -126,32 +126,51 @@ class ValuationMultiples:
     def _overall_valuation(self, metrics: Dict) -> str:
         cheap_count = 0
         expensive_count = 0
-        
+        valid_metrics = 0 
+
         pe = metrics['pe_ttm']
         if pd.notna(pe) and pe > 0:
+            valid_metrics += 1
             if pe < 15:
                 cheap_count += 1
             elif pe > 25:
                 expensive_count += 1
-        
+
         ev = metrics['ev_ebitda']
-        if pd.notna(ev) and ev > 0:
+        if pd.notna(ev) and 0 < ev < 100: 
+            valid_metrics += 1
             if ev < 10:
                 cheap_count += 1
             elif ev > 15:
                 expensive_count += 1
-        
+
         fcf_y = metrics['fcf_yield']
-        if pd.notna(fcf_y):
+        if pd.notna(fcf_y) and -0.5 < fcf_y < 0.5: 
+            valid_metrics += 1
             if fcf_y > 0.06:
                 cheap_count += 1
             elif fcf_y < 0.02:
                 expensive_count += 1
-        
+
+        pb = metrics.get('pb_ratio')
+        if pd.notna(pb) and pb > 0:
+            valid_metrics += 1
+            if pb < 2:
+                cheap_count += 1
+            elif pb > 5:
+                expensive_count += 1
+
+        if valid_metrics < 2:
+            return 'FAIR_VALUE'
+
+        if cheap_count > 0 and expensive_count > 0:
+            return 'FAIR_VALUE'
+
         if cheap_count >= 2:
             return 'UNDERVALUED'
         elif expensive_count >= 2:
             return 'OVERVALUED'
+        
         return 'FAIR_VALUE'
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:

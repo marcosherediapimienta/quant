@@ -51,7 +51,6 @@ class ConclusionThresholds:
         'insufficient': 'DATOS INSUFICIENTES'
     })
 
-
 class CompanyAnalyzer:
 
     def __init__(
@@ -180,7 +179,6 @@ class CompanyAnalyzer:
         return np.nan
     
     def _calculate_derived_metrics(self, data: Dict):        
-
         if pd.isna(data.get('assetTurnover')):
             revenue = data.get('totalRevenue')
             assets = data.get('totalAssets')
@@ -200,11 +198,22 @@ class CompanyAnalyzer:
                     if invested_capital > 0:
                         data['returnOnCapital'] = nopat / invested_capital
 
-        if pd.isna(data.get('freeCashflow')):
-            ocf = data.get('operatingCashflow')
+            ocf = data.get('operatingCashflow') 
             capex = data.get('capitalExpenditures', 0) or 0
+            market_cap = data.get('marketCap')
+
             if pd.notna(ocf):
-                data['freeCashflow'] = ocf + capex
+                calculated_fcf = ocf + capex
+                
+                if pd.notna(market_cap) and market_cap > 0:
+                    fcf_yield_check = calculated_fcf / market_cap
+
+                    if fcf_yield_check > 0.10 or fcf_yield_check < -0.10:
+                        data['freeCashflow'] = np.nan
+                    else:
+                        data['freeCashflow'] = calculated_fcf
+                else:
+                        data['freeCashflow'] = calculated_fcf
     
     def analyze(self, ticker: str, data: Dict = None) -> Dict:
 

@@ -1,4 +1,4 @@
-from utils.tools import (
+from .utils.tools.config import (
     MACRO_FACTORS,
     MACRO_FACTOR_CATEGORIES,
     MACRO_CORE_FACTORS,
@@ -7,10 +7,6 @@ from utils.tools import (
     MACRO_ANALYSIS,
     MACRO_TRANSFORMS,
     MACRO_SPREADS,
-    MACRO_SIGNAL_THRESHOLDS,
-    MACRO_CORRELATION_THRESHOLDS,
-    MACRO_LOADING_THRESHOLDS,
-    MACRO_PLOTTING,
     # Constantes de acceso rápido
     DEFAULT_LAG_WINDOW,
     MAX_LAG,
@@ -26,6 +22,7 @@ from utils.tools import (
     SIGNAL_LOWER_THRESHOLD,
     YIELD_SCALE,
     USE_LOG_RETURNS,
+    ANNUAL_FACTOR, 
 )
 
 __all__ = [
@@ -37,10 +34,6 @@ __all__ = [
     'MACRO_ANALYSIS',
     'MACRO_TRANSFORMS',
     'MACRO_SPREADS',
-    'MACRO_SIGNAL_THRESHOLDS',
-    'MACRO_CORRELATION_THRESHOLDS',
-    'MACRO_LOADING_THRESHOLDS',
-    'MACRO_PLOTTING',
     'DEFAULT_LAG_WINDOW',
     'MAX_LAG',
     'CORRELATION_MIN_OBS',
@@ -55,4 +48,5 @@ __all__ = [
     'SIGNAL_LOWER_THRESHOLD',
     'YIELD_SCALE',
     'USE_LOG_RETURNS',
+    'ANNUAL_FACTOR', 
 ]

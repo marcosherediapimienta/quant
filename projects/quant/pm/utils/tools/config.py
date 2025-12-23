@@ -1,6 +1,8 @@
-# ============================================================================
-# BENCHMARKS
-# ============================================================================
+"""
+CONFIGURACIÓN - ANÁLISIS DE PORTAFOLIO (PM)
+Benchmarks, análisis de riesgo, CAPM y valoración.
+"""
+
 BENCHMARKS = {
     'SP500': '^GSPC',
     'NASDAQ': '^IXIC',
@@ -34,7 +36,7 @@ BENCHMARK_CURRENCIES = {
 }
 
 # ============================================================================
-# CONFIGURACIÓN DE DESCARGA
+# CONFIGURACIÓN DE DESCARGA (yfinance)
 # ============================================================================
 DOWNLOAD_DEFAULTS = {
     'auto_adjust': True,
@@ -56,8 +58,8 @@ YFINANCE_COLUMNS = {
 # CONFIGURACIÓN DE ANÁLISIS DE RIESGO
 # ============================================================================
 RISK_ANALYSIS = {
-    'annual_factor': 252,
-    'risk_free_rate': 0.045,
+    'annual_factor': 252,             
+    'risk_free_rate': 0.045,          
     'default_confidence_levels': (0.90, 0.95, 0.99),
     'default_confidence_level': 0.95,
     'monte_carlo': {
@@ -70,38 +72,20 @@ RISK_ANALYSIS = {
 }
 
 # ============================================================================
-# CONFIGURACIÓN ESTADÍSTICA
+# PARÁMETROS ESTADÍSTICOS
 # ============================================================================
 STATISTICAL_DEFAULTS = {
-    'significance_level': 0.05,
-    'min_observations': 30,
+    'significance_level': 0.05,        # 5% para p-values
+    'min_observations': 30,            # Mínimo para análisis robusto
 }
 
 # ============================================================================
-# CONFIGURACIÓN CAPM
+# CONFIGURACIÓN NUMÉRICA
 # ============================================================================
-CAPM_DEFAULTS = {
-    'max_beta': 2.0,
-    'min_observations': 30,
-}
-
-# ============================================================================
-# CONFIGURACIÓN DE GRÁFICOS Y VISUALIZACIONES
-# ============================================================================
-PLOTTING_DEFAULTS = {
-    'frontier_points': 60,
-    'cml_points': 100,
-    'sml_points': 100,
-    'distribution_bins': 30,
-    'report_width': 60,
-}
-
-PLOTTING_STYLE = {
-    'grid_alpha': 0.3,
-    'fill_alpha': 0.3,
-    'scatter_size': 100,
-    'hspace': 0.3,
-    'wspace': 0.3,
+NUMERICAL_DEFAULTS = {
+    'epsilon': 1e-12,                  # Tolerancia numérica
+    'tolerance': 1e-6,
+    'weight_tolerance': 1e-6,
 }
 
 # ============================================================================
@@ -111,19 +95,11 @@ OPTIMIZATION_DEFAULTS = {
     'method': 'SLSQP',
     'max_iterations': 1000,
     'tolerance': 1e-6,
+    'frontier_points': 60,             # Puntos en frontera eficiente
 }
 
 # ============================================================================
-# CONFIGURACIÓN NUMÉRICA
-# ============================================================================
-NUMERICAL_DEFAULTS = {
-    'epsilon': 1e-12,
-    'tolerance': 1e-6,
-    'weight_tolerance': 1e-6,
-}
-
-# ============================================================================
-# UMBRALES DE INTERPRETACIÓN - RATIOS DE RENDIMIENTO
+# UMBRALES DE INTERPRETACIÓN - RATIOS
 # ============================================================================
 RATIO_INTERPRETATION = {
     'sharpe': {
@@ -146,23 +122,10 @@ RATIO_INTERPRETATION = {
 }
 
 DRAWDOWN_RISK_LEVELS = {
-    'low': 10,      # < 10%
-    'moderate': 20, # < 20%
-    'high': 30,     # < 30%
+    'low': 10,         # < 10% drawdown
+    'moderate': 20,    # < 20%
+    'high': 30,        # < 30%
     # >= 30% = very_high
-}
-
-# ============================================================================
-# UMBRALES DE INTERPRETACIÓN - ESTADÍSTICA
-# ============================================================================
-INTERPRETATION_THRESHOLDS = {
-    'skewness': {
-        'positive': 0.5,
-        'negative': -0.5
-    },
-    'kurtosis': {
-        'positive': 0
-    }
 }
 
 # ============================================================================
@@ -194,7 +157,9 @@ VALUATION_THRESHOLDS = {
     }
 }
 
-# Pesos para scoring de valoración
+# ============================================================================
+# PESOS PARA SCORING DE VALORACIÓN
+# ============================================================================
 SCORING_WEIGHTS = {
     'profitability': {
         'roic': 0.30,
@@ -211,7 +176,9 @@ SCORING_WEIGHTS = {
     }
 }
 
-# Umbrales para alertas
+# ============================================================================
+# UMBRALES DE ALERTAS
+# ============================================================================
 ALERT_THRESHOLDS = {
     'profitability': {
         'roic_low': 0.08,
@@ -225,22 +192,9 @@ ALERT_THRESHOLDS = {
 }
 
 # ============================================================================
-# CONSTANTES FISCALES Y FINANCIERAS
+# CONSTANTES DE ACCESO RÁPIDO (para imports directos)
 # ============================================================================
-FINANCIAL_CONSTANTS = {
-    'default_tax_rate': 0.21,  # 21% tasa impositiva por defecto
-}
 
-# ============================================================================
-# CONSTANTES DE CONVERSIÓN
-# ============================================================================
-CONVERSION_FACTORS = {
-    'decimal_to_percent': 100,
-}
-
-# ============================================================================
-# CONSTANTES DE ACCESO RÁPIDO
-# ============================================================================
 # Factores de anualización
 ANNUAL_FACTOR = RISK_ANALYSIS['annual_factor']
 
@@ -259,22 +213,13 @@ ROLLING_WINDOW = RISK_ANALYSIS['rolling']['default_window']
 SIGNIFICANCE_LEVEL = STATISTICAL_DEFAULTS['significance_level']
 MIN_OBSERVATIONS = STATISTICAL_DEFAULTS['min_observations']
 
-# CAPM
-MAX_BETA = CAPM_DEFAULTS['max_beta']
-
-# Gráficos
-FRONTIER_POINTS = PLOTTING_DEFAULTS['frontier_points']
-CML_POINTS = PLOTTING_DEFAULTS['cml_points']
-SML_POINTS = PLOTTING_DEFAULTS['sml_points']
-DISTRIBUTION_BINS = PLOTTING_DEFAULTS['distribution_bins']
-REPORT_WIDTH = PLOTTING_DEFAULTS['report_width']
-
 # Numérico
 EPSILON = NUMERICAL_DEFAULTS['epsilon']
 TOLERANCE = NUMERICAL_DEFAULTS['tolerance']
 
 # Optimización
 OPTIMIZATION_METHOD = OPTIMIZATION_DEFAULTS['method']
+FRONTIER_POINTS = OPTIMIZATION_DEFAULTS['frontier_points']
 
 # Columnas yfinance
 ADJ_CLOSE_COL = YFINANCE_COLUMNS['adj_close']
