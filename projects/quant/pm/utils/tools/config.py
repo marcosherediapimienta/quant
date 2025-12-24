@@ -43,7 +43,7 @@ BENCHMARK_CURRENCIES = {
 # ============================================================================
 ANALYSIS_DATES = {
     'start_date': '2020-01-01',       # Fecha inicial por defecto para todos los análisis
-    'end_date': '2025-12-31',         # Fecha final por defecto
+    'end_date': '2025-12-24',         # Fecha final por defecto
     'use_current_date_as_end': True,  # Si True, ignora end_date y usa fecha actual
     'default_lookback_years': 5,      # Solo se usa si start_date está vacío
 }
