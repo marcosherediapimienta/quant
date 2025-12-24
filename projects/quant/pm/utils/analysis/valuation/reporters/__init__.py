@@ -8,10 +8,13 @@ from .formatters import (
     score_emoji
 )
 from .company_reporter import CompanyReporter, ReportSections
+from .signals_reporter import SignalsReporter, SignalsReportSections
 
 __all__ = [
     'CompanyReporter',
     'ReportSections',
+    'SignalsReporter',
+    'SignalsReportSections',
     'FormatConfig',
     'fmt_pct',
     'fmt_num',

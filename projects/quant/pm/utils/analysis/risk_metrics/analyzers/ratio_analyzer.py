@@ -8,13 +8,23 @@ from ..components.helpers import (
     annualize_return,
     annualize_volatility
 )
+from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
 
 class RatioAnalyzer:
+    """
+    Analyzer para calcular ratios de rendimiento ajustados por riesgo.
+    
+    Responsabilidad: Coordinar cálculos de Sharpe, Sortino y métricas relacionadas.
+    """
 
-    def __init__(self, annual_factor: float = 252.0):
-        self.annual_factor = annual_factor
-        self.sharpe_calc = SharpeCalculator(annual_factor)
-        self.sortino_calc = SortinoCalculator(annual_factor)
+    def __init__(self, annual_factor: float = None):
+        """
+        Args:
+            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
+        """
+        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.sharpe_calc = SharpeCalculator(self.annual_factor)
+        self.sortino_calc = SortinoCalculator(self.annual_factor)
     
     def calculate_all_ratios(
         self,
@@ -23,7 +33,18 @@ class RatioAnalyzer:
         risk_free_rate: float,
         ddof: int = 0
     ) -> Dict[str, float]:
-
+        """
+        Calcula todos los ratios de rendimiento/riesgo.
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+            risk_free_rate: Tasa libre de riesgo anualizada
+            ddof: Grados de libertad para cálculo de desviación estándar
+            
+        Returns:
+            Dict con Sharpe, Sortino, retornos y volatilidades
+        """
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         annual_return = annualize_return(portfolio_ret, self.annual_factor)
         annual_vol = annualize_volatility(portfolio_ret, self.annual_factor, ddof)
@@ -52,10 +73,25 @@ class RatioAnalyzer:
         returns: pd.DataFrame,
         weights: np.ndarray,
         risk_free_rate: float,
-        window: int = 252,
+        window: int = None,
         ddof: int = 0
     ) -> pd.DataFrame:
-
+        """
+        Calcula ratios móviles (rolling).
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+            risk_free_rate: Tasa libre de riesgo anualizada
+            window: Ventana para cálculo rolling. Por defecto usa config.ROLLING_WINDOW
+            ddof: Grados de libertad para cálculo de desviación estándar
+            
+        Returns:
+            DataFrame con Sharpe y Sortino rolling
+        """
+        if window is None:
+            window = ROLLING_WINDOW
+        
         sharpe_rolling = self.sharpe_calc.calculate_rolling(
             returns, weights, risk_free_rate, window, ddof
         )

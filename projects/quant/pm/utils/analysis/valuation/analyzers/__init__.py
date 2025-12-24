@@ -5,6 +5,7 @@ from .company_analyzer import (
 )
 from .comparison_analyzer import ComparisonAnalyzer
 from .sector_analyzer import SectorAnalyzer, PercentileInterpretation
+from .buy_sell_signals_analyzer import BuySellSignalsAnalyzer, TradingSignal
 
 __all__ = [
     'CompanyAnalyzer',
@@ -12,5 +13,7 @@ __all__ = [
     'SectorAnalyzer',
     'AnalysisWeights',
     'ConclusionThresholds',
-    'PercentileInterpretation'
+    'PercentileInterpretation',
+    'BuySellSignalsAnalyzer',
+    'TradingSignal'
 ]

@@ -2,8 +2,17 @@ import pandas as pd
 from ..analyzers.multi_asset_capm_analyzer import MultiAssetCAPMAnalyzer
 
 class MultiAssetReporter:
+    """
+    Reporter para generar informes de análisis CAPM multi-activo.
+    
+    Responsabilidad: Formatear y presentar resultados CAPM para múltiples activos.
+    """
 
     def __init__(self, multi_asset_analyzer: MultiAssetCAPMAnalyzer):
+        """
+        Args:
+            multi_asset_analyzer: Instancia de MultiAssetCAPMAnalyzer
+        """
         self.analyzer = multi_asset_analyzer
     
     def generate_summary_report(
@@ -12,12 +21,22 @@ class MultiAssetReporter:
         market_returns: pd.Series,
         risk_free_rate: float
     ) -> None:
-
+        """
+        Genera reporte resumen de múltiples activos.
+        
+        Args:
+            returns: DataFrame con retornos de múltiples activos
+            market_returns: Serie con retornos del mercado
+            risk_free_rate: Tasa libre de riesgo anualizada
+        """
         analysis = self.analyzer.analyze_multiple(returns, market_returns, risk_free_rate)
         
         if analysis.empty:
             print("⚠️  No hay datos suficientes para el análisis")
             return
+        
+        # Usar el nivel de significancia del analyzer
+        sig_level = self.analyzer.significance_level
         
         print("ANÁLISIS CAPM MULTI-ACTIVO".center(80))
 
@@ -47,4 +66,4 @@ class MultiAssetReporter:
             sig = "[OK]" if row['is_significant'] else "    "
             print(f"  {sig} {asset:<10} Alpha: {row['alpha_annual']*100:>7.2f}%  Beta: {row['beta']:>6.3f}")
     
-        print("Nota: [OK] indica alpha estadísticamente significativo (p < 0.05)")
+        print(f"Nota: [OK] indica alpha estadísticamente significativo (p < {sig_level})")

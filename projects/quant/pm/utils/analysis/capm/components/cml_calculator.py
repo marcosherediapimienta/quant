@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-from ....tools.config import EPSILON
+from ....tools.config import EPSILON, CML_EXTENSION_FACTOR
 
 @dataclass
 class CMLResult:
@@ -12,6 +12,11 @@ class CMLResult:
     slope: float
 
 class CMLCalculator:
+    """
+    Calcula la Capital Market Line (CML).
+    
+    Responsabilidad: Determinar el portafolio tangente y la línea de mercado de capitales.
+    """
 
     def calculate(
         self,
@@ -20,7 +25,18 @@ class CMLCalculator:
         risk_free_rate: float,
         n_points: int = 100
     ) -> CMLResult:
-
+        """
+        Calcula la Capital Market Line.
+        
+        Args:
+            frontier_returns: Retornos de la frontera eficiente
+            frontier_volatilities: Volatilidades de la frontera eficiente
+            risk_free_rate: Tasa libre de riesgo
+            n_points: Número de puntos para la línea CML
+            
+        Returns:
+            CMLResult con línea CML y portafolio tangente
+        """
         if len(frontier_returns) == 0:
             return CMLResult(
                 np.array([]), np.array([]), np.nan, np.nan, -1, np.nan
@@ -34,7 +50,7 @@ class CMLCalculator:
 
         slope = (tangent_ret - risk_free_rate) / tangent_vol if tangent_vol > 0 else 0.0
 
-        max_vol = frontier_volatilities.max() * 1.2
+        max_vol = frontier_volatilities.max() * CML_EXTENSION_FACTOR
         vol_grid = np.linspace(0, max_vol, n_points)
         ret_grid = risk_free_rate + slope * vol_grid
         
@@ -48,7 +64,17 @@ class CMLCalculator:
         volatility: float,
         risk_free_rate: float
     ) -> float:
-
+        """
+        Calcula el Sharpe Ratio.
+        
+        Args:
+            expected_return: Retorno esperado del activo/portafolio
+            volatility: Volatilidad del activo/portafolio
+            risk_free_rate: Tasa libre de riesgo
+            
+        Returns:
+            Sharpe Ratio
+        """
         if np.isnan(expected_return) or np.isnan(volatility) or volatility <= 0:
             return np.nan
         return (expected_return - risk_free_rate) / volatility

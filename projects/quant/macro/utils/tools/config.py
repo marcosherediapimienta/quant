@@ -1,68 +1,75 @@
+"""
+CONFIGURACIÓN - ANÁLISIS MACRO
+Factores macroeconómicos y parámetros de análisis.
+"""
+
 MACRO_FACTORS = {
-    # ========== VOLATILIDAD ==========
-    'VIX': '^VIX',              # Volatilidad implícita S&P 500
-    'VXN': '^VXN',              # Volatilidad implícita NASDAQ
+    # Volatilidad
+    'VIX': '^VIX',
+    'VXN': '^VXN',
     
-    # ========== TIPOS DE INTERÉS USA ==========
-    'RATE_3M': '^IRX',          # Tasa 3 meses (13-week T-bill)
-    'RATE_2Y': '^IRX',          # Tasa 2 años
-    'RATE_5Y': '^FVX',          # Tasa 5 años
-    'RATE_10Y': '^TNX',         # Tasa 10 años
-    'RATE_30Y': '^TYX',         # Tasa 30 años
+    # Tipos de interés USA
+    'RATE_3M': '^IRX',
+    'RATE_2Y': '^IRX',
+    'RATE_5Y': '^FVX',
+    'RATE_10Y': '^TNX',
+    'RATE_30Y': '^TYX',
     
-    # ========== BONOS USA (ETFs) ==========
-    'GOVT_1_3Y': 'SHY',         # Treasury 1-3 años
-    'GOVT_7_10Y': 'IEF',        # Treasury 7-10 años
-    'GOVT_20Y': 'TLT',          # Treasury 20+ años
-    'TIPS': 'TIP',              # Treasury Inflation-Protected
+    # Bonos USA (ETFs)
+    'GOVT_1_3Y': 'SHY',
+    'GOVT_7_10Y': 'IEF',
+    'GOVT_20Y': 'TLT',
+    'TIPS': 'TIP',
     
-    # ========== BONOS INTERNACIONALES ==========
-    'JPN_BOND': 'JPGB.L',       # Bonos Japón
-    'EUR_BOND': 'IEAG.L',       # Bonos Europa agregados
-    'GER_BOND': 'DBEU',         # Bonos Alemania
-    'UK_BOND': 'IGLT.L',        # Gilts UK
-    'EM_BOND': 'EMB',           # Bonos mercados emergentes
+    # Bonos internacionales
+    'JPN_BOND': 'JPGB.L',
+    'EUR_BOND': 'IEAG.L',
+    'GER_BOND': 'DBEU',
+    'UK_BOND': 'IGLT.L',
+    'EM_BOND': 'EMB',
     
-    # ========== CREDIT SPREADS ==========
-    'HYG': 'HYG',               # High yield corporativo
-    'LQD': 'LQD',               # Investment grade corporativo
-    'JNK': 'JNK',               # High yield alternativo
+    # Credit spreads
+    'HYG': 'HYG',
+    'LQD': 'LQD',
+    'JNK': 'JNK',
     
-    # ========== DIVISAS ==========
-    'DXY': 'DX-Y.NYB',          # Índice dólar
-    'EUR_USD': 'EURUSD=X',      # Euro/Dólar
-    'GBP_USD': 'GBPUSD=X',      # Libra/Dólar
-    'USD_JPY': 'JPY=X',         # Dólar/Yen
+    # Divisas
+    'DXY': 'DX-Y.NYB',
+    'EUR_USD': 'EURUSD=X',
+    'GBP_USD': 'GBPUSD=X',
+    'USD_JPY': 'JPY=X',
     
-    # ========== METALES PRECIOSOS ==========
-    'GOLD': 'GC=F',             # Oro (futuros)
-    'SILVER': 'SI=F',           # Plata (futuros)
-    'COPPER': 'HG=F',           # Cobre (futuros)
+    # Metales preciosos
+    'GOLD': 'GC=F',
+    'SILVER': 'SI=F',
+    'COPPER': 'HG=F',
     
-    # ========== ENERGÍA ==========
-    'OIL': 'CL=F',              # Petróleo WTI (futuros)
-    'BRENT': 'BZ=F',            # Petróleo Brent (futuros)
-    'NATGAS': 'NG=F',           # Gas natural (futuros)
+    # Energía
+    'OIL': 'CL=F',
+    'BRENT': 'BZ=F',
+    'NATGAS': 'NG=F',
     
-    # ========== AGRICULTURA ==========
-    'WHEAT': 'ZW=F',            # Trigo (futuros)
-    'CORN': 'CORN',             # Maíz (futuros)
+    # Agricultura
+    'WHEAT': 'ZW=F',
+    'CORN': 'CORN',
     
-    # ========== ÍNDICES USA ==========
-    'SP500': '^GSPC',           # S&P 500
-    'NASDAQ': '^IXIC',          # NASDAQ
-    'RUSSELL2000': '^RUT',      # Russell 2000 (small cap)
+    # Índices USA
+    'SP500': '^GSPC',
+    'NASDAQ': '^IXIC',
+    'RUSSELL2000': '^RUT',
     
-    # ========== ÍNDICES INTERNACIONALES ==========
-    'DAX': '^GDAXI',            # Alemania
-    'FTSE': '^FTSE',            # UK
-    'NIKKEI': '^N225',          # Japón
-    'HANG_SENG': '^HSI',        # Hong Kong
-    'SHANGHAI': '000001.SS',    # China
-    'MSCI_EM': 'EEM',           # Mercados emergentes (ETF)
+    # Índices internacionales
+    'DAX': '^GDAXI',
+    'FTSE': '^FTSE',
+    'NIKKEI': '^N225',
+    'HANG_SENG': '^HSI',
+    'SHANGHAI': '000001.SS',
+    'MSCI_EM': 'EEM',
 }
 
-# Categorización de factores macro
+# ============================================================================
+# CATEGORÍAS DE FACTORES (para organizar y seleccionar)
+# ============================================================================
 MACRO_FACTOR_CATEGORIES = {
     'volatility': ['VIX', 'VXN'],
     'interest_rates': ['RATE_3M', 'RATE_2Y', 'RATE_5Y', 'RATE_10Y', 'RATE_30Y'],
@@ -77,7 +84,11 @@ MACRO_FACTOR_CATEGORIES = {
     'intl_indices': ['DAX', 'FTSE', 'NIKKEI', 'HANG_SENG', 'SHANGHAI', 'MSCI_EM']
 }
 
-# Factores macro core (esenciales para análisis básico)
+# ============================================================================
+# SETS DE FACTORES PREDEFINIDOS (para análisis rápidos)
+# ============================================================================
+
+# Factores esenciales (6 factores core)
 MACRO_CORE_FACTORS = [
     'VIX',           # Volatilidad
     'RATE_10Y',      # Tipo de interés largo
@@ -87,130 +98,77 @@ MACRO_CORE_FACTORS = [
     'OIL'            # Energía/crecimiento
 ]
 
-# Factores para análisis de situación macro global
+# Factores para análisis completo (17 factores)
 MACRO_GLOBAL_FACTORS = [
-    # Curva de tipos USA completa
+    # Curva de tipos USA
     'RATE_2Y', 'RATE_5Y', 'RATE_10Y', 'RATE_30Y',
-    # Bonos globales
+    # Bonos
     'GOVT_20Y', 'JPN_BOND', 'EUR_BOND', 'GER_BOND',
     # Credit
     'HYG', 'LQD',
-    # Inflación proxies
+    # Commodities (inflación)
     'GOLD', 'OIL', 'COPPER', 'SILVER',
     # Volatilidad
     'VIX',
     # Divisas
     'DXY', 'EUR_USD',
-    # Índices principales
+    # Índices
     'SP500', 'NIKKEI', 'DAX'
 ]
 
-# Categorización de factores macro
-MACRO_FACTOR_CATEGORIES = {
-    'volatility': ['VIX', 'VXN'],
-    'interest_rates': ['RATE_3M', 'RATE_10Y', 'RATE_30Y'],
-    'currencies': ['DXY', 'EUR_USD', 'GBP_USD', 'USD_JPY'],
-    'commodities': ['GOLD', 'OIL', 'COPPER'],
-    'bonds': ['TLT', 'IEF', 'SHY'],
-    'credit': ['HYG', 'LQD'],
-    'equity_indices': ['SP500', 'NASDAQ', 'RUSSELL2000']
-}
-
-# Factores macro core (esenciales para análisis básico)
-MACRO_CORE_FACTORS = [
-    'VIX',           # Volatilidad
-    'RATE_10Y',      # Tipo de interés largo
-    'RATE_3M',       # Tipo de interés corto
+# Factores para portafolios tech (tu caso de uso actual)
+FACTORS_TO_USE = [
+    'VIX',           # Riesgo de mercado
+    'RATE_2Y',       # Expectativas corto plazo
+    'RATE_10Y',      # Tipo largo plazo
+    'RATE_30Y',      # Para spread 30-10Y
+    'GOVT_20Y',      # Treasury para credit spread
+    'HYG',           # High yield
+    'LQD',           # Investment grade
     'DXY',           # Dólar
     'GOLD',          # Refugio
-    'OIL'            # Energía/crecimiento
+    'OIL',           # Energía/inflación
+    'SP500'          # Mercado
 ]
 
 # ============================================================================
-# CONFIGURACIÓN DE ANÁLISIS MACRO
-# ============================================================================
-MACRO_ANALYSIS = {
-    # Correlaciones
-    'correlation': {
-        'default_lag_window': 126,        # ~6 meses hábiles
-        'min_observations': 60,            # Mínimo de observaciones
-        'max_lag': 126,                    # Lags máximos a probar
-        'hac_maxlags': 5,                  # Lags para Newey-West
-    },
-    
-    # Regresión multifactor
-    'regression': {
-        'min_observations': 100,           # Mínimo para regresión
-        'hac_maxlags': None,              # None = auto (sqrt(n))
-        'significance_level': 0.05,        # Nivel de significancia
-    },
-    
-    # Regímenes
-    'regime': {
-        'window': 252,                    # Ventana para clustering
-        'step': 21,                       # Paso walk-forward
-        'n_clusters': 3,                 # Número de clusters
-        'features': ['vol', 'ret', 'sharpe', 'mdd'],  # Features para clustering
-    },
-    
-    # Señales
-    'signal': {
-        'percentile_window': 252,         # Ventana para percentiles
-        'upper_threshold': 0.8,           # Umbral superior (risk-off)
-        'lower_threshold': 0.2,           # Umbral inferior (risk-on)
-        'neutral_range': (0.2, 0.8),      # Rango neutral
-    },
-    
-    # Transformaciones
-    'transforms': {
-        'yield_scale': 10.0,              # Yahoo escala yields x10
-        'use_log_returns': True,          # Usar log returns vs pct_change
-    },
-}
-
-# ============================================================================
-# TRANSFORMACIONES DE FACTORES MACRO
+# TRANSFORMACIONES (cómo procesar cada tipo de factor)
 # ============================================================================
 MACRO_TRANSFORMS = {
-    # Factores que requieren división por 10 (Yahoo escala)
-    'yield_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y'],
+    # Factores que requieren división por 10 (Yahoo escala yields)
+    'yield_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y', 'RATE_2Y', 'RATE_5Y'],
     
     # Factores que usan diferencias (no retornos)
-    'diff_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y',
-                     'VIX'],
+    'diff_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y', 'RATE_2Y', 'RATE_5Y', 'VIX'],
     
     # Factores que usan log returns
     'log_return_factors': [
         'DXY', 'EUR_USD', 'GBP_USD', 'USD_JPY',
-        'GOLD', 'OIL', 'COPPER',
+        'GOLD', 'OIL', 'COPPER', 'SILVER',
         'SP500', 'NASDAQ', 'RUSSELL2000',
-        'TLT', 'IEF', 'SHY', 'HYG', 'LQD',
-        'GOVT_20Y'
+        'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'GOVT_20Y'
     ],
-    
-    # Factores que se usan directamente (niveles)
-    'level_factors': ['VIX', 'VXN'],
 }
 
 # ============================================================================
-# SPREADS Y COMBINACIONES DE FACTORES
+# SPREADS (combinaciones de factores)
 # ============================================================================
 MACRO_SPREADS = {
-    # Spread de curva de tipos (expectativas económicas)
+    # Curva de tipos (expectativas de crecimiento)
     'yield_curve_30_10y': {
         'long': 'RATE_30Y',
         'short': 'RATE_10Y',
         'transform': 'diff',
     },
     
-    # Credit spread amplio (riesgo crediticio vs riesgo libre)
+    # Credit spread HY vs Treasury (riesgo crediticio)
     'credit_spread_hy': {
         'risky': 'HYG',
         'safe': 'GOVT_20Y',
         'transform': 'diff',
     },
     
-    # Credit spread fino (high yield vs investment grade)
+    # Credit spread HY vs IG (apetito por riesgo)
     'credit_spread_hy_lqd': {
         'risky': 'HYG',
         'safe': 'LQD',
@@ -218,95 +176,51 @@ MACRO_SPREADS = {
     },
 }
 
-FACTORS_TO_USE = [
-    # Volatilidad (riesgo de mercado)
-    'VIX',
-    
-    # Política monetaria (descuento de flujos)
-    'RATE_2Y',   # Expectativas corto plazo
-    'RATE_10Y',  # Tipo largo plazo
-    'RATE_30Y',  # Tipo muy largo plazo (para spread 30-10Y)
-    
-    # Bonos (para credit spread)
-    'GOVT_20Y',  # TLT - Treasury 20+ años (para credit spread)
-    
-    # Credit spreads (apetito por riesgo)
-    'HYG',       # High yield
-    'LQD',       # Investment grade
-    
-    # Dólar (afecta exportaciones tech)
-    'DXY',
-    
-    # Commodities (inflación/crecimiento)
-    'GOLD',      # Refugio seguro
-    'OIL',       # Energía/crecimiento
-    
-    # Equity market (correlación)
-    'SP500'
-]
-
 # ============================================================================
-# UMBRALES DE INTERPRETACIÓN - SEÑALES MACRO
+# PARÁMETROS DE ANÁLISIS
 # ============================================================================
-MACRO_SIGNAL_THRESHOLDS = {
-    'vix': {
-        'low': 15,           # Risk-on
-        'moderate': 20,
-        'high': 25,          # Risk-off
-        'extreme': 30,       # Pánico
+MACRO_ANALYSIS = {
+    # Correlaciones
+    'correlation': {
+        'default_lag_window': 126,    # ~6 meses
+        'min_observations': 60,
+        'max_lag': 126,
+        'hac_maxlags': 5,
     },
-    'yield_curve': {
-        'inverted': -0.5,    # Spread negativo (recesión)
-        'flat': 0.5,          # Spread pequeño
-        'normal': 1.5,       # Spread normal
-        'steep': 2.5,        # Curva empinada
+    
+    # Regresión multifactor
+    'regression': {
+        'min_observations': 100,      # Mínimo para regresión robusta
+        'hac_maxlags': None,          # None = auto (sqrt(n))
+        'significance_level': 0.05,
     },
-    'dxy': {
-        'weak': 95,          # Dólar débil
-        'neutral': 100,
-        'strong': 105,       # Dólar fuerte
-        'very_strong': 110,
+    
+    # Regímenes de mercado
+    'regime': {
+        'window': 252,
+        'step': 21,
+        'n_clusters': 3,
+        'features': ['vol', 'ret', 'sharpe', 'mdd'],
+    },
+    
+    # Señales
+    'signal': {
+        'percentile_window': 252,
+        'upper_threshold': 0.8,
+        'lower_threshold': 0.2,
+    },
+    
+    # Transformaciones
+    'transforms': {
+        'yield_scale': 10.0,         
+        'use_log_returns': True,
     },
 }
 
 # ============================================================================
-# UMBRALES DE INTERPRETACIÓN - CORRELACIONES
+# CONSTANTES DE ACCESO RÁPIDO (para imports directos)
 # ============================================================================
-MACRO_CORRELATION_THRESHOLDS = {
-    'very_strong': 0.8,
-    'strong': 0.6,
-    'moderate': 0.4,
-    'weak': 0.2,
-    'negligible': 0.0,
-}
 
-# ============================================================================
-# UMBRALES DE INTERPRETACIÓN - FACTOR LOADINGS
-# ============================================================================
-MACRO_LOADING_THRESHOLDS = {
-    'very_high': 1.5,
-    'high': 1.0,
-    'moderate': 0.5,
-    'low': 0.2,
-    'negligible': 0.0,
-}
-
-# ============================================================================
-# CONFIGURACIÓN DE VISUALIZACIONES MACRO
-# ============================================================================
-MACRO_PLOTTING = {
-    'dashboard_figsize': (22, 16),
-    'correlation_heatmap_figsize': (12, 10),
-    'factor_loading_figsize': (14, 8),
-    'regime_figsize': (16, 10),
-    'signal_figsize': (16, 6),
-    'dpi': 300,
-    'style': 'seaborn-v0_8',
-}
-
-# ============================================================================
-# CONSTANTES DE ACCESO RÁPIDO
-# ============================================================================
 # Correlaciones
 DEFAULT_LAG_WINDOW = MACRO_ANALYSIS['correlation']['default_lag_window']
 MAX_LAG = MACRO_ANALYSIS['correlation']['max_lag']
@@ -330,3 +244,6 @@ SIGNAL_LOWER_THRESHOLD = MACRO_ANALYSIS['signal']['lower_threshold']
 # Transformaciones
 YIELD_SCALE = MACRO_ANALYSIS['transforms']['yield_scale']
 USE_LOG_RETURNS = MACRO_ANALYSIS['transforms']['use_log_returns']
+
+# Anualización
+ANNUAL_FACTOR = 252

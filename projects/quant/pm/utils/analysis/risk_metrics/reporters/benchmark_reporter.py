@@ -2,10 +2,25 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 from ..analyzers.benchmark_analyzer import BenchmarkAnalyzer
+from ....tools.config import (
+    TRACKING_ERROR_THRESHOLDS,
+    INFORMATION_RATIO_THRESHOLDS,
+    BETA_THRESHOLDS,
+    ALPHA_THRESHOLDS
+)
 
 class BenchmarkReporter:
+    """
+    Reporter para generar informes de análisis vs benchmark.
+    
+    Responsabilidad: Formatear y presentar resultados de comparación con benchmark.
+    """
 
     def __init__(self, benchmark_analyzer: BenchmarkAnalyzer):
+        """
+        Args:
+            benchmark_analyzer: Instancia de BenchmarkAnalyzer para cálculos
+        """
         self.analyzer = benchmark_analyzer
     
     def generate_report(
@@ -15,13 +30,22 @@ class BenchmarkReporter:
         benchmark_returns: pd.Series,
         risk_free_rate: float
     ) -> None:
-
+        """
+        Genera reporte de análisis vs benchmark.
+        
+        Args:
+            returns: DataFrame de retornos diarios de activos
+            weights: Array de pesos del portafolio
+            benchmark_returns: Serie de retornos del benchmark
+            risk_free_rate: Tasa libre de riesgo anualizada
+        """
         results = self.analyzer.analyze(
             returns, weights, benchmark_returns, risk_free_rate
         )
         self.print_benchmark_analysis(results)
-    def print_benchmark_analysis(self, results: Dict) -> None:
         
+    def print_benchmark_analysis(self, results: Dict) -> None:
+        """Imprime análisis vs benchmark formateado."""
         print("ANÁLISIS VS BENCHMARK".center(60))
     
         print("TRACKING ERROR")
@@ -47,33 +71,33 @@ class BenchmarkReporter:
         self._interpret_alpha(results['alpha_annual'])  
 
     def _interpret_te(self, te: float) -> None:
-
+        """Interpreta Tracking Error usando thresholds de config."""
         te_pct = te * 100
-        if te_pct < 2:
+        if te_pct < TRACKING_ERROR_THRESHOLDS['very_close']:
             print(f"  Interpretación:          Muy cercano al benchmark")
-        elif te_pct < 5:
+        elif te_pct < TRACKING_ERROR_THRESHOLDS['moderate']:
             print(f"  Interpretación:          Desviación moderada")
-        elif te_pct < 10:
+        elif te_pct < TRACKING_ERROR_THRESHOLDS['active']:
             print(f"  Interpretación:          Gestión activa notable")
         else:
             print(f"  Interpretación:          Alta desviación del benchmark")
     
     def _interpret_ir(self, ir: float) -> None:
-
-        if ir > 0.5:
+        """Interpreta Information Ratio usando thresholds de config."""
+        if ir > INFORMATION_RATIO_THRESHOLDS['excellent']:
             print(f"  Interpretación:          Excelente - supera al benchmark")
-        elif ir > 0:
+        elif ir > INFORMATION_RATIO_THRESHOLDS['positive']:
             print(f"  Interpretación:          Positivo - añade valor")
-        elif ir > -0.5:
+        elif ir > INFORMATION_RATIO_THRESHOLDS['slightly_below']:
             print(f"  Interpretación:          Ligeramente inferior")
         else:
             print(f"  Interpretación:          Bajo desempeño significativo")
     
     def _interpret_beta(self, beta: float) -> None:
-
-        if beta > 1.2:
+        """Interpreta Beta usando thresholds de config."""
+        if beta > BETA_THRESHOLDS['aggressive']:
             print(f"  Interpretación:          Alta sensibilidad (agresivo)")
-        elif beta > 0.8:
+        elif beta > BETA_THRESHOLDS['market']:
             print(f"  Interpretación:          Similar al mercado")
         elif beta > 0:
             print(f"  Interpretación:          Baja sensibilidad (defensivo)")
@@ -81,13 +105,13 @@ class BenchmarkReporter:
             print(f"  Interpretación:          Correlación inversa")
     
     def _interpret_alpha(self, alpha: float) -> None:
-
+        """Interpreta Alpha usando thresholds de config."""
         alpha_pct = alpha * 100
-        if alpha_pct > 5:
+        if alpha_pct > ALPHA_THRESHOLDS['excellent']:
             print(f"  Interpretación:          Excelente - supera expectativas")
-        elif alpha_pct > 0:
+        elif alpha_pct > ALPHA_THRESHOLDS['positive']:
             print(f"  Interpretación:          Positivo - genera valor")
-        elif alpha_pct > -5:
+        elif alpha_pct > ALPHA_THRESHOLDS['slightly_below']:
             print(f"  Interpretación:          Ligeramente por debajo")
         else:
             print(f"  Interpretación:          Bajo desempeño notable")

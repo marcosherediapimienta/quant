@@ -4,11 +4,21 @@ import numpy as np
 from typing import Dict
 from ..components.drawdown_plotter import DrawdownPlotter
 from ...analysis.risk_metrics.components.helpers import calculate_portfolio_returns
+from ...tools.config import ANNUAL_FACTOR
 
 class DrawdownVisualizer:
+    """
+    Visualizer para gráficos de drawdown.
     
-    def __init__(self, annual_factor: float = 252.0):
-        self.annual_factor = annual_factor
+    Responsabilidad: Generar visualizaciones de drawdowns y retornos acumulados.
+    """
+    
+    def __init__(self, annual_factor: float = None):
+        """
+        Args:
+            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
+        """
+        self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.dd_plotter = DrawdownPlotter()
     
     def plot_drawdown_analysis(
@@ -18,7 +28,18 @@ class DrawdownVisualizer:
         dd_results: Dict[str, float],
         figsize: tuple = (14, 8)
     ) -> plt.Figure:
-
+        """
+        Genera análisis visual de drawdowns.
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+            dd_results: Resultados del análisis de drawdown
+            figsize: Tamaño de la figura
+            
+        Returns:
+            Figura de matplotlib con los gráficos
+        """
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         cumulative_returns = (1 + portfolio_ret).cumprod() - 1
         running_max = cumulative_returns.cummax()
@@ -42,6 +63,7 @@ class DrawdownVisualizer:
                        color='red', s=100, zorder=5, 
                        label=f"Max DD: {dd_results['max_drawdown_pct']:.2f}%")
         axes[0].legend()
+        
         axes[1].fill_between(drawdown.index, 0, drawdown.values * 100,
                             alpha=0.3, color='red')
         axes[1].plot(drawdown.index, drawdown.values * 100,

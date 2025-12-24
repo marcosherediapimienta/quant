@@ -23,19 +23,32 @@ class ProfitabilityThresholds:
         self.operating_margin = self.operating_margin or profitability_thresholds['operating_margin']
         self.net_margin = self.net_margin or profitability_thresholds['net_margin']
 
-
 class ProfitabilityMetrics:
+    """
+    Calcula métricas de rentabilidad.
+    
+    Responsabilidad: Evaluar capacidad de generar beneficios sobre capital invertido.
+    
+    Métricas clave:
+    - ROIC (Return on Invested Capital): Buffett's favorite
+    - ROE (Return on Equity): Rentabilidad sobre patrimonio
+    - ROA (Return on Assets): Eficiencia en uso de activos
+    - Márgenes (Gross, Operating, Net): Rentabilidad operativa
+    """
     
     def __init__(self, thresholds: ProfitabilityThresholds = None):
         self.thresholds = thresholds or ProfitabilityThresholds()
         self.weights = SCORING_WEIGHTS['profitability']
+        # Cargar rangos desde config
+        from ....tools.config import PROFITABILITY_SCORING_RANGES
+        self.ranges = PROFITABILITY_SCORING_RANGES
     
     def calculate(self, data: Dict) -> Dict:
+        """Calcula scores y clasificaciones de rentabilidad."""
+        # ... (extracción de métricas igual) ...
         roic = nan_if_missing(data.get('returnOnCapital'))
-
         if pd.isna(roic):
-            roic = nan_if_missing(data.get('roic')) 
-            
+            roic = nan_if_missing(data.get('roic'))
         roe = nan_if_missing(data.get('returnOnEquity'))
         roa = nan_if_missing(data.get('returnOnAssets'))
         gross_margin = nan_if_missing(data.get('grossMargins'))
@@ -60,23 +73,40 @@ class ProfitabilityMetrics:
             'net_margin_class': classify_metric(net_margin, self.thresholds.net_margin)
         }
 
+        # Usar rangos de config
         scores = []
         weights_used = []
         
         if pd.notna(roic):
-            scores.append(score_metric(roic, -0.10, 0.30) * self.weights['roic'])
+            scores.append(score_metric(
+                roic, 
+                self.ranges['roic']['min'], 
+                self.ranges['roic']['max']
+            ) * self.weights['roic'])
             weights_used.append(self.weights['roic'])
         
         if pd.notna(roe):
-            scores.append(score_metric(roe, -0.10, 0.35) * self.weights['roe'])
+            scores.append(score_metric(
+                roe, 
+                self.ranges['roe']['min'], 
+                self.ranges['roe']['max']
+            ) * self.weights['roe'])
             weights_used.append(self.weights['roe'])
         
         if pd.notna(operating_margin):
-            scores.append(score_metric(operating_margin, -0.10, 0.30) * self.weights['operating_margin'])
+            scores.append(score_metric(
+                operating_margin, 
+                self.ranges['operating_margin']['min'], 
+                self.ranges['operating_margin']['max']
+            ) * self.weights['operating_margin'])
             weights_used.append(self.weights['operating_margin'])
         
         if pd.notna(net_margin):
-            scores.append(score_metric(net_margin, -0.10, 0.25) * self.weights['net_margin'])
+            scores.append(score_metric(
+                net_margin, 
+                self.ranges['net_margin']['min'], 
+                self.ranges['net_margin']['max']
+            ) * self.weights['net_margin'])
             weights_used.append(self.weights['net_margin'])
         
         total_weight = sum(weights_used)
@@ -90,19 +120,21 @@ class ProfitabilityMetrics:
         }
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
+        """Genera alertas usando umbrales de config."""
+        from ....tools.config import ALERT_THRESHOLDS
         alerts = []
-        alert_thresholds = ALERT_THRESHOLDS['profitability']
+        alert_cfg = ALERT_THRESHOLDS['profitability']
         
-        if pd.notna(metrics['roic']) and metrics['roic'] < alert_thresholds['roic_low']:
+        if pd.notna(metrics['roic']) and metrics['roic'] < alert_cfg['roic_low']:
             alerts.append("ROIC bajo: la empresa no genera retornos suficientes sobre el capital invertido")
         
-        if pd.notna(metrics['roe']) and metrics['roe'] < 0:
+        if pd.notna(metrics['roe']) and metrics['roe'] < ALERT_THRESHOLDS['financial_health'].get('roe_negative', 0):
             alerts.append("ROE negativo: la empresa está perdiendo dinero")
         
-        if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_thresholds['operating_margin_low']:
+        if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_cfg['operating_margin_low']:
             alerts.append("Margen operativo muy bajo: problemas de eficiencia operativa")
         
-        if pd.notna(metrics['net_margin']) and metrics['net_margin'] < 0:
+        if pd.notna(metrics['net_margin']) and metrics['net_margin'] < ALERT_THRESHOLDS['financial_health'].get('net_margin_negative', 0):
             alerts.append("Margen neto negativo: la empresa no es rentable")
         
         return alerts

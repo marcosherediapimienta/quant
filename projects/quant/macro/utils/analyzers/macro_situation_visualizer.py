@@ -50,8 +50,8 @@ class MacroSituationVisualizer:
 
         ax3 = fig.add_subplot(gs[1, 0])
         credit = situation_analysis.get('credit', {})
-        if 'vix' in credit:
-            vix_value = credit['vix']
+        if 'vix_level' in credit: 
+            vix_value = credit['vix_level'] 
             ax3.barh(['VIX'], [vix_value], color='green' if vix_value < 20 else 'orange' if vix_value < 25 else 'red',
                    alpha=0.7, edgecolor='black')
             ax3.set_xlabel('Nivel VIX', fontsize=11, fontweight='bold')

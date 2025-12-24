@@ -2,10 +2,20 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 from ..analyzers.distribution_analyzer import DistributionAnalyzer
+from ....tools.config import SKEWNESS_THRESHOLDS, KURTOSIS_THRESHOLDS
 
 class DistributionReporter:
+    """
+    Reporter para generar informes de análisis de distribución.
+    
+    Responsabilidad: Formatear y presentar resultados de distribución.
+    """
 
     def __init__(self, distribution_analyzer: DistributionAnalyzer):
+        """
+        Args:
+            distribution_analyzer: Instancia de DistributionAnalyzer para cálculos
+        """
         self.analyzer = distribution_analyzer
     
     def generate_report(
@@ -13,12 +23,18 @@ class DistributionReporter:
         returns: pd.DataFrame,
         weights: np.ndarray
     ) -> None:
-  
+        """
+        Genera reporte de análisis de distribución.
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+        """
         results = self.analyzer.analyze(returns, weights)
         self.print_distribution(results)
     
     def print_distribution(self, results: Dict) -> None:
-  
+        """Imprime análisis de distribución formateado."""
         print("ANÁLISIS DE DISTRIBUCIÓN".center(60))
 
         print("ASIMETRÍA (Skewness)")
@@ -36,22 +52,22 @@ class DistributionReporter:
         print(f"  Distribución normal:     {'[SI]' if is_normal else '[NO]'}")
 
     def _interpret_skewness(self, skew: float) -> None:
-
-        if skew > 0.5:
+        """Interpreta skewness usando thresholds de config."""
+        if skew > SKEWNESS_THRESHOLDS['positive']:
             print(f"  Interpretación:          Asimetría positiva (cola derecha)")
             print(f"                           -> Más ganancias extremas que pérdidas")
-        elif skew < -0.5:
+        elif skew < SKEWNESS_THRESHOLDS['negative']:
             print(f"  Interpretación:          Asimetría negativa (cola izquierda)")
             print(f"                           -> Más pérdidas extremas que ganancias")
         else:
             print(f"  Interpretación:          Aproximadamente simétrica")
     
     def _interpret_kurtosis(self, kurt: float) -> None:
-
-        if kurt > 3:
+        """Interpreta kurtosis usando thresholds de config."""
+        if kurt > KURTOSIS_THRESHOLDS['leptokurtic']:
             print(f"  Interpretación:          Leptocúrtica (colas pesadas)")
             print(f"                           -> Mayor riesgo de eventos extremos")
-        elif kurt < -1:
+        elif kurt < KURTOSIS_THRESHOLDS['platykurtic']:
             print(f"  Interpretación:          Platicúrtica (colas ligeras)")
             print(f"                           -> Menos eventos extremos")
         else:

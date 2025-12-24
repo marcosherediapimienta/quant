@@ -2,7 +2,6 @@ import numpy as np
 from typing import Dict
 from ..analyzers.macro_situation_analyzer import MacroSituationAnalyzer
 
-
 class MacroSituationReporter:
     
     def __init__(self, analyzer: MacroSituationAnalyzer = None):
@@ -55,6 +54,52 @@ class MacroSituationReporter:
             for spread_name, value in spreads.items():
                 symbol = "🔴" if value < 0 else "🟢"
                 print(f"    {symbol} {spread_name:>10}: {value:>+6.2f} pp")
+
+        # Mostrar cambios en las tasas
+        rate_changes = curve.get('rate_changes', {})
+        if rate_changes:
+            print("\n  Cambios en tasas:")
+            print(f"    {'Tenor':<6} {'1 Mes':<12} {'3 Meses':<12} {'1 Año':<12}")
+            for tenor in sorted(rate_changes.keys()):
+                changes = rate_changes[tenor]
+                change_1m = changes.get('1m', np.nan)
+                change_3m = changes.get('3m', np.nan)
+                change_1y = changes.get('1y', np.nan)
+                
+                change_1m_str = f"{change_1m:>+6.2f} pp" if not np.isnan(change_1m) else "N/A"
+                change_3m_str = f"{change_3m:>+6.2f} pp" if not np.isnan(change_3m) else "N/A"
+                change_1y_str = f"{change_1y:>+6.2f} pp" if not np.isnan(change_1y) else "N/A"
+                
+                print(f"    {tenor:<6} {change_1m_str:<12} {change_3m_str:<12} {change_1y_str:<12}")
+
+        divergence = curve.get('divergence_analysis', {})
+        if divergence:
+            print("\n  📊 Divergencia Corto vs Largo Plazo:")
+            if '3m' in divergence:
+                d3m = divergence['3m']
+                print(f"    3 meses:")
+                print(f"      Corto (2Y): {d3m['short']:>+6.2f} pp")
+                print(f"      Largo (10Y): {d3m['long']:>+6.2f} pp")
+                print(f"      Divergencia: {d3m['divergence']:>+6.2f} pp", end="")
+                if d3m['divergence'] > 0.5:
+                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                elif d3m['divergence'] < -0.5:
+                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                else:
+                    print(" ⚪ (Movimientos alineados)")
+            
+            if '1y' in divergence:
+                d1y = divergence['1y']
+                print(f"    1 año:")
+                print(f"      Corto (2Y): {d1y['short']:>+6.2f} pp")
+                print(f"      Largo (10Y): {d1y['long']:>+6.2f} pp")
+                print(f"      Divergencia: {d1y['divergence']:>+6.2f} pp", end="")
+                if d1y['divergence'] > 0.5:
+                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                elif d1y['divergence'] < -0.5:
+                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                else:
+                    print(" ⚪ (Movimientos alineados)")
 
         interpretation = curve.get('interpretation', 'N/A')
         print(f"\n  💡 {interpretation}")
@@ -142,15 +187,31 @@ class MacroSituationReporter:
 
         if 'dollar_strength' in sentiment:
             dollar = sentiment['dollar_strength']
-            trend = sentiment.get('dxy_trend', np.nan)
-            trend_str = f"({trend:+.2f}% últimos 3 meses)" if not np.isnan(trend) else ""
+
+            trends = []
+            if 'dxy_trend_1w' in sentiment:
+                trends.append(f"1 sem: {sentiment['dxy_trend_1w']:+.2f}%")
+            if 'dxy_trend_1m' in sentiment:
+                trends.append(f"1 mes: {sentiment['dxy_trend_1m']:+.2f}%")
+            if 'dxy_trend_3m' in sentiment:
+                trends.append(f"3 mes: {sentiment['dxy_trend_3m']:+.2f}%")
+            
+            trend_str = f"({', '.join(trends)})" if trends else ""
             print(f"  Fortaleza del dólar:      {dollar} {trend_str}")
 
         if 'safe_haven' in sentiment:
             safe_haven = sentiment['safe_haven']
-            gold_trend = sentiment.get('gold_trend', np.nan)
-            gold_str = f"({gold_trend:+.2f}% últimos 3 meses)" if not np.isnan(gold_trend) else ""
-            print(f"  Demanda de refugio:       {safe_haven} {gold_str}")
+            
+            trends = []
+            if 'gold_trend_1w' in sentiment:
+                trends.append(f"1 sem: {sentiment['gold_trend_1w']:+.2f}%")
+            if 'gold_trend_1m' in sentiment:
+                trends.append(f"1 mes: {sentiment['gold_trend_1m']:+.2f}%")
+            if 'gold_trend_3m' in sentiment:
+                trends.append(f"3 mes: {sentiment['gold_trend_3m']:+.2f}%")
+            
+            trend_str = f"({', '.join(trends)})" if trends else ""
+            print(f"  Demanda de refugio:       {safe_haven} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
         print("SNAPSHOT MACRO".center(60))

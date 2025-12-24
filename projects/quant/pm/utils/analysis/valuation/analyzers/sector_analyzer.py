@@ -4,41 +4,49 @@ import yfinance as yf
 from typing import Dict, List, Callable
 from dataclasses import dataclass
 from .company_analyzer import CompanyAnalyzer
+from ....tools.config import SECTOR_ANALYSIS_CONFIG
 
 @dataclass
 class PercentileInterpretation:
-
-    top_performer: float = 80
-    above_average: float = 60
-    average: float = 40
-    below_average: float = 20
-    
+    """Configuración de interpretación de percentiles."""
+    top_performer: float = None
+    above_average: float = None
+    average: float = None
+    below_average: float = None
     labels: Dict[str, str] = None
     
     def __post_init__(self):
-        if self.labels is None:
-            self.labels = {
-                'top': 'Top performer del sector',
-                'above': 'Por encima del promedio',
-                'average': 'En el promedio del sector',
-                'below': 'Por debajo del promedio',
-                'bottom': 'Rezagado del sector'
-            }
+        # Cargar desde config si no se proporciona
+        cfg = SECTOR_ANALYSIS_CONFIG
+        self.top_performer = self.top_performer or cfg['percentile_thresholds']['top_performer']
+        self.above_average = self.above_average or cfg['percentile_thresholds']['above_average']
+        self.average = self.average or cfg['percentile_thresholds']['average']
+        self.below_average = self.below_average or cfg['percentile_thresholds']['below_average']
+        self.labels = self.labels or cfg['percentile_labels'].copy()
 
 class SectorAnalyzer:
+    """
+    Analiza empresa vs peers del sector.
+    
+    Responsabilidad: Comparar métricas de empresa con competidores del mismo sector.
+    
+    Metodología:
+    - Identifica peers (mismo sector/industria)
+    - Calcula posición relativa en cada métrica
+    - Determina percentil general (top 20%, promedio, etc.)
+    """
 
     def __init__(
         self,
         company_analyzer: CompanyAnalyzer = None,
         percentile_config: PercentileInterpretation = None,
         peer_fetcher: Callable[[str, str, str], List[str]] = None,
-        max_peers: int = 5
+        max_peers: int = None
     ):
- 
         self.company_analyzer = company_analyzer or CompanyAnalyzer()
         self.percentile_config = percentile_config or PercentileInterpretation()
         self._peer_fetcher = peer_fetcher or self._default_peer_fetcher
-        self.max_peers = max_peers
+        self.max_peers = max_peers or SECTOR_ANALYSIS_CONFIG['max_peers']
     
     def _default_peer_fetcher(
         self, 
@@ -46,12 +54,20 @@ class SectorAnalyzer:
         industry: str, 
         sector: str
     ) -> List[str]:
-     
+        """
+        Fetcher por defecto de peers (placeholder).
+        
+        En producción, esto debería conectarse a:
+        - API de clasificación sectorial
+        - Base de datos de empresas por sector
+        - Screening de peers similares
+        """
         peers = []
         
         try:
             stock = yf.Ticker(ticker)
-    
+            # yfinance no proporciona peers directamente
+            # Aquí iría lógica personalizada de identificación de peers
             if hasattr(stock, 'recommendations') and stock.recommendations is not None:
                 pass
             
@@ -66,7 +82,17 @@ class SectorAnalyzer:
         peers: List[str] = None,
         fetch_peers: bool = True
     ) -> Dict:
-
+        """
+        Analiza empresa vs peers del sector.
+        
+        Args:
+            ticker: Ticker de la empresa
+            peers: Lista opcional de peers (si None, intenta fetch)
+            fetch_peers: Si True, intenta buscar peers automáticamente
+            
+        Returns:
+            Dict con análisis completo vs peers
+        """
         company_result = self.company_analyzer.analyze(ticker)
         
         if not company_result.get('success'):
@@ -80,6 +106,7 @@ class SectorAnalyzer:
         
         peers = peers or []
         peers = [p for p in peers if p.upper() != ticker.upper()][:self.max_peers]
+        
         peer_results = {}
         if peers:
             peer_results = self.company_analyzer.analyze_multiple(peers)
@@ -108,7 +135,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> Dict:
-
+        """Calcula posición relativa en cada categoría de score."""
         if not peers:
             return {'note': 'Sin peers para comparar'}
         
@@ -148,7 +175,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> Dict:
-
+        """Calcula percentil de la empresa vs peers."""
         valid_peers = {t: r for t, r in peers.items() if r.get('success')}
         
         if not valid_peers:
@@ -179,6 +206,7 @@ class SectorAnalyzer:
         }
     
     def _interpret_percentile(self, percentile: float) -> str:
+        """Interpreta percentil usando config."""
         cfg = self.percentile_config
         labels = cfg.labels
         
@@ -198,7 +226,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> pd.DataFrame:
-
+        """Crea DataFrame comparativo."""
         all_results = {company['ticker']: company}
         all_results.update(peers)
         return self.company_analyzer.get_summary_df(all_results)

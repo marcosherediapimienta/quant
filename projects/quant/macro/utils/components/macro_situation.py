@@ -3,8 +3,8 @@ import pandas as pd
 from typing import Dict
 
 def analyze_yield_curve_usa(factors_data: Dict[str, pd.Series]) -> Dict:
-    curve = {}
     rates = {}
+    rate_changes = {}
     tenors_map = {
         'RATE_2Y': '2Y',
         'RATE_5Y': '5Y',
@@ -14,7 +14,26 @@ def analyze_yield_curve_usa(factors_data: Dict[str, pd.Series]) -> Dict:
     
     for factor, label in tenors_map.items():
         if factor in factors_data and len(factors_data[factor]) > 0:
-            rates[label] = factors_data[factor].iloc[-1] 
+            series = factors_data[factor]
+            current = series.iloc[-1]
+            rates[label] = current
+
+            changes = {}
+
+            if len(series) >= 21:
+                month_ago = series.iloc[-21]
+                changes['1m'] = current - month_ago
+
+            if len(series) >= 63:
+                quarter_ago = series.iloc[-63]
+                changes['3m'] = current - quarter_ago
+
+            if len(series) >= 252:
+                year_ago = series.iloc[-252]
+                changes['1y'] = current - year_ago
+            
+            if changes:
+                rate_changes[label] = changes
 
     spreads = {}
     if '10Y' in rates and '2Y' in rates:
@@ -23,6 +42,32 @@ def analyze_yield_curve_usa(factors_data: Dict[str, pd.Series]) -> Dict:
         spreads['10Y-5Y'] = rates['10Y'] - rates['5Y']
     if '30Y' in rates and '10Y' in rates:
         spreads['30Y-10Y'] = rates['30Y'] - rates['10Y']
+
+    # Análisis de divergencia corto vs largo plazo
+    divergence_analysis = {}
+    if '2Y' in rate_changes and '10Y' in rate_changes:
+        short_changes = rate_changes['2Y']
+        long_changes = rate_changes['10Y']
+        
+        if '3m' in short_changes and '3m' in long_changes:
+            short_3m = short_changes['3m']
+            long_3m = long_changes['3m']
+            divergence_3m = long_3m - short_3m
+            divergence_analysis['3m'] = {
+                'short': short_3m,
+                'long': long_3m,
+                'divergence': divergence_3m
+            }
+        
+        if '1y' in short_changes and '1y' in long_changes:
+            short_1y = short_changes['1y']
+            long_1y = long_changes['1y']
+            divergence_1y = long_1y - short_1y
+            divergence_analysis['1y'] = {
+                'short': short_1y,
+                'long': long_1y,
+                'divergence': divergence_1y
+            }
 
     spread_10_2 = spreads.get('10Y-2Y', 1.0)
     if spread_10_2 < 0:
@@ -41,6 +86,8 @@ def analyze_yield_curve_usa(factors_data: Dict[str, pd.Series]) -> Dict:
     return {
         'levels': rates,
         'spreads': spreads,
+        'rate_changes': rate_changes,
+        'divergence_analysis': divergence_analysis,
         'interpretation': interpretation,
         'risk_level': risk_level
     }
@@ -182,50 +229,86 @@ def analyze_risk_sentiment(factors_data: Dict[str, pd.Series]) -> Dict:
         
         sentiment['fear_level'] = fear
 
-    dxy_trend = None
-    gold_trend = None
+    dxy_trend_3m = None
+    dxy_trend_1m = None
+    dxy_trend_1w = None
     
-    if 'DXY' in factors_data and len(factors_data['DXY']) >= 63:
+    if 'DXY' in factors_data and len(factors_data['DXY']) > 0:
         dxy = factors_data['DXY']
         current = dxy.iloc[-1]
-        quarter_ago = dxy.iloc[-63]
-        
-        if quarter_ago > 0:
-            dxy_trend = (current / quarter_ago - 1) * 100
-            sentiment['dxy_trend'] = dxy_trend
 
-    if 'GOLD' in factors_data and len(factors_data['GOLD']) >= 63:
+        if len(dxy) >= 63 and dxy.iloc[-63] > 0:
+            dxy_trend_3m = (current / dxy.iloc[-63] - 1) * 100
+            sentiment['dxy_trend_3m'] = dxy_trend_3m
+        
+        if len(dxy) >= 21 and dxy.iloc[-21] > 0:
+            dxy_trend_1m = (current / dxy.iloc[-21] - 1) * 100
+            sentiment['dxy_trend_1m'] = dxy_trend_1m
+
+        if len(dxy) >= 5 and dxy.iloc[-5] > 0:
+            dxy_trend_1w = (current / dxy.iloc[-5] - 1) * 100
+            sentiment['dxy_trend_1w'] = dxy_trend_1w
+
+        sentiment['dxy_trend'] = dxy_trend_3m
+
+    gold_trend_3m = None
+    gold_trend_1m = None
+    gold_trend_1w = None
+    
+    if 'GOLD' in factors_data and len(factors_data['GOLD']) > 0:
         gold = factors_data['GOLD']
         current = gold.iloc[-1]
-        quarter_ago = gold.iloc[-63]
-        
-        if quarter_ago > 0:
-            gold_trend = (current / quarter_ago - 1) * 100
-            sentiment['gold_trend'] = gold_trend
 
-    if dxy_trend is not None:
-        if dxy_trend > 5:
-            if gold_trend is not None and gold_trend > 5:
+        if len(gold) >= 63 and gold.iloc[-63] > 0:
+            gold_trend_3m = (current / gold.iloc[-63] - 1) * 100
+            sentiment['gold_trend_3m'] = gold_trend_3m
+
+        if len(gold) >= 21 and gold.iloc[-21] > 0:
+            gold_trend_1m = (current / gold.iloc[-21] - 1) * 100
+            sentiment['gold_trend_1m'] = gold_trend_1m
+        
+        if len(gold) >= 5 and gold.iloc[-5] > 0:
+            gold_trend_1w = (current / gold.iloc[-5] - 1) * 100
+            sentiment['gold_trend_1w'] = gold_trend_1w
+
+        sentiment['gold_trend'] = gold_trend_3m
+
+    if dxy_trend_3m is not None:
+        if dxy_trend_3m > 5:
+            if gold_trend_3m is not None and gold_trend_3m > 5:
                 strength = "FUERTE (flight to safety)"
-            elif gold_trend is not None and gold_trend < -2:
+            elif gold_trend_3m is not None and gold_trend_3m < -2:
                 strength = "FUERTE (fortaleza económica/política monetaria)"
             else:
                 strength = "FUERTE"
-        elif dxy_trend > 0:
+        elif dxy_trend_3m > 0:
             strength = "MODERADO"
-        elif dxy_trend > -5:
+        elif dxy_trend_3m > -5:
             strength = "DÉBIL"
         else:
             strength = "MUY DÉBIL"
+
+        if dxy_trend_1m is not None and dxy_trend_1w is not None:
+            if dxy_trend_3m > 3 and dxy_trend_1w < 0.5:
+                strength += " (debilitándose recientemente)"
+            elif dxy_trend_3m < -3 and dxy_trend_1w > 0.5:
+                strength += " (fortaleciéndose recientemente)"
+            elif dxy_trend_3m > 3 and dxy_trend_1m < dxy_trend_3m * 0.4:
+                strength += " (desacelerando)"
+        elif dxy_trend_1m is not None:
+            if dxy_trend_1m < -2 and dxy_trend_3m > 0:
+                strength += " (debilitándose recientemente)"
+            elif dxy_trend_1m > 2 and dxy_trend_3m < 0:
+                strength += " (fortaleciéndose recientemente)"
         
         sentiment['dollar_strength'] = strength
 
-    if gold_trend is not None:
-        if gold_trend > 10:
+    if gold_trend_3m is not None:
+        if gold_trend_3m > 10:
             sentiment['safe_haven'] = "ALTA demanda de refugio"
-        elif gold_trend > 5:
+        elif gold_trend_3m > 5:
             sentiment['safe_haven'] = "MODERADA demanda de refugio"
-        elif gold_trend > 0:
+        elif gold_trend_3m > 0:
             sentiment['safe_haven'] = "BAJA demanda de refugio"
         else:
             sentiment['safe_haven'] = "SIN demanda de refugio"
