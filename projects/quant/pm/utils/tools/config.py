@@ -192,6 +192,96 @@ ALERT_THRESHOLDS = {
 }
 
 # ============================================================================
+# CONFIGURACIÓN DE PORTFOLIO
+# ============================================================================
+PORTFOLIO_CONFIG = {
+    'selection': {
+        'min_score': 60.0,
+        'max_companies': 10,
+        'max_per_sector': 3,
+        'default_method': 'total_score',
+    },
+    'scoring_weights': {
+        'balanced': {
+            'profitability': 0.25,
+            'health': 0.25,
+            'growth': 0.20,
+            'valuation': 0.30
+        },
+        'value': {
+            'total': 0.5,
+            'valuation': 0.5
+        },
+        'growth': {
+            'total': 0.5,
+            'growth': 0.5
+        }
+    },
+    'optimization': {
+        'default_method': 'equal',
+        'risk_free_rate': 0.045,
+        'annual_trading_days': 252,
+        'min_data_points': 30,
+        'scipy_method': 'SLSQP',
+    },
+    'dates': {
+        'default_lookback_years': 5,
+        'date_format': '%Y-%m-%d'
+    },
+    'defaults': {
+        'sector_name': 'Unknown',
+        'price_column': 'Close'
+    }
+}
+
+# ============================================================================
+# CONFIGURACIÓN DE ÍNDICES Y ETFs
+# ============================================================================
+INDEX_CONFIG = {
+    'urls': {
+        'sp500': 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
+        'nasdaq100': 'https://en.wikipedia.org/wiki/Nasdaq-100',
+        'dow30': 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
+    },
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'etf_mapping': {
+        'SPY': 'SP500',
+        'VOO': 'SP500',
+        'IVV': 'SP500',
+        'QQQ': 'NASDAQ100',
+        'DIA': 'DOW30'
+    },
+    'supported_indices': ['SP500', 'NASDAQ100', 'DOW30', 'RUSSELL1000'],
+    'validation': {
+        'nasdaq_min_tickers': 50,
+        'dow_min_tickers': 20,
+        'dow_max_tickers': 35,
+        'sp500_min_tickers': 400,
+    },
+    'fallback': {
+        # Top 100 S&P 500 más líquidos (fallback si Wikipedia falla)
+        'sp500_top100': [
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B',
+            'UNH', 'JNJ', 'XOM', 'V', 'JPM', 'WMT', 'PG', 'MA', 'HD', 'CVX',
+            'LLY', 'ABBV', 'MRK', 'AVGO', 'KO', 'PEP', 'COST', 'ADBE', 'MCD',
+            'CSCO', 'ACN', 'TMO', 'ABT', 'NFLX', 'DHR', 'VZ', 'NKE', 'WFC',
+            'DIS', 'CMCSA', 'TXN', 'PM', 'CRM', 'BMY', 'NEE', 'RTX', 'ORCL',
+            'INTC', 'UPS', 'HON', 'QCOM', 'BA', 'LOW', 'SPGI', 'BLK', 'LMT',
+            'AMD', 'INTU', 'CAT', 'DE', 'GE', 'AXP', 'ISRG', 'GILD', 'NOW',
+            'BKNG', 'ADI', 'PLD', 'MDLZ', 'SYK', 'ADP', 'REGN', 'TJX', 'VRTX',
+            'CB', 'SBUX', 'CI', 'TMUS', 'PYPL', 'MMC', 'SO', 'ZTS', 'SCHW',
+            'MO', 'BSX', 'DUK', 'AMT', 'PGR', 'LRCX', 'EOG', 'ITW', 'BDX',
+            'C', 'SLB', 'NOC', 'CME', 'MMM', 'USB', 'HUM', 'PNC', 'FI', 'TGT'
+        ],
+        # Mid-caps adicionales para Russell 1000 aproximado
+        'russell_additional': [
+            'SNOW', 'CRWD', 'ZS', 'DDOG', 'NET', 'OKTA', 'FTNT',
+            'IONQ', 'SMR', 'NIO', 'RIVN', 'LCID'
+        ]
+    }
+}
+
+# ============================================================================
 # CONSTANTES DE ACCESO RÁPIDO (para imports directos)
 # ============================================================================
 
@@ -224,3 +314,8 @@ FRONTIER_POINTS = OPTIMIZATION_DEFAULTS['frontier_points']
 # Columnas yfinance
 ADJ_CLOSE_COL = YFINANCE_COLUMNS['adj_close']
 CLOSE_COL = YFINANCE_COLUMNS['close']
+
+PORTFOLIO_MIN_SCORE = PORTFOLIO_CONFIG['selection']['min_score']
+PORTFOLIO_MAX_COMPANIES = PORTFOLIO_CONFIG['selection']['max_companies']
+PORTFOLIO_LOOKBACK_YEARS = PORTFOLIO_CONFIG['dates']['default_lookback_years']
+PORTFOLIO_RISK_FREE_RATE = PORTFOLIO_CONFIG['optimization']['risk_free_rate']
