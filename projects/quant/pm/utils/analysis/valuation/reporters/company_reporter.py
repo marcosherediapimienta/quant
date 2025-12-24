@@ -108,7 +108,7 @@ class CompanyReporter:
         total_emoji = score_emoji(s['total'])
         total_bar = score_bar(s['total'], bw)
         lines.append(f"  {total_emoji} {'TOTAL':<18} {total_bar} {fmt_num(s['total'], 1):>6}")
-        lines.append(f"  📋 Conclusión: {r['conclusion']}")
+        lines.append(f"  📋 Conclusión: {r['conclusion']['overall']}")
         lines.append("")
         
         return "\n".join(lines)
@@ -242,7 +242,7 @@ class CompanyReporter:
         
         lines = [
             "=" * w,
-            f"🎯 SCORE FINAL: {fmt_num(s['total'], 1)}/100 → {r['conclusion']}",
+            f"🎯 SCORE FINAL: {fmt_num(s['total'], 1)}/100 → {r['conclusion']['overall']}",
             "=" * w,
         ]
         return "\n".join(lines)

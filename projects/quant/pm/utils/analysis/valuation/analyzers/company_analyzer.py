@@ -92,12 +92,7 @@ class CompanyAnalyzer:
     def fetch_data(self, ticker: str) -> Dict:
         """
         Obtiene datos fundamentales de la empresa usando yfinance.
-        
-        Args:
-            ticker: Símbolo del ticker
-            
-        Returns:
-            Dict con 'success', 'data' (si success=True) o 'error' (si success=False)
+        Incluye info + estados financieros + ROIC calculado.
         """
         try:
             stock = yf.Ticker(ticker)
@@ -109,6 +104,85 @@ class CompanyAnalyzer:
                     'error': f'No se pudieron obtener datos para {ticker}'
                 }
             
+            # Obtener estados financieros adicionales
+            try:
+                balance_sheet = stock.quarterly_balance_sheet
+                income_stmt = stock.quarterly_income_stmt
+                
+                # ========== BALANCE SHEET ==========
+                if not balance_sheet.empty:
+                    latest_bs = balance_sheet.columns[0]
+                    
+                    # Total Assets (para Asset Turnover)
+                    if 'Total Assets' in balance_sheet.index:
+                        info['totalAssets'] = float(balance_sheet.loc['Total Assets', latest_bs])
+                    
+                    # Inventory (para DIO)
+                    if 'Inventory' in balance_sheet.index:
+                        info['inventory'] = float(balance_sheet.loc['Inventory', latest_bs])
+                    
+                    # Receivables (para DSO)
+                    if 'Receivables' in balance_sheet.index:
+                        info['netReceivables'] = float(balance_sheet.loc['Receivables', latest_bs])
+                    
+                    # Stockholders Equity (para ROIC alternativo)
+                    if 'Stockholders Equity' in balance_sheet.index:
+                        info['totalStockholderEquity'] = float(balance_sheet.loc['Stockholders Equity', latest_bs])
+                
+                # ========== INCOME STATEMENT ==========
+                if not income_stmt.empty:
+                    latest_is = income_stmt.columns[0]
+                    
+                    # Cost of Revenue (para COGS y márgenes)
+                    if 'Cost Of Revenue' in income_stmt.index:
+                        info['costOfRevenue'] = float(income_stmt.loc['Cost Of Revenue', latest_is])
+                
+                # ========== CALCULAR ROIC ==========
+                if not income_stmt.empty and not balance_sheet.empty:
+                    latest_is = income_stmt.columns[0]
+                    latest_bs = balance_sheet.columns[0]
+                    
+                    # 1. Obtener Operating Income (EBIT)
+                    operating_income = None
+                    if 'Operating Income' in income_stmt.index:
+                        operating_income = float(income_stmt.loc['Operating Income', latest_is])
+                    elif 'EBIT' in income_stmt.index:
+                        operating_income = float(income_stmt.loc['EBIT', latest_is])
+                    
+                    # 2. Calcular Tax Rate efectivo
+                    tax_rate = None
+                    if 'Tax Provision' in income_stmt.index and 'Pretax Income' in income_stmt.index:
+                        tax_provision = float(income_stmt.loc['Tax Provision', latest_is])
+                        pretax_income = float(income_stmt.loc['Pretax Income', latest_is])
+                        if pretax_income != 0:
+                            tax_rate = tax_provision / pretax_income
+                    
+                    if tax_rate is None:
+                        tax_rate = info.get('effectiveTaxRate', 0.21)  # Default 21%
+                    
+                    # 3. Calcular NOPAT
+                    if operating_income is not None and tax_rate is not None:
+                        nopat = operating_income * (1 - tax_rate)
+                        
+                        # 4. Obtener Invested Capital (preferido si existe)
+                        invested_capital = None
+                        if 'Invested Capital' in balance_sheet.index:
+                            invested_capital = float(balance_sheet.loc['Invested Capital', latest_bs])
+                        else:
+                            # Alternativa: Total Assets - Current Liabilities
+                            if 'Total Assets' in balance_sheet.index and 'Current Liabilities' in balance_sheet.index:
+                                total_assets = float(balance_sheet.loc['Total Assets', latest_bs])
+                                current_liabilities = float(balance_sheet.loc['Current Liabilities', latest_bs])
+                                invested_capital = total_assets - current_liabilities
+                        
+                        # 5. Calcular ROIC = NOPAT / Invested Capital
+                        if invested_capital and invested_capital > 0:
+                            roic = nopat / invested_capital
+                            info['returnOnCapital'] = roic
+                        
+            except Exception as e:
+                print(f"⚠️  No se pudieron obtener estados financieros para {ticker}: {str(e)}")
+            
             return {
                 'success': True,
                 'data': info,
@@ -119,7 +193,7 @@ class CompanyAnalyzer:
                 'success': False,
                 'error': f'Error obteniendo datos de {ticker}: {str(e)}'
             }
-    
+            
     def analyze(self, ticker: str, data: Dict = None) -> Dict:
         """
         Analiza fundamentalmente una empresa.
@@ -188,7 +262,8 @@ class CompanyAnalyzer:
                 'valuation': valuation_result,
                 'sector': data.get('sector', 'N/A'),
                 'industry': data.get('industry', 'N/A'),
-                'company_name': data.get('longName', data.get('shortName', ticker))
+                'company_name': data.get('longName', data.get('shortName', ticker)),
+                'country': data.get('country', 'N/A'),
             }
         except Exception as e:
             return {
