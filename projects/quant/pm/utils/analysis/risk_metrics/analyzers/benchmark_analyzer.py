@@ -4,14 +4,24 @@ from typing import Dict
 from ..components.tracking_error import TrackingErrorCalculator
 from ..components.beta import BetaCalculator
 from ..components.alpha import AlphaCalculator
+from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
 
 class BenchmarkAnalyzer:
+    """
+    Analyzer para métricas relativas a un benchmark.
+    
+    Responsabilidad: Coordinar cálculos de tracking error, alpha, beta y métricas relacionadas.
+    """
 
-    def __init__(self, annual_factor: float = 252.0):
-        self.annual_factor = annual_factor
-        self.te_calc = TrackingErrorCalculator(annual_factor)
+    def __init__(self, annual_factor: float = None):
+        """
+        Args:
+            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
+        """
+        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.te_calc = TrackingErrorCalculator(self.annual_factor)
         self.beta_calc = BetaCalculator()
-        self.alpha_calc = AlphaCalculator(annual_factor)
+        self.alpha_calc = AlphaCalculator(self.annual_factor)
     
     def analyze(
         self,
@@ -21,7 +31,19 @@ class BenchmarkAnalyzer:
         risk_free_rate: float,
         ddof: int = 1
     ) -> Dict[str, float]:
-
+        """
+        Analiza el portafolio contra un benchmark.
+        
+        Args:
+            returns: DataFrame de retornos diarios de activos
+            weights: Array de pesos del portafolio
+            benchmark_returns: Serie de retornos del benchmark
+            risk_free_rate: Tasa libre de riesgo anualizada
+            ddof: Grados de libertad para cálculos estadísticos
+            
+        Returns:
+            Dict con tracking error, information ratio, alpha, beta, R², correlación
+        """
         te_results = self.te_calc.calculate(returns, weights, benchmark_returns, ddof)
         beta_results = self.beta_calc.calculate(returns, weights, benchmark_returns, ddof)
         alpha_results = self.alpha_calc.calculate(
@@ -48,10 +70,25 @@ class BenchmarkAnalyzer:
         returns: pd.DataFrame,
         weights: np.ndarray,
         benchmark_returns: pd.Series,
-        window: int = 252,
+        window: int = None,
         ddof: int = 1
     ) -> pd.DataFrame:
-
+        """
+        Calcula métricas rolling vs benchmark.
+        
+        Args:
+            returns: DataFrame de retornos diarios de activos
+            weights: Array de pesos del portafolio
+            benchmark_returns: Serie de retornos del benchmark
+            window: Ventana para cálculo rolling. Por defecto usa config.ROLLING_WINDOW
+            ddof: Grados de libertad para cálculos estadísticos
+            
+        Returns:
+            DataFrame con tracking error y beta rolling
+        """
+        if window is None:
+            window = ROLLING_WINDOW
+        
         te_rolling = self.te_calc.calculate_rolling(
             returns, weights, benchmark_returns, window, ddof
         )

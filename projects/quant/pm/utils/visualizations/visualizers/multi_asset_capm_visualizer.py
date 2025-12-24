@@ -1,12 +1,21 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 from ...visualizations.components.capm_plotter import CAPMPlotter
 from ...analysis.capm.analyzers.multi_asset_capm_analyzer import MultiAssetCAPMAnalyzer
+from ...tools.config import TOP_ASSETS_DISPLAY
 
 class MultiAssetCAPMVisualizer:
+    """
+    Visualizer para análisis CAPM de múltiples activos.
+    
+    Responsabilidad: Generar visualizaciones comparativas de múltiples activos.
+    """
 
     def __init__(self, multi_asset_analyzer: MultiAssetCAPMAnalyzer):
+        """
+        Args:
+            multi_asset_analyzer: Instancia de MultiAssetCAPMAnalyzer
+        """
         self.analyzer = multi_asset_analyzer
         self.plotter = CAPMPlotter()
     
@@ -17,7 +26,18 @@ class MultiAssetCAPMVisualizer:
         risk_free_rate: float,
         figsize: tuple = (16, 10)
     ) -> plt.Figure:
-
+        """
+        Genera análisis visual completo de múltiples activos.
+        
+        Args:
+            returns: DataFrame con retornos de múltiples activos
+            market_returns: Serie con retornos del mercado
+            risk_free_rate: Tasa libre de riesgo anualizada
+            figsize: Tamaño de la figura
+            
+        Returns:
+            Figura de matplotlib con los gráficos
+        """
         results_df = self.analyzer.analyze_multiple(returns, market_returns, risk_free_rate)
         
         if results_df.empty:
@@ -37,15 +57,16 @@ class MultiAssetCAPMVisualizer:
         )
 
         ax2 = fig.add_subplot(gs[1, 0])
-        top10 = results_df.nlargest(10, 'alpha_annual')
-        colors = ['green' if sig else 'gray' for sig in top10['is_significant']]
-        ax2.barh(range(len(top10)), top10['alpha_annual'] * 100, color=colors)
-        ax2.set_yticks(range(len(top10)))
-        ax2.set_yticklabels(top10.index)
+        top_n = results_df.nlargest(TOP_ASSETS_DISPLAY, 'alpha_annual')
+        colors = ['green' if sig else 'gray' for sig in top_n['is_significant']]
+        ax2.barh(range(len(top_n)), top_n['alpha_annual'] * 100, color=colors)
+        ax2.set_yticks(range(len(top_n)))
+        ax2.set_yticklabels(top_n.index)
         ax2.set_xlabel('Alpha Anual (%)', fontsize=11)
-        ax2.set_title('Top 10 Alphas', fontsize=12, fontweight='bold')
+        ax2.set_title(f'Top {TOP_ASSETS_DISPLAY} Alphas', fontsize=12, fontweight='bold')
         ax2.axvline(x=0, color='k', linestyle='-', linewidth=1)
         ax2.grid(True, alpha=0.3, axis='x')
+        
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.hist(results_df['beta'], bins=15, alpha=0.7, edgecolor='black')
         ax3.axvline(x=1, color='r', linestyle='--', linewidth=2, label='β=1 (Mercado)')

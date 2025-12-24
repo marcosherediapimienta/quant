@@ -2,20 +2,53 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from ..analyzers.var_es_analyzer import VarEsAnalyzer
+from ....tools.config import (
+    DEFAULT_CONFIDENCE_LEVEL,
+    MONTE_CARLO_SIMULATIONS,
+    MONTE_CARLO_SEED,
+    VAR_RISK_LEVELS
+)
 
 class VarEsReporter:
+    """
+    Reporter para generar informes de VaR y ES.
+    
+    Responsabilidad: Formatear y presentar resultados de VaR/ES de forma legible.
+    """
 
     def __init__(self, var_es_analyzer: VarEsAnalyzer):
+        """
+        Args:
+            var_es_analyzer: Instancia de VarEsAnalyzer para cálculos
+        """
         self.analyzer = var_es_analyzer
     
     def generate_report(
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
-        confidence_level: float = 0.95,
-        n_simulations: int = 10000,
-        seed: int = 42
+        confidence_level: float = None,
+        n_simulations: int = None,
+        seed: int = None
     ) -> None:
+        """
+        Genera reporte de VaR y ES comparando métodos.
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+            confidence_level: Nivel de confianza. Por defecto usa config
+            n_simulations: Simulaciones Monte Carlo. Por defecto usa config
+            seed: Semilla para reproducibilidad. Por defecto usa config
+        """
+        if confidence_level is None:
+            confidence_level = DEFAULT_CONFIDENCE_LEVEL
+        
+        if n_simulations is None:
+            n_simulations = MONTE_CARLO_SIMULATIONS
+        
+        if seed is None:
+            seed = MONTE_CARLO_SEED
 
         results = self.analyzer.calculate_multi_level(
             returns=returns,
@@ -30,7 +63,7 @@ class VarEsReporter:
         self.print_comparison(comparison, confidence_level)
     
     def _results_to_dataframe(self, method_results: Dict) -> pd.DataFrame:
-
+        """Convierte resultados a DataFrame para visualización."""
         data = []
         for method, values in method_results.items():
             data.append({
@@ -46,8 +79,11 @@ class VarEsReporter:
     def print_comparison(
         self,
         comparison: pd.DataFrame,
-        confidence_level: float = 0.95
+        confidence_level: float = None
     ) -> None:
+        """Imprime comparación formateada de VaR y ES."""
+        if confidence_level is None:
+            confidence_level = DEFAULT_CONFIDENCE_LEVEL
 
         print(f"ANÁLISIS VaR y ES (Nivel de confianza: {confidence_level*100:.0f}%)".center(70))
 
@@ -69,11 +105,12 @@ class VarEsReporter:
         print(f"ES promedio diario:      {avg_es_daily:.2f}%")
         print(f"Pérdida máxima esperada: {avg_es_daily:.2f}% en un día adverso")
  
-        if abs(avg_var_daily) < 2:
+        abs_var = abs(avg_var_daily)
+        if abs_var < VAR_RISK_LEVELS['low']:
             risk_level = "Bajo"
-        elif abs(avg_var_daily) < 5:
+        elif abs_var < VAR_RISK_LEVELS['moderate']:
             risk_level = "Moderado"
-        elif abs(avg_var_daily) < 10:
+        elif abs_var < VAR_RISK_LEVELS['high']:
             risk_level = "Alto"
         else:
             risk_level = "Muy Alto"
@@ -84,11 +121,30 @@ class VarEsReporter:
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
-        confidence_levels: tuple = (0.90, 0.95, 0.99),
+        confidence_levels: tuple = None,
         method: str = 'historical',
-        n_simulations: int = 10000,
-        seed: int = 42
+        n_simulations: int = None,
+        seed: int = None
     ) -> None:
+        """
+        Genera reporte de VaR y ES para múltiples niveles de confianza.
+        
+        Args:
+            returns: DataFrame de retornos diarios
+            weights: Array de pesos del portafolio
+            confidence_levels: Tupla de niveles de confianza
+            method: Método a utilizar
+            n_simulations: Simulaciones Monte Carlo. Por defecto usa config
+            seed: Semilla para reproducibilidad. Por defecto usa config
+        """
+        if confidence_levels is None:
+            confidence_levels = (0.90, DEFAULT_CONFIDENCE_LEVEL, 0.99)
+        
+        if n_simulations is None:
+            n_simulations = MONTE_CARLO_SIMULATIONS
+        
+        if seed is None:
+            seed = MONTE_CARLO_SEED
 
         results = self.analyzer.calculate_multi_level(
             returns=returns,

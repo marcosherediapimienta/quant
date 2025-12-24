@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, score_metric
+from ....tools.config import VALUATION_THRESHOLDS, EFFICIENCY_SCORING, ALERT_THRESHOLDS, REPORTING_CONFIG
 
 @dataclass
 class EfficiencyThresholds:
@@ -12,32 +13,54 @@ class EfficiencyThresholds:
     dio: Dict[str, float] = None
     
     def __post_init__(self):
-        self.asset_turnover = self.asset_turnover or {'excellent': 1.5, 'good': 1.0, 'fair': 0.7, 'poor': 0.4}
-        self.inventory_turnover = self.inventory_turnover or {'excellent': 12.0, 'good': 8.0, 'fair': 5.0, 'poor': 3.0}
-        self.dso = self.dso or {'excellent': 30, 'good': 45, 'fair': 60, 'poor': 90}
-        self.dio = self.dio or {'excellent': 30, 'good': 60, 'fair': 90, 'poor': 120}
+        efficiency_thresholds = VALUATION_THRESHOLDS['efficiency']
+        self.asset_turnover = self.asset_turnover or efficiency_thresholds['asset_turnover']
+        self.inventory_turnover = self.inventory_turnover or efficiency_thresholds['inventory_turnover']
+        self.dso = self.dso or efficiency_thresholds['dso']
+        self.dio = self.dio or efficiency_thresholds['dio']
 
 
 class EfficiencyMetrics:
+    """
+    Calcula métricas de eficiencia operativa.
+    
+    Responsabilidad: Evaluar eficiencia en uso de activos y gestión de working capital.
+    
+    Métricas clave:
+    - Asset Turnover: Ingresos generados por cada $ de activos
+    - DSO (Days Sales Outstanding): Días promedio de cobro
+    - DIO (Days Inventory Outstanding): Días que dura el inventario
+    - Revenue per Employee: Productividad
+    
+    Working Capital Cycle = DSO + DIO - DPO (Days Payable Outstanding)
+    """
 
     def __init__(self, thresholds: EfficiencyThresholds = None):
         self.thresholds = thresholds or EfficiencyThresholds()
+        self.config = EFFICIENCY_SCORING
+        self.days_per_year = REPORTING_CONFIG['days_per_year']
     
     def calculate(self, data: Dict) -> Dict:
+        """Calcula scores y clasificaciones de eficiencia."""
         total_revenue = nan_if_missing(data.get('totalRevenue'))
         total_assets = nan_if_missing(data.get('totalAssets'))
         inventory = nan_if_missing(data.get('inventory'))
         receivables = nan_if_missing(data.get('netReceivables'))
         cogs = nan_if_missing(data.get('costOfRevenue'))
         employees = nan_if_missing(data.get('fullTimeEmployees'))
+        
+        # Asset Turnover
         asset_turnover = nan_if_missing(data.get('assetTurnover'))
         if pd.isna(asset_turnover) and pd.notna(total_revenue) and pd.notna(total_assets) and total_assets != 0:
             asset_turnover = total_revenue / total_assets
 
+        # Turnover ratios
         inventory_turnover = safe_div(cogs, inventory)
         receivables_turnover = safe_div(total_revenue, receivables)
-        dso = safe_div(365, receivables_turnover)
-        dio = safe_div(365, inventory_turnover)
+        
+        # Days ratios (usando days_per_year de config)
+        dso = safe_div(self.days_per_year, receivables_turnover)
+        dio = safe_div(self.days_per_year, inventory_turnover)
         revenue_per_employee = safe_div(total_revenue, employees)
         
         metrics = {
@@ -69,7 +92,7 @@ class EfficiencyMetrics:
         }
     
     def _classify_value(self, value: float, thresholds: Dict, higher_is_better: bool = True) -> str:
-
+        """Clasifica un valor según umbrales."""
         if pd.isna(value):
             return 'N/A'
         
@@ -87,23 +110,41 @@ class EfficiencyMetrics:
             return 'poor'
     
     def _calculate_score(self, metrics: Dict) -> float:
+        """Calcula score usando pesos y rangos de config."""
         scores = []
         weights = []
+        cfg_weights = self.config['weights']
+        cfg_ranges = self.config['ranges']
         
         if pd.notna(metrics['asset_turnover']):
-            at_score = score_metric(metrics['asset_turnover'], 0.2, 2.0, higher_is_better=True)
+            at_score = score_metric(
+                metrics['asset_turnover'], 
+                cfg_ranges['asset_turnover']['min'],
+                cfg_ranges['asset_turnover']['max'],
+                higher_is_better=True
+            )
             scores.append(at_score)
-            weights.append(0.40)
+            weights.append(cfg_weights['asset_turnover'])
 
         if pd.notna(metrics['days_sales_outstanding']):
-            dso_score = score_metric(metrics['days_sales_outstanding'], 20, 90, higher_is_better=False)
+            dso_score = score_metric(
+                metrics['days_sales_outstanding'], 
+                cfg_ranges['dso']['min'],
+                cfg_ranges['dso']['max'],
+                higher_is_better=False
+            )
             scores.append(dso_score)
-            weights.append(0.30)
+            weights.append(cfg_weights['dso'])
 
         if pd.notna(metrics['days_inventory_outstanding']):
-            dio_score = score_metric(metrics['days_inventory_outstanding'], 20, 120, higher_is_better=False)
+            dio_score = score_metric(
+                metrics['days_inventory_outstanding'], 
+                cfg_ranges['dio']['min'],
+                cfg_ranges['dio']['max'],
+                higher_is_better=False
+            )
             scores.append(dio_score)
-            weights.append(0.30)
+            weights.append(cfg_weights['dio'])
         
         if not scores:
             return np.nan
@@ -114,17 +155,20 @@ class EfficiencyMetrics:
         return weighted_sum / total_weight if total_weight > 0 else np.nan
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
+        """Genera alertas usando umbrales de config."""
         alerts = []
+        alert_cfg = ALERT_THRESHOLDS['efficiency']
+        
         dso = metrics['days_sales_outstanding']
-        if pd.notna(dso) and dso > 60:
+        if pd.notna(dso) and dso > alert_cfg['dso_high']:
             alerts.append(f"DSO alto ({dso:.0f} días): cobranza lenta")
         
         dio = metrics['days_inventory_outstanding']
-        if pd.notna(dio) and dio > 90:
+        if pd.notna(dio) and dio > alert_cfg['dio_high']:
             alerts.append(f"Inventario tarda {dio:.0f} días en rotar")
         
         at = metrics['asset_turnover']
-        if pd.notna(at) and at < 0.5:
+        if pd.notna(at) and at < alert_cfg['asset_turnover_low']:
             alerts.append(f"Asset Turnover bajo ({at:.2f}x): uso ineficiente de activos")
         
         return alerts

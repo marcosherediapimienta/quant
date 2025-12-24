@@ -1,5 +1,6 @@
 import pandas as pd
 from dataclasses import dataclass
+from ....tools.config import SCORE_INTERPRETATION
 
 @dataclass
 class FormatConfig:
@@ -56,17 +57,24 @@ def score_bar(score, width: int = 20, fill_char: str = "█", empty_char: str = 
     return "[" + fill_char * filled + empty_char * (width - filled) + "]"
 
 def score_emoji(score) -> str:
-
+    """
+    Retorna emoji basado en score.
+    
+    Umbrales definidos en config.SCORE_INTERPRETATION['visual']
+    """
     if pd.isna(score):
         return "❓"
-    if score >= 80:
-        return "🟢"
-    if score >= 60:
-        return "🟡"
-    if score >= 40:
-        return "🟠"
-    return "🔴"
 
+    thresh = SCORE_INTERPRETATION['visual']
+    
+    if score >= thresh['excellent']:  # >= 80
+        return "🟢"
+    if score >= thresh['good']:  # >= 60
+        return "🟡"
+    if score >= thresh['fair']:  # >= 40
+        return "🟠"
+    return "🔴"  # < 40
+    
 def classification_emoji(classification: str) -> str:
 
     mapping = {

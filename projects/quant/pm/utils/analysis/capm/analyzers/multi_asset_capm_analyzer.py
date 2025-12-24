@@ -1,14 +1,31 @@
 import numpy as np
 import pandas as pd
-from typing import  List
+from typing import List
 from .capm_analyzer import CAPMAnalyzer
-from ....tools.config import MIN_OBSERVATIONS
+from ....tools.config import (
+    ANNUAL_FACTOR,
+    SIGNIFICANCE_LEVEL,
+    MIN_OBSERVATIONS,
+    ALPHA_THRESHOLDS_IDENTIFICATION
+)
 
 class MultiAssetCAPMAnalyzer:
+    """
+    Analyzer para análisis CAPM de múltiples activos.
     
-    def __init__(self, annual_factor: float = 252.0, significance_level: float = 0.05):
-        self.annual_factor = annual_factor
-        self.capm_analyzer = CAPMAnalyzer(annual_factor, significance_level)
+    Responsabilidad: Coordinar análisis CAPM para múltiples activos
+    e identificar outperformers/underperformers.
+    """
+    
+    def __init__(self, annual_factor: float = None, significance_level: float = None):
+        """
+        Args:
+            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
+            significance_level: Nivel de significancia. Por defecto usa config.SIGNIFICANCE_LEVEL
+        """
+        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.significance_level = significance_level or SIGNIFICANCE_LEVEL
+        self.capm_analyzer = CAPMAnalyzer(self.annual_factor, self.significance_level)
     
     def analyze_multiple(
         self,
@@ -16,7 +33,17 @@ class MultiAssetCAPMAnalyzer:
         market_returns: pd.Series,
         risk_free_rate: float
     ) -> pd.DataFrame:
-
+        """
+        Analiza múltiples activos usando CAPM.
+        
+        Args:
+            returns: DataFrame con retornos de múltiples activos
+            market_returns: Serie con retornos del mercado
+            risk_free_rate: Tasa libre de riesgo anualizada
+            
+        Returns:
+            DataFrame con resultados CAPM por activo
+        """
         results = []
 
         common_idx = returns.index.intersection(market_returns.index)
@@ -51,8 +78,22 @@ class MultiAssetCAPMAnalyzer:
         returns: pd.DataFrame,
         market_returns: pd.Series,
         risk_free_rate: float,
-        min_alpha: float = 0.0
+        min_alpha: float = None
     ) -> List[str]:
+        """
+        Identifica activos que superan el retorno esperado (alpha positivo significativo).
+        
+        Args:
+            returns: DataFrame con retornos de múltiples activos
+            market_returns: Serie con retornos del mercado
+            risk_free_rate: Tasa libre de riesgo anualizada
+            min_alpha: Alpha mínimo para considerar outperformer. Por defecto usa config
+            
+        Returns:
+            Lista de tickers que son outperformers
+        """
+        if min_alpha is None:
+            min_alpha = ALPHA_THRESHOLDS_IDENTIFICATION['outperformer']
 
         analysis = self.analyze_multiple(returns, market_returns, risk_free_rate)
         
@@ -71,8 +112,22 @@ class MultiAssetCAPMAnalyzer:
         returns: pd.DataFrame,
         market_returns: pd.Series,
         risk_free_rate: float,
-        max_alpha: float = 0.0
+        max_alpha: float = None
     ) -> List[str]:
+        """
+        Identifica activos que no alcanzan el retorno esperado (alpha negativo significativo).
+        
+        Args:
+            returns: DataFrame con retornos de múltiples activos
+            market_returns: Serie con retornos del mercado
+            risk_free_rate: Tasa libre de riesgo anualizada
+            max_alpha: Alpha máximo para considerar underperformer. Por defecto usa config
+            
+        Returns:
+            Lista de tickers que son underperformers
+        """
+        if max_alpha is None:
+            max_alpha = ALPHA_THRESHOLDS_IDENTIFICATION['underperformer']
 
         analysis = self.analyze_multiple(returns, market_returns, risk_free_rate)
         
@@ -85,5 +140,3 @@ class MultiAssetCAPMAnalyzer:
         ]
         
         return underperformers.index.tolist()
-    
- 
