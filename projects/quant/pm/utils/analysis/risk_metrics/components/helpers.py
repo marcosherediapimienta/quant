@@ -58,7 +58,7 @@ def align_weights_to_assets(
     
     return kept_tickers, normalize_weights(kept_weights)
 
-def portfolio_returns(
+def calculate_portfolio_returns(
     returns: pd.DataFrame,
     weights: np.ndarray
 ) -> pd.Series:

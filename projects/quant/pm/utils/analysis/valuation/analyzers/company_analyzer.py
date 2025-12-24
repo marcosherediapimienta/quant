@@ -1,6 +1,8 @@
 import numpy as np
-from typing import Dict
+import pandas as pd
+from typing import Dict, List
 from dataclasses import dataclass
+import yfinance as yf
 
 from ..metrics import (
     ProfitabilityMetrics,
@@ -87,4 +89,174 @@ class CompanyAnalyzer:
         self.efficiency = EfficiencyMetrics(efficiency_thresholds)
         self.valuation = ValuationMultiples(valuation_thresholds)
 
-# ... (resto del código sin cambios) ...
+    def fetch_data(self, ticker: str) -> Dict:
+        """
+        Obtiene datos fundamentales de la empresa usando yfinance.
+        
+        Args:
+            ticker: Símbolo del ticker
+            
+        Returns:
+            Dict con 'success', 'data' (si success=True) o 'error' (si success=False)
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            if not info or len(info) == 0:
+                return {
+                    'success': False,
+                    'error': f'No se pudieron obtener datos para {ticker}'
+                }
+            
+            return {
+                'success': True,
+                'data': info,
+                'ticker': ticker
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error obteniendo datos de {ticker}: {str(e)}'
+            }
+    
+    def analyze(self, ticker: str, data: Dict = None) -> Dict:
+        """
+        Analiza fundamentalmente una empresa.
+        
+        Args:
+            ticker: Símbolo del ticker
+            data: Datos de la empresa (si None, los obtiene automáticamente)
+            
+        Returns:
+            Dict con análisis completo
+        """
+        # Obtener datos si no se proporcionan
+        if data is None:
+            fetch_result = self.fetch_data(ticker)
+            if not fetch_result.get('success'):
+                return {
+                    'success': False,
+                    'error': fetch_result.get('error'),
+                    'ticker': ticker
+                }
+            data = fetch_result['data']
+        
+        try:
+            # Calcular métricas por categoría
+            profitability_result = self.profitability.calculate(data)
+            health_result = self.health.calculate(data)
+            growth_result = self.growth.calculate(data)
+            efficiency_result = self.efficiency.calculate(data)
+            valuation_result = self.valuation.calculate(data)
+            
+            # Extraer scores
+            scores = {
+                'profitability': profitability_result.get('score', 0),
+                'financial_health': health_result.get('score', 0),
+                'growth': growth_result.get('score', 0),
+                'efficiency': efficiency_result.get('score', 0),
+                'valuation': valuation_result.get('score', 0)
+            }
+            
+            # Calcular score total ponderado ignorando NaN
+            total_score = 0
+            total_weight = 0
+            
+            for category in ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']:
+                score = scores[category]
+                if pd.notna(score):  # Solo incluir si no es NaN
+                    weight = getattr(self.weights, category)
+                    total_score += score * weight
+                    total_weight += weight
+            
+            # Normalizar por el peso total usado
+            scores['total'] = total_score / total_weight if total_weight > 0 else np.nan
+            
+            # Determinar conclusión
+            conclusion = self._determine_conclusion(scores['total'])
+            
+            return {
+                'success': True,
+                'ticker': ticker,
+                'scores': scores,
+                'conclusion': conclusion,
+                'profitability': profitability_result,
+                'financial_health': health_result,
+                'growth': growth_result,
+                'efficiency': efficiency_result,
+                'valuation': valuation_result,
+                'sector': data.get('sector', 'N/A'),
+                'industry': data.get('industry', 'N/A'),
+                'company_name': data.get('longName', data.get('shortName', ticker))
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error analizando {ticker}: {str(e)}',
+                'ticker': ticker
+            }
+
+    def analyze_multiple(self, tickers: List[str]) -> Dict[str, Dict]:
+        """
+        Analiza múltiples empresas.
+        
+        Args:
+            tickers: Lista de tickers
+            
+        Returns:
+            Dict con ticker como key y resultado del análisis como value
+        """
+        results = {}
+        for ticker in tickers:
+            results[ticker] = self.analyze(ticker)
+        return results
+    
+    def _determine_conclusion(self, score: float) -> Dict[str, str]:
+        """Determina la conclusión basada en el score."""
+        thresholds = self.conclusion_thresholds
+        
+        if score >= thresholds.excellent:
+            label = thresholds.labels.get('excellent', 'Excelente')
+        elif score >= thresholds.good:
+            label = thresholds.labels.get('good', 'Bueno')
+        elif score >= thresholds.fair:
+            label = thresholds.labels.get('fair', 'Regular')
+        else:
+            label = thresholds.labels.get('weak', 'Débil')
+        
+        return {
+            'overall': label,
+            'score': score
+        }
+    
+    def get_summary_df(self, results: Dict[str, Dict]) -> 'pd.DataFrame':
+        """
+        Crea un DataFrame resumen de múltiples análisis.
+        
+        Args:
+            results: Dict con resultados de análisis (ticker -> resultado)
+            
+        Returns:
+            DataFrame con resumen
+        """
+        import pandas as pd
+        
+        rows = []
+        for ticker, result in results.items():
+            if result.get('success'):
+                scores = result.get('scores', {})
+                rows.append({
+                    'Ticker': ticker,
+                    'Nombre': result.get('company_name', ticker),
+                    'Sector': result.get('sector', 'N/A'),
+                    'Rentabilidad': scores.get('profitability', 0),
+                    'Salud': scores.get('financial_health', 0),
+                    'Crecimiento': scores.get('growth', 0),
+                    'Eficiencia': scores.get('efficiency', 0),
+                    'Valoración': scores.get('valuation', 0),
+                    'Total': scores.get('total', 0),
+                    'Conclusión': result.get('conclusion', {}).get('overall', 'N/A')
+                })
+        
+        return pd.DataFrame(rows) if rows else pd.DataFrame()

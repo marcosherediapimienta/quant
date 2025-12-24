@@ -90,8 +90,6 @@ class FinancialHealthMetrics:
             'alerts': self._generate_alerts(metrics)
         }
     
-    # ... (métodos helper iguales) ...
-    
     def _calculate_score(self, metrics: Dict) -> float:
         """Calcula score usando pesos y rangos de config."""
         scores = []
@@ -177,3 +175,69 @@ class FinancialHealthMetrics:
             alerts.append("Posición de caja neta negativa (más deuda que caja)")
         
         return alerts
+
+    def _calculate_net_cash(self, total_cash: float, total_debt: float) -> float:
+        """
+        Calcula efectivo neto (cash - debt).
+        
+        Positivo = más caja que deuda (bueno)
+        Negativo = más deuda que caja (común en empresas)
+        """
+        if pd.isna(total_cash) or pd.isna(total_debt):
+            return np.nan
+        return total_cash - total_debt
+    
+    def _get_free_cash_flow(self, data: Dict) -> float:
+        """
+        Obtiene Free Cash Flow con varios fallbacks.
+        
+        Prioridad:
+        1. freeCashflow directo de yfinance
+        2. operatingCashflow - capitalExpenditures
+        """
+        fcf = nan_if_missing(data.get('freeCashflow'))
+        
+        if pd.isna(fcf):
+            # Intentar calcular: Operating CF - CapEx
+            operating_cf = nan_if_missing(data.get('operatingCashflow'))
+            capex = nan_if_missing(data.get('capitalExpenditures'))
+            
+            if pd.notna(operating_cf) and pd.notna(capex):
+                # CapEx suele venir negativo, si viene positivo lo negamos
+                capex_adj = -abs(capex) if capex > 0 else capex
+                fcf = operating_cf + capex_adj
+        
+        return fcf
+    
+    def _classify_debt_ratio(self, ratio: float, thresholds: Dict[str, float]) -> str:
+        """
+        Clasifica ratios de deuda (lower is better).
+        
+        Para debt/EBITDA y debt/equity, menor es mejor.
+        """
+        if pd.isna(ratio):
+            return 'N/A'
+        
+        # Invertir el orden porque menor es mejor
+        for level, threshold in sorted(thresholds.items(), key=lambda x: x[1]):
+            if ratio <= threshold:
+                return level
+        
+        return 'poor'
+    
+    def _classify_fcf(self, fcf: float) -> str:
+        """
+        Clasifica Free Cash Flow.
+        
+        Positivo = bueno (empresa genera caja)
+        Negativo = malo (empresa consume caja)
+        """
+        if pd.isna(fcf):
+            return 'N/A'
+        
+        if fcf > 0:
+            return 'positive'
+        elif fcf == 0:
+            return 'neutral'
+        else:
+            return 'negative'

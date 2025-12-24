@@ -48,9 +48,9 @@ class ProfitabilityMetrics:
         # ... (extracción de métricas igual) ...
         roic = nan_if_missing(data.get('returnOnCapital'))
         if pd.isna(roic):
-            roic = nan_if_missing(data.get('roic'))
-        roe = nan_if_missing(data.get('returnOnEquity'))
-        roa = nan_if_missing(data.get('returnOnAssets'))
+            roic = nan_if_missing(data.get('roic'))  # ❌ Este campo no existe
+        roe = nan_if_missing(data.get('returnOnEquity'))  # Este SÍ existe
+        roa = nan_if_missing(data.get('returnOnAssets'))   # Este SÍ existe
         gross_margin = nan_if_missing(data.get('grossMargins'))
         operating_margin = nan_if_missing(data.get('operatingMargins'))
         net_margin = nan_if_missing(data.get('profitMargins'))
