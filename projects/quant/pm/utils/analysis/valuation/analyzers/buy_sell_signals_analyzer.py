@@ -1,15 +1,17 @@
 from dataclasses import dataclass
-import pandas as pd
 from typing import Optional
 
 from ..analyzers.company_analyzer import CompanyAnalyzer
-from ....data.components.data_loader import DataLoader
+from ....data import DataManager
+from ....tools.config import TRADING_SIGNALS_CONFIG
 
 from ..metrics.score_extractor import ScoreExtractor
 from ..metrics.fundamental_aggregator import FundamentalAggregator
 from ..metrics.signal_determiner import SignalDeterminer
 from ..metrics.price_target_calculator import PriceTargetCalculator
 from ..metrics.reason_generator import ReasonGenerator
+
+from ...portfolio.components.date_utils import DateCalculator
 
 @dataclass
 class TradingSignal:
@@ -26,33 +28,49 @@ class TradingSignal:
     
 class BuySellSignalsAnalyzer:
 
-    def __init__(self):
+    def __init__(
+        self, 
+        data_manager: DataManager = None,
+        lookback_years: int = None
+    ):
         self.company_analyzer = CompanyAnalyzer()
-        self.data_loader = DataLoader()
+        self.data_manager = data_manager if data_manager else DataManager()
+        self.date_calc = DateCalculator()
+        self.lookback_years = (
+            lookback_years if lookback_years 
+            else TRADING_SIGNALS_CONFIG['default_lookback_years']
+        )
+        
         self.score_extractor = ScoreExtractor()
         self.fundamental_agg = FundamentalAggregator()
         self.signal_determiner = SignalDeterminer()
         self.price_target = PriceTargetCalculator()
         self.reason_gen = ReasonGenerator()
     
-    def analyze_stock(self, ticker: str) -> TradingSignal:
+    def analyze_stock(
+        self, 
+        ticker: str,
+        start_date: str = '',
+        end_date: str = ''
+    ) -> TradingSignal:
+
         company_data = self.company_analyzer.fetch_data(ticker)
         if not company_data.get('success'):
             raise ValueError(f"Error: {company_data.get('error')}")
 
         analysis = self.company_analyzer.analyze(ticker, company_data['data'])
 
-        hist = self.data_loader.download_single(ticker, "2020-01-01", "2025-12-22")
+        start_date, end_date = self.date_calc.get_date_range(
+            start_date, 
+            end_date, 
+            self.lookback_years
+        )
+ 
+        hist = self.data_manager.download_assets([ticker], start_date, end_date)
         
         if not hist.empty:
-            if isinstance(hist.columns, pd.MultiIndex):
-                if 'Close' in hist.columns.get_level_values(0):
-                    close_prices = hist['Close'].iloc[:, 0] if hist['Close'].ndim > 1 else hist['Close']
-                    current_price = float(close_prices.iloc[-1])
-                else:
-                    current_price = company_data['data'].get('currentPrice', 0)
-            elif 'Close' in hist.columns:
-                current_price = float(hist['Close'].iloc[-1])
+            if ticker in hist.columns:
+                current_price = float(hist[ticker].iloc[-1])
             else:
                 current_price = company_data['data'].get('currentPrice', 0)
         else:
@@ -60,15 +78,11 @@ class BuySellSignalsAnalyzer:
             if current_price == 0:
                 current_price = company_data['data'].get('regularMarketPrice', 0)
         
-
         val_score = self.score_extractor.extract_valuation(analysis)
         prof_score = self.score_extractor.extract_profitability(analysis)
         health_score = self.score_extractor.extract_health(analysis)
         growth_score = self.score_extractor.extract_growth(analysis)
-        
-
         fund_score = self.fundamental_agg.aggregate(prof_score, health_score, growth_score)
-
         signal, confidence = self.signal_determiner.determine(
             val_score, 
             fund_score

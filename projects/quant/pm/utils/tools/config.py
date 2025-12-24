@@ -3,6 +3,9 @@ CONFIGURACIÓN - ANÁLISIS DE PORTAFOLIO (PM)
 Benchmarks, análisis de riesgo, CAPM y valoración.
 """
 
+# ============================================================================
+# BENCHMARKS
+# ============================================================================
 BENCHMARKS = {
     'SP500': '^GSPC',
     'NASDAQ': '^IXIC',
@@ -36,6 +39,16 @@ BENCHMARK_CURRENCIES = {
 }
 
 # ============================================================================
+# CONFIGURACIÓN GLOBAL DE FECHAS PARA ANÁLISIS
+# ============================================================================
+ANALYSIS_DATES = {
+    'start_date': '2020-01-01',       # Fecha inicial por defecto para todos los análisis
+    'end_date': '2025-12-31',         # Fecha final por defecto
+    'use_current_date_as_end': True,  # Si True, ignora end_date y usa fecha actual
+    'default_lookback_years': 5,      # Solo se usa si start_date está vacío
+}
+
+# ============================================================================
 # CONFIGURACIÓN DE DESCARGA (yfinance)
 # ============================================================================
 DOWNLOAD_DEFAULTS = {
@@ -60,7 +73,7 @@ YFINANCE_COLUMNS = {
 RISK_ANALYSIS = {
     'annual_factor': 252,             
     'risk_free_rate': 0.045,          
-    'default_confidence_levels': (0.90, 0.95, 0.99),
+    'default_confidence_levels': (0.95, 0.99),
     'default_confidence_level': 0.95,
     'monte_carlo': {
         'n_simulations': 10000,
@@ -75,15 +88,15 @@ RISK_ANALYSIS = {
 # PARÁMETROS ESTADÍSTICOS
 # ============================================================================
 STATISTICAL_DEFAULTS = {
-    'significance_level': 0.05,        # 5% para p-values
-    'min_observations': 30,            # Mínimo para análisis robusto
+    'significance_level': 0.05,
+    'min_observations': 30,
 }
 
 # ============================================================================
 # CONFIGURACIÓN NUMÉRICA
 # ============================================================================
 NUMERICAL_DEFAULTS = {
-    'epsilon': 1e-12,                  # Tolerancia numérica
+    'epsilon': 1e-12,
     'tolerance': 1e-6,
     'weight_tolerance': 1e-6,
 }
@@ -95,7 +108,7 @@ OPTIMIZATION_DEFAULTS = {
     'method': 'SLSQP',
     'max_iterations': 1000,
     'tolerance': 1e-6,
-    'frontier_points': 60,             # Puntos en frontera eficiente
+    'frontier_points': 60,
 }
 
 # ============================================================================
@@ -122,10 +135,9 @@ RATIO_INTERPRETATION = {
 }
 
 DRAWDOWN_RISK_LEVELS = {
-    'low': 10,         # < 10% drawdown
-    'moderate': 20,    # < 20%
-    'high': 30,        # < 30%
-    # >= 30% = very_high
+    'low': 10,
+    'moderate': 20,
+    'high': 30,
 }
 
 # ============================================================================
@@ -225,13 +237,26 @@ PORTFOLIO_CONFIG = {
         'scipy_method': 'SLSQP',
     },
     'dates': {
-        'default_lookback_years': 5,
-        'date_format': '%Y-%m-%d'
+        'default_lookback_years': ANALYSIS_DATES['default_lookback_years'],
+        'date_format': '%Y-%m-%d',
+        'start_date': ANALYSIS_DATES['start_date'],
+        'end_date': ANALYSIS_DATES['end_date'],
+        'use_current_date_as_end': ANALYSIS_DATES['use_current_date_as_end']
     },
     'defaults': {
         'sector_name': 'Unknown',
         'price_column': 'Close'
     }
+}
+
+# ============================================================================
+# CONFIGURACIÓN DE SEÑALES DE TRADING (BUY/SELL)
+# ============================================================================
+TRADING_SIGNALS_CONFIG = {
+    'start_date': ANALYSIS_DATES['start_date'],
+    'end_date': ANALYSIS_DATES['end_date'],
+    'use_current_date_as_end': ANALYSIS_DATES['use_current_date_as_end'],
+    'default_lookback_years': ANALYSIS_DATES['default_lookback_years'],
 }
 
 # ============================================================================
@@ -259,7 +284,6 @@ INDEX_CONFIG = {
         'sp500_min_tickers': 400,
     },
     'fallback': {
-        # Top 100 S&P 500 más líquidos (fallback si Wikipedia falla)
         'sp500_top100': [
             'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B',
             'UNH', 'JNJ', 'XOM', 'V', 'JPM', 'WMT', 'PG', 'MA', 'HD', 'CVX',
@@ -273,7 +297,6 @@ INDEX_CONFIG = {
             'MO', 'BSX', 'DUK', 'AMT', 'PGR', 'LRCX', 'EOG', 'ITW', 'BDX',
             'C', 'SLB', 'NOC', 'CME', 'MMM', 'USB', 'HUM', 'PNC', 'FI', 'TGT'
         ],
-        # Mid-caps adicionales para Russell 1000 aproximado
         'russell_additional': [
             'SNOW', 'CRWD', 'ZS', 'DDOG', 'NET', 'OKTA', 'FTNT',
             'IONQ', 'SMR', 'NIO', 'RIVN', 'LCID'
@@ -315,7 +338,14 @@ FRONTIER_POINTS = OPTIMIZATION_DEFAULTS['frontier_points']
 ADJ_CLOSE_COL = YFINANCE_COLUMNS['adj_close']
 CLOSE_COL = YFINANCE_COLUMNS['close']
 
+# Portfolio
 PORTFOLIO_MIN_SCORE = PORTFOLIO_CONFIG['selection']['min_score']
 PORTFOLIO_MAX_COMPANIES = PORTFOLIO_CONFIG['selection']['max_companies']
 PORTFOLIO_LOOKBACK_YEARS = PORTFOLIO_CONFIG['dates']['default_lookback_years']
 PORTFOLIO_RISK_FREE_RATE = PORTFOLIO_CONFIG['optimization']['risk_free_rate']
+
+# Fechas de análisis (⭐ NUEVAS CONSTANTES)
+ANALYSIS_START_DATE = ANALYSIS_DATES['start_date']
+ANALYSIS_END_DATE = ANALYSIS_DATES['end_date']
+USE_CURRENT_DATE = ANALYSIS_DATES['use_current_date_as_end']
+ANALYSIS_LOOKBACK_YEARS = ANALYSIS_DATES['default_lookback_years']

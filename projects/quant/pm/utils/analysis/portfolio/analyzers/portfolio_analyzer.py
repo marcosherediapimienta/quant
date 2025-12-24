@@ -2,7 +2,7 @@ from typing import List, Dict
 from dataclasses import dataclass
 
 from ...valuation.analyzers.company_analyzer import CompanyAnalyzer
-from ....data.components.data_loader import DataLoader
+from ....data import DataManager  
 from ..components.selector import CompanySelector
 from ..components.optimizer import WeightOptimizer
 from ..components.index_fetcher import IndexFetcher
@@ -21,8 +21,9 @@ class PortfolioConfig:
 
 class PortfolioAnalyzer:
 
-    def __init__(self, config: PortfolioConfig = None):
+    def __init__(self, config: PortfolioConfig = None, data_manager: DataManager = None):
         self.config = config if config else PortfolioConfig()
+        self.data_manager = data_manager if data_manager else DataManager() 
         self.company_analyzer = CompanyAnalyzer()
         self.selector = CompanySelector(
             min_score=self.config.min_score,
@@ -30,7 +31,6 @@ class PortfolioAnalyzer:
             max_per_sector=self.config.max_per_sector
         )
         self.optimizer = WeightOptimizer()
-        self.data_loader = DataLoader()
         self.index_fetcher = IndexFetcher()
         self.date_calc = DateCalculator()
         self.returns_calc = ReturnsCalculator()
@@ -62,8 +62,8 @@ class PortfolioAnalyzer:
 
         returns_data = None
         if self.config.weight_method == 'markowitz':
-            hist_data = self.data_loader.download(selected_tickers, start_date, end_date)
-            returns_data = self.returns_calc.calculate(hist_data)  # Usa ReturnsCalculator
+            hist_data = self.data_manager.download_assets(selected_tickers, start_date, end_date)
+            returns_data = self.returns_calc.calculate(hist_data)
 
         weights = self.optimizer.optimize(
             selected_tickers,
