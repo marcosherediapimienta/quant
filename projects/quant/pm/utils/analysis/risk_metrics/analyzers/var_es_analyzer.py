@@ -68,15 +68,28 @@ class VarEsAnalyzer:
             results[cl] = {}
             
             for method in methods:
-                var_result = self.var_calc.calculate(
-                    returns, weights, cl, method,
-                    n_simulations=n_simulations, seed=seed
-                )
-                es_result = self.es_calc.calculate(
-                    returns, weights, cl, method,
-                    n_simulations=n_simulations, seed=seed
-                )
+                # Manejo especial para Monte Carlo que requiere parámetros adicionales
+                if method == 'monte_carlo':
+                    var_result = self.var_calc.calculate_monte_carlo(
+                        returns, weights, cl,
+                        n_simulations=n_simulations, 
+                        seed=seed
+                    )
+                    es_result = self.es_calc.calculate_monte_carlo(
+                        returns, weights, cl,
+                        n_simulations=n_simulations, 
+                        seed=seed
+                    )
+                else:
+                    # Para historical, parametric, cornish_fisher
+                    var_result = self.var_calc.calculate(
+                        returns, weights, cl, method
+                    )
+                    es_result = self.es_calc.calculate(
+                        returns, weights, cl, method
+                    )
                 
+                # Combinar resultados de VaR y ES
                 results[cl][method] = {
                     **var_result,
                     **es_result

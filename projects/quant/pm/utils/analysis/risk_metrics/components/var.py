@@ -112,7 +112,7 @@ class VaRCalculator:
             'recommendation': recommendation,
             'jarque_bera': {
                 'statistic': jb_results['jb_statistic'],
-                'p_value': jb_results['jb_p_value'],
+                'p_value': jb_results['p_value'],
                 'is_normal': jb_results['is_normal']
             },
             'skewness': skew,
@@ -124,7 +124,7 @@ class VaRCalculator:
         # Warnings verbosos
         if verbose and conclusion != "NORMAL":
             print(f"\n⚠️ WARNING: Retornos {conclusion}")
-            print(f"   Jarque-Bera p-value: {jb_results['jb_p_value']:.4f} {'✅' if is_normal_jb else '❌'}")
+            print(f"   Jarque-Bera p-value: {jb_results['p_value']:.4f} {'✅' if is_normal_jb else '❌'}")
             print(f"   Skewness: {skew:.3f} {'✅' if is_skew_ok else '❌'}")
             print(f"   Excess Kurtosis: {excess_kurt:.3f} {'✅' if is_kurt_ok else '❌'}")
             print(f"   Recomendación: {recommendation}\n")

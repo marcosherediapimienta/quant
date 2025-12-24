@@ -16,13 +16,20 @@ def annualize_return(daily_returns: np.ndarray, annual_factor: float = None) -> 
         return np.nan
     return float(daily_returns.mean() * annual_factor)
 
-def annualize_volatility(daily_returns: np.ndarray, annual_factor: float = None) -> float:
-    """Anualiza volatilidad diaria."""
+def annualize_volatility(daily_returns: np.ndarray, annual_factor: float = None, ddof: int = 0) -> float:
+    """
+    Anualiza volatilidad diaria.
+    
+    Args:
+        daily_returns: Array de retornos diarios
+        annual_factor: Factor de anualización (None = usar config)
+        ddof: Grados de libertad para std (0 = población, 1 = muestra)
+    """
     annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
     
     if len(daily_returns) == 0:
         return np.nan
-    return float(daily_returns.std() * np.sqrt(annual_factor))
+    return float(daily_returns.std(ddof=ddof) * np.sqrt(annual_factor))
 
 def normalize_weights(
     weights: np.ndarray,
