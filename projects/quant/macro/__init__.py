@@ -7,7 +7,6 @@ from .utils.tools.config import (
     MACRO_ANALYSIS,
     MACRO_TRANSFORMS,
     MACRO_SPREADS,
-    # Constantes de acceso rápido
     DEFAULT_LAG_WINDOW,
     MAX_LAG,
     CORRELATION_MIN_OBS,
@@ -22,7 +21,7 @@ from .utils.tools.config import (
     SIGNAL_LOWER_THRESHOLD,
     YIELD_SCALE,
     USE_LOG_RETURNS,
-    ANNUAL_FACTOR, 
+    ANNUAL_FACTOR,
 )
 
 __all__ = [
@@ -48,5 +47,5 @@ __all__ = [
     'SIGNAL_LOWER_THRESHOLD',
     'YIELD_SCALE',
     'USE_LOG_RETURNS',
-    'ANNUAL_FACTOR', 
+    'ANNUAL_FACTOR',
 ]
