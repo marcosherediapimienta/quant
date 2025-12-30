@@ -39,16 +39,18 @@ class MacroSituationReporter:
         else:
             print(f"\n  ✅ No se detectan factores de riesgo significativos")
     
-    def _print_yield_curve(self, curve: Dict) -> None:
+    def _print_yield_curve(self, curve) -> None:
+        """Imprime análisis de curva de rendimientos (dataclass o dict)."""
         print("CURVA DE TIPOS DE INTERÉS (USA)")
 
-        levels = curve.get('levels', {})
+        # Soportar tanto dataclass como dict
+        levels = getattr(curve, 'levels', curve.get('levels', {})) if hasattr(curve, 'get') else curve.levels
         if levels:
             print("\n  Niveles actuales:")
             for tenor, rate in sorted(levels.items()):
                 print(f"    {tenor:>4}: {rate:>6.2f}%")
 
-        spreads = curve.get('spreads', {})
+        spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
         if spreads:
             print("\n  Spreads:")
             for spread_name, value in spreads.items():
@@ -56,7 +58,7 @@ class MacroSituationReporter:
                 print(f"    {symbol} {spread_name:>10}: {value:>+6.2f} pp")
 
         # Mostrar cambios en las tasas
-        rate_changes = curve.get('rate_changes', {})
+        rate_changes = getattr(curve, 'rate_changes', curve.get('rate_changes', {})) if hasattr(curve, 'get') else curve.rate_changes
         if rate_changes:
             print("\n  Cambios en tasas:")
             print(f"    {'Tenor':<6} {'1 Mes':<12} {'3 Meses':<12} {'1 Año':<12}")
@@ -72,7 +74,7 @@ class MacroSituationReporter:
                 
                 print(f"    {tenor:<6} {change_1m_str:<12} {change_3m_str:<12} {change_1y_str:<12}")
 
-        divergence = curve.get('divergence_analysis', {})
+        divergence = getattr(curve, 'divergence_analysis', curve.get('divergence_analysis', {})) if hasattr(curve, 'get') else curve.divergence_analysis
         if divergence:
             print("\n  📊 Divergencia Corto vs Largo Plazo:")
             if '3m' in divergence:
@@ -101,51 +103,50 @@ class MacroSituationReporter:
                 else:
                     print(" ⚪ (Movimientos alineados)")
 
-        interpretation = curve.get('interpretation', 'N/A')
+        interpretation = getattr(curve, 'interpretation', curve.get('interpretation', 'N/A')) if hasattr(curve, 'get') else curve.interpretation
         print(f"\n  💡 {interpretation}")
     
-    def _print_inflation(self, inflation: Dict) -> None:
+    def _print_inflation(self, inflation) -> None:
+        """Imprime señales de inflación (dataclass o dict)."""
         print("SEÑALES DE INFLACIÓN (Commodities)")
 
-        commodities = [
-            ('gold', 'Oro'),
-            ('silver', 'Plata'),
-            ('oil', 'Petróleo'),
-            ('copper', 'Cobre'),
-            ('wheat', 'Trigo'),
-            ('corn', 'Maíz')
-        ]
+        # Obtener commodity_changes (dataclass o dict)
+        commodity_changes = getattr(inflation, 'commodity_changes', inflation.get('commodity_changes', {})) if hasattr(inflation, 'get') else inflation.commodity_changes
+        commodity_names = getattr(inflation, 'commodity_names', inflation.get('commodity_names', {})) if hasattr(inflation, 'get') else inflation.commodity_names
         
         print("\n  Cambio últimos 12 meses:")
-        for key, name in commodities:
-            change_key = f'{key}_change_1y'
-            if change_key in inflation:
-                change = inflation[change_key]
+        for key, name in commodity_names.items():
+            if key in commodity_changes:
+                change = commodity_changes[key]
                 symbol = "🔴" if change > 15 else "🟡" if change > 5 else "🟢"
                 print(f"    {symbol} {name:<12}: {change:>+7.2f}%")
 
-        pressure = inflation.get('inflation_pressure', 'N/A')
-        avg_change = inflation.get('avg_commodity_change', np.nan)
+        pressure = getattr(inflation, 'inflation_pressure', inflation.get('inflation_pressure', 'N/A')) if hasattr(inflation, 'get') else inflation.inflation_pressure
+        avg_change = getattr(inflation, 'avg_commodity_change', inflation.get('avg_commodity_change', np.nan)) if hasattr(inflation, 'get') else inflation.avg_commodity_change
         
         print(f"\n  💡 {pressure}")
         if not np.isnan(avg_change):
             print(f"     Cambio promedio: {avg_change:>+.2f}%")
     
-    def _print_credit(self, credit: Dict) -> None:
+    def _print_credit(self, credit) -> None:
+        """Imprime condiciones de crédito (dataclass o dict)."""
         print("CONDICIONES DE CRÉDITO Y VOLATILIDAD")
 
-        if 'vix_level' in credit:
-            vix = credit['vix_level']
+        # Obtener vix_level (dataclass o dict)
+        vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
+        if vix is not None:
             vix_symbol = "🔴" if vix > 30 else "🟡" if vix > 20 else "🟢"
             print(f"\n  {vix_symbol} VIX (volatilidad):      {vix:>7.2f}")
 
-        condition = credit.get('market_condition', 'N/A')
+        condition = getattr(credit, 'market_condition', credit.get('market_condition', 'N/A')) if hasattr(credit, 'get') else credit.market_condition
         print(f"\n  💡 {condition}")
 
-        if 'hyg_level' in credit and 'lqd_level' in credit:
+        hyg = getattr(credit, 'hyg_level', credit.get('hyg_level')) if hasattr(credit, 'get') else credit.hyg_level
+        lqd = getattr(credit, 'lqd_level', credit.get('lqd_level')) if hasattr(credit, 'get') else credit.lqd_level
+        if hyg is not None and lqd is not None:
             print(f"\n  Niveles ETFs crédito:")
-            print(f"    HYG (High Yield):        ${credit['hyg_level']:>7.2f}")
-            print(f"    LQD (Investment Grade):  ${credit['lqd_level']:>7.2f}")
+            print(f"    HYG (High Yield):        ${hyg:>7.2f}")
+            print(f"    LQD (Investment Grade):  ${lqd:>7.2f}")
     
     def _print_global_bonds(self, bonds: Dict) -> None:
         print("BONOS SOBERANOS GLOBALES")
@@ -178,58 +179,69 @@ class MacroSituationReporter:
             
             print(f"  {region:<15} {level_str:<12} {change_1m_str:<12} {change_1y_str:<12}")
     
-    def _print_risk_sentiment(self, sentiment: Dict) -> None:
+    def _print_risk_sentiment(self, sentiment) -> None:
+        """Imprime sentimiento de riesgo (dataclass o dict)."""
         print("SENTIMIENTO DE RIESGO")
 
-        if 'fear_level' in sentiment:
-            fear = sentiment['fear_level']
+        # Fear level
+        fear = getattr(sentiment, 'fear_level', sentiment.get('fear_level')) if hasattr(sentiment, 'get') else sentiment.fear_level
+        if fear:
             print(f"\n  Nivel de miedo:           {fear}")
 
-        if 'dollar_strength' in sentiment:
-            dollar = sentiment['dollar_strength']
-
+        # Dollar strength
+        dollar = getattr(sentiment, 'dollar_strength', sentiment.get('dollar_strength')) if hasattr(sentiment, 'get') else sentiment.dollar_strength
+        if dollar:
             trends = []
-            if 'dxy_trend_1w' in sentiment:
-                trends.append(f"1 sem: {sentiment['dxy_trend_1w']:+.2f}%")
-            if 'dxy_trend_1m' in sentiment:
-                trends.append(f"1 mes: {sentiment['dxy_trend_1m']:+.2f}%")
-            if 'dxy_trend_3m' in sentiment:
-                trends.append(f"3 mes: {sentiment['dxy_trend_3m']:+.2f}%")
+            dxy_1w = getattr(sentiment, 'dxy_trend_1w', sentiment.get('dxy_trend_1w')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_1w
+            dxy_1m = getattr(sentiment, 'dxy_trend_1m', sentiment.get('dxy_trend_1m')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_1m
+            dxy_3m = getattr(sentiment, 'dxy_trend_3m', sentiment.get('dxy_trend_3m')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_3m
+            
+            if dxy_1w is not None:
+                trends.append(f"1 sem: {dxy_1w:+.2f}%")
+            if dxy_1m is not None:
+                trends.append(f"1 mes: {dxy_1m:+.2f}%")
+            if dxy_3m is not None:
+                trends.append(f"3 mes: {dxy_3m:+.2f}%")
             
             trend_str = f"({', '.join(trends)})" if trends else ""
             print(f"  Fortaleza del dólar:      {dollar} {trend_str}")
 
-        if 'safe_haven' in sentiment:
-            safe_haven = sentiment['safe_haven']
-            
+        # Safe haven
+        safe_haven = getattr(sentiment, 'safe_haven', sentiment.get('safe_haven')) if hasattr(sentiment, 'get') else sentiment.safe_haven
+        if safe_haven:
             trends = []
-            if 'gold_trend_1w' in sentiment:
-                trends.append(f"1 sem: {sentiment['gold_trend_1w']:+.2f}%")
-            if 'gold_trend_1m' in sentiment:
-                trends.append(f"1 mes: {sentiment['gold_trend_1m']:+.2f}%")
-            if 'gold_trend_3m' in sentiment:
-                trends.append(f"3 mes: {sentiment['gold_trend_3m']:+.2f}%")
+            gold_1w = getattr(sentiment, 'gold_trend_1w', sentiment.get('gold_trend_1w')) if hasattr(sentiment, 'get') else sentiment.gold_trend_1w
+            gold_1m = getattr(sentiment, 'gold_trend_1m', sentiment.get('gold_trend_1m')) if hasattr(sentiment, 'get') else sentiment.gold_trend_1m
+            gold_3m = getattr(sentiment, 'gold_trend_3m', sentiment.get('gold_trend_3m')) if hasattr(sentiment, 'get') else sentiment.gold_trend_3m
+            
+            if gold_1w is not None:
+                trends.append(f"1 sem: {gold_1w:+.2f}%")
+            if gold_1m is not None:
+                trends.append(f"1 mes: {gold_1m:+.2f}%")
+            if gold_3m is not None:
+                trends.append(f"3 mes: {gold_3m:+.2f}%")
             
             trend_str = f"({', '.join(trends)})" if trends else ""
             print(f"  Demanda de refugio:       {safe_haven} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
+        """Imprime resumen compacto del análisis macro."""
         print("SNAPSHOT MACRO".center(60))
 
         curve = analysis['yield_curve']
-        spreads = curve.get('spreads', {})
+        spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
         if '10Y-2Y' in spreads:
             spread = spreads['10Y-2Y']
             symbol = "🔴" if spread < 0 else "🟢"
             print(f"\n  {symbol} Curva 10Y-2Y: {spread:+.2f} pp")
 
         inflation = analysis['inflation']
-        pressure = inflation.get('inflation_pressure', 'N/A')
+        pressure = getattr(inflation, 'inflation_pressure', inflation.get('inflation_pressure', 'N/A')) if hasattr(inflation, 'get') else inflation.inflation_pressure
         print(f"Inflación: {pressure}")
         
         credit = analysis['credit']
-        if 'vix_level' in credit:
-            vix = credit['vix_level']
+        vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
+        if vix is not None:
             symbol = "🔴" if vix > 25 else "🟡" if vix > 20 else "🟢"
             print(f"  {symbol} VIX: {vix:.1f}")
 

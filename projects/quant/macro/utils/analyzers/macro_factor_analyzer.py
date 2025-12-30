@@ -1,21 +1,20 @@
 import pandas as pd
 from typing import Dict
-from ..components.macro_regression import (
-    multifactor_regression,
-    factor_decomposition,
-    significant_factors,
-    risk_decomposition,
-    RegressionResult
-)
-from ..components.macro_correlation import (
-    best_lagged_correlation
-)
+from ..components.macro_regression import MacroRegressionCalculator, RegressionResult
+from ..components.macro_correlation import MacroCorrelationCalculator
 from ..tools.config import REGRESSION_MIN_OBS
 
 class MacroFactorAnalyzer:
+    """
+    Analizador de alto nivel para factores macro.
+    
+    Responsabilidad: Orquestar análisis de regresión multifactor y generar insights.
+    """
 
     def __init__(self, annual_factor: int = 252):
         self.annual_factor = annual_factor
+        self.regression_calc = MacroRegressionCalculator(annual_factor=annual_factor)
+        self.correlation_calc = MacroCorrelationCalculator()
     
     def analyze(
         self,
@@ -23,22 +22,45 @@ class MacroFactorAnalyzer:
         macro_factors: pd.DataFrame,
         use_hac: bool = True
     ) -> Dict:
-
+        """
+        Análisis completo de factores macro.
+        
+        Args:
+            portfolio_returns: Retornos del portfolio
+            macro_factors: DataFrame con factores macro
+            use_hac: Si usar HAC standard errors
+            
+        Returns:
+            Dict con resultados de regresión y análisis
+        """
         if len(portfolio_returns) < REGRESSION_MIN_OBS:
             raise ValueError(
                 f"Observaciones insuficientes: {len(portfolio_returns)}"
             )
 
-        regression_result: RegressionResult = multifactor_regression(
+        # Actualizar configuración de HAC si es necesario
+        self.regression_calc.use_hac = use_hac
+
+        # Calcular regresión multifactor
+        regression_result: RegressionResult = self.regression_calc.calculate_multifactor(
             portfolio_returns,
-            macro_factors,
-            self.annual_factor,
-            use_hac
+            macro_factors
         )
 
-        significant = significant_factors(regression_result)
-        risk_decomp = risk_decomposition(regression_result, macro_factors)
-        factor_contrib = factor_decomposition(regression_result, macro_factors)
+        # Obtener factores significativos
+        significant = self.regression_calc.get_significant_factors(regression_result)
+        
+        # Descomposición de riesgo
+        risk_decomp = self.regression_calc.calculate_risk_decomposition(
+            regression_result, 
+            portfolio_returns
+        )
+        
+        # Contribución por factor
+        factor_contrib = self.regression_calc.calculate_factor_decomposition(
+            regression_result, 
+            macro_factors
+        )
         
         return {
             'regression': regression_result,
@@ -61,11 +83,24 @@ class MacroFactorAnalyzer:
         macro_factors: pd.DataFrame,
         max_lag: int = 126
     ) -> Dict:
+        """
+        Análisis de factores con lags óptimos.
+        
+        Args:
+            portfolio_returns: Retornos del portfolio
+            macro_factors: DataFrame con factores macro
+            max_lag: Máximo lag a analizar
+            
+        Returns:
+            Dict con factores leading, lagging y concurrent
+        """
+        # Actualizar max_lag del calculator
+        self.correlation_calc.max_lag = max_lag
 
-        best_lags = best_lagged_correlation(
+        # Encontrar mejores lags
+        best_lags = self.correlation_calc.find_best_lag(
             portfolio_returns,
-            macro_factors,
-            max_lag
+            macro_factors
         )
     
         return {

@@ -1,25 +1,37 @@
 import pandas as pd
 from typing import Dict
-from ..components.macro_regression import (
-    multifactor_regression,
-    rolling_multifactor_regression
-)
+from ..components.macro_regression import MacroRegressionCalculator
+from ..tools.config import SENSITIVITY_THRESHOLDS
 
 class MacroSensitivityAnalyzer:
+    """
+    Analizador de sensibilidades a factores macro.
+    
+    Responsabilidad: Analizar exposiciones del portfolio a factores macro.
+    """
 
     def __init__(self, annual_factor: int = 252):
         self.annual_factor = annual_factor
+        self.regression_calc = MacroRegressionCalculator(annual_factor=annual_factor)
     
     def analyze(
         self,
         portfolio_returns: pd.Series,
         macro_factors: pd.DataFrame
     ) -> Dict:
-
-        result = multifactor_regression(
+        """
+        Análisis de sensibilidades a factores macro.
+        
+        Args:
+            portfolio_returns: Retornos del portfolio
+            macro_factors: DataFrame con factores macro
+            
+        Returns:
+            Dict con betas clasificados por magnitud de exposición
+        """
+        result = self.regression_calc.calculate_multifactor(
             portfolio_returns,
-            macro_factors,
-            self.annual_factor
+            macro_factors
         )
 
         betas_sorted = sorted(
@@ -28,19 +40,22 @@ class MacroSensitivityAnalyzer:
             reverse=True
         )
 
+        high_threshold = SENSITIVITY_THRESHOLDS['high']
+        moderate_threshold = SENSITIVITY_THRESHOLDS['moderate']
+
         high_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if abs(beta) > 0.5
+            if abs(beta) > high_threshold
         ]
         
         moderate_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if 0.2 <= abs(beta) <= 0.5
+            if moderate_threshold <= abs(beta) <= high_threshold
         ]
         
         low_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if abs(beta) < 0.2
+            if abs(beta) < moderate_threshold
         ]
         
         return {
@@ -60,10 +75,19 @@ class MacroSensitivityAnalyzer:
         macro_factors: pd.DataFrame,
         window: int = 252
     ) -> pd.DataFrame:
-
-        return rolling_multifactor_regression(
+        """
+        Análisis rolling de sensibilidades.
+        
+        Args:
+            portfolio_returns: Retornos del portfolio
+            macro_factors: DataFrame con factores macro
+            window: Ventana móvil
+            
+        Returns:
+            DataFrame con betas móviles
+        """
+        return self.regression_calc.calculate_rolling(
             portfolio_returns,
             macro_factors,
-            window,
-            annual_factor=self.annual_factor
+            window
         )
