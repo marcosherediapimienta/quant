@@ -148,8 +148,20 @@ class MacroCorrelationCalculator:
                 if lag_df.empty:
                     continue
                 
-                idx_best = lag_df['corr'].abs().idxmax()
-                best_row = lag_df.loc[idx_best]
+                # Filtrar correlaciones significativas (p < 0.05)
+                significant_lags = lag_df[lag_df['p'] < 0.05].copy()
+                
+                if not significant_lags.empty:
+                    # Si hay correlaciones significativas, elegir la de mayor |corr|
+                    idx_best = significant_lags['corr'].abs().idxmax()
+                    best_row = significant_lags.loc[idx_best]
+                    is_significant = True
+                else:
+                    # Si ninguna es significativa, usar la de mayor |corr| pero advertir
+                    idx_best = lag_df['corr'].abs().idxmax()
+                    best_row = lag_df.loc[idx_best]
+                    is_significant = False
+                    print(f"⚠️  [Macro] {factor_name}: Ninguna correlación significativa (mejor p-value: {best_row['p']:.4f})")
                 
                 results.append({
                     'factor': factor_name,
@@ -157,7 +169,8 @@ class MacroCorrelationCalculator:
                     'corr': float(best_row['corr']),
                     't': float(best_row['t']),
                     'p': float(best_row['p']),
-                    'n': int(best_row['n'])
+                    'n': int(best_row['n']),
+                    'is_significant': is_significant
                 })
                 
             except Exception as e:

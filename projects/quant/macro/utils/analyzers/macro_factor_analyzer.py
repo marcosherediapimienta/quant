@@ -53,7 +53,7 @@ class MacroFactorAnalyzer:
         # Descomposición de riesgo
         risk_decomp = self.regression_calc.calculate_risk_decomposition(
             regression_result, 
-            macro_factors
+            portfolio_returns
         )
         
         # Contribución por factor

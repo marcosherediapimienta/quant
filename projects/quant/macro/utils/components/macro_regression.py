@@ -258,39 +258,54 @@ class MacroRegressionCalculator:
     def calculate_risk_decomposition(
         self,
         result: RegressionResult,
-        factors: pd.DataFrame
+        portfolio_returns: pd.Series 
     ) -> Dict[str, float]:
         """
         Descompone riesgo en sistemático vs idiosincrático.
-        
-        Descomposición:
-        - Riesgo total = Var(r_p)
-        - Riesgo sistemático = Var(fitted) = Var(α + Σβ·F)
-        - Riesgo idiosincrático = Var(residuals) = Var(ε)
-        
-        Args:
-            result: Resultado de regresión
-            factors: DataFrame con factores macro
-            
-        Returns:
-            Dict con varianzas y porcentajes
-            
-        Interpretación:
-        - R² alto → Riesgo principalmente sistemático (explicado por factores)
-        - R² bajo → Riesgo principalmente idiosincrático (específico del portfolio)
         """
-        systematic_returns = result.fitted_values
-        idiosyncratic_returns = result.residuals
+        # Usar el índice común de la regresión (residuales)
+        common_index = result.residuals.index
         
-        var_total = systematic_returns.var() + idiosyncratic_returns.var()
-        var_systematic = systematic_returns.var()
-        var_idiosyncratic = idiosyncratic_returns.var()
+        # Alinear retornos observados al índice de la regresión
+        portfolio_aligned = portfolio_returns.reindex(common_index)
+        
+        # Asegurar que fitted_values y residuals sean Series 1D
+        fitted_vals = result.fitted_values
+        residual_vals = result.residuals
+        
+        # Si son arrays, convertirlos a Series
+        if not isinstance(fitted_vals, pd.Series):
+            fitted_vals = pd.Series(fitted_vals.flatten() if hasattr(fitted_vals, 'flatten') and fitted_vals.ndim > 1 else fitted_vals, index=common_index)
+        
+        if not isinstance(residual_vals, pd.Series):
+            residual_vals = pd.Series(residual_vals.flatten() if hasattr(residual_vals, 'flatten') and residual_vals.ndim > 1 else residual_vals, index=common_index)
+        
+        # Usar pd.concat que maneja mejor la alineación
+        df_temp = pd.concat({
+            'portfolio': portfolio_aligned,
+            'fitted': fitted_vals,
+            'residuals': residual_vals
+        }, axis=1)
+        
+        # Eliminar filas con NaN
+        df_clean = df_temp.dropna()
+        
+        # Calcular varianzas con datos alineados y limpios
+        var_total = float(np.var(df_clean['portfolio'].values, ddof=0))
+        var_systematic = float(np.var(df_clean['fitted'].values, ddof=0))
+        var_idiosyncratic = float(np.var(df_clean['residuals'].values, ddof=0))
+        
+        # Verificación: la suma debería ser aproximadamente igual
+        sum_vars = var_systematic + var_idiosyncratic
+        if abs(var_total - sum_vars) > 1e-4:  # Aumentar tolerancia a 1e-4
+            print(f"⚠️  Advertencia: Var(Y) = {var_total:.6f} vs Var(Ŷ)+Var(ε) = {sum_vars:.6f}")
+            print(f"   Diferencia: {abs(var_total - sum_vars):.6f} ({abs(var_total - sum_vars)/var_total*100:.2f}%)")
         
         return {
-            'total_variance': float(var_total),
-            'systematic_variance': float(var_systematic),
-            'idiosyncratic_variance': float(var_idiosyncratic),
-            'systematic_pct': float(var_systematic / var_total * 100),
-            'idiosyncratic_pct': float(var_idiosyncratic / var_total * 100),
+            'total_variance': var_total,
+            'systematic_variance': var_systematic,
+            'idiosyncratic_variance': var_idiosyncratic,
+            'systematic_pct': float(var_systematic / var_total * 100) if var_total > 0 else 0.0,
+            'idiosyncratic_pct': float(var_idiosyncratic / var_total * 100) if var_total > 0 else 0.0,
             'r_squared': result.r_squared
         }
