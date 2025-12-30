@@ -268,8 +268,7 @@ class MacroRegressionCalculator:
         
         # Alinear retornos observados al índice de la regresión
         portfolio_aligned = portfolio_returns.reindex(common_index)
-        
-        # Asegurar que fitted_values y residuals sean Series 1D
+
         fitted_vals = result.fitted_values
         residual_vals = result.residuals
         
