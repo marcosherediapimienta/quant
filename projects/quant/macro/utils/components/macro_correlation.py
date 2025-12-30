@@ -7,6 +7,7 @@ from ..tools.config import (
     MAX_LAG,
     CORRELATION_MIN_OBS,
     HAC_MAXLAGS,
+    CORRELATION_LAGS_DEFAULT,
 )
 
 @dataclass
@@ -190,7 +191,7 @@ class MacroCorrelationCalculator:
         - Cada lag es un "snapshot" de correlaciones simultáneas
         """
         if lags is None:
-            lags = [0, 1, 5, 21, 63, 126]
+            lags = CORRELATION_LAGS_DEFAULT
         
         results = {}
         

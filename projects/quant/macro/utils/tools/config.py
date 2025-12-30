@@ -218,6 +218,68 @@ MACRO_ANALYSIS = {
 }
 
 # ============================================================================
+# PARÁMETROS DE ANÁLISIS DE SITUACIÓN MACRO
+# ============================================================================
+MACRO_SITUATION_THRESHOLDS = {
+    # Períodos de tiempo (en días de trading)
+    'periods': {
+        'week': 5,
+        'month': 21,
+        'quarter': 63,
+        'year': 252,
+    },
+    
+    # VIX levels
+    'vix': {
+        'panic': 35,
+        'stress': 25,
+        'tension': 20,
+        'normal': 15,
+    },
+    
+    # Yield curve spreads (en puntos porcentuales)
+    'yield_curve': {
+        'inverted': 0.0,
+        'flat': 0.3,
+        'steep': 2.0,
+    },
+    
+    # Inflación (cambio % anual en commodities)
+    'inflation': {
+        'high': 15,
+        'moderate': 5,
+        'low': -5,
+    },
+    
+    # Tendencias de dólar/oro (cambio %)
+    'trends': {
+        'strong_move': 5,
+        'moderate_move': 3,
+        'significant_gold': 10,
+        'divergence_threshold': 0.5,
+        'momentum_ratio': 0.4,
+    },
+    
+    # Bonos globales (cambio %)
+    'bonds': {
+        'severe_drop': -10,
+        'moderate_drop': -5,
+        'strong_gain': 10,
+        'moderate_gain': 5,
+    },
+}
+
+# Lags para análisis de correlación
+CORRELATION_LAGS_DEFAULT = [0, 1, 5, 21, 63, 126]  # 0d, 1d, 1w, 1m, 3m, 6m
+
+# Thresholds para sensibilidades (betas)
+SENSITIVITY_THRESHOLDS = {
+    'high': 0.5,
+    'moderate': 0.2,
+    'low': 0.0,
+}
+
+# ============================================================================
 # CONSTANTES DE ACCESO RÁPIDO (para imports directos)
 # ============================================================================
 
@@ -247,3 +309,9 @@ USE_LOG_RETURNS = MACRO_ANALYSIS['transforms']['use_log_returns']
 
 # Anualización
 ANNUAL_FACTOR = 252
+
+# Constantes de acceso rápido
+PERIOD_WEEK = MACRO_SITUATION_THRESHOLDS['periods']['week']
+PERIOD_MONTH = MACRO_SITUATION_THRESHOLDS['periods']['month']
+PERIOD_QUARTER = MACRO_SITUATION_THRESHOLDS['periods']['quarter']
+PERIOD_YEAR = MACRO_SITUATION_THRESHOLDS['periods']['year']

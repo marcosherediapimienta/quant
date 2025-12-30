@@ -2,6 +2,13 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from dataclasses import dataclass
+from ..tools.config import (
+    PERIOD_WEEK,
+    PERIOD_MONTH,
+    PERIOD_QUARTER,
+    PERIOD_YEAR,
+    MACRO_SITUATION_THRESHOLDS,
+)
 
 @dataclass
 class YieldCurveAnalysis:
@@ -110,16 +117,16 @@ class MacroSituationAnalyzer:
 
                 changes = {}
 
-                if len(series) >= 21:
-                    month_ago = series.iloc[-21]
+                if len(series) >= PERIOD_MONTH:
+                    month_ago = series.iloc[-PERIOD_MONTH]
                     changes['1m'] = current - month_ago
 
-                if len(series) >= 63:
-                    quarter_ago = series.iloc[-63]
+                if len(series) >= PERIOD_QUARTER:
+                    quarter_ago = series.iloc[-PERIOD_QUARTER]
                     changes['3m'] = current - quarter_ago
 
-                if len(series) >= 252:
-                    year_ago = series.iloc[-252]
+                if len(series) >= PERIOD_YEAR:
+                    year_ago = series.iloc[-PERIOD_YEAR]
                     changes['1y'] = current - year_ago
                 
                 if changes:
@@ -160,13 +167,17 @@ class MacroSituationAnalyzer:
                 }
 
         spread_10_2 = spreads.get('10Y-2Y', 1.0)
-        if spread_10_2 < 0:
+        inverted_threshold = MACRO_SITUATION_THRESHOLDS['yield_curve']['inverted']
+        flat_threshold = MACRO_SITUATION_THRESHOLDS['yield_curve']['flat']
+        steep_threshold = MACRO_SITUATION_THRESHOLDS['yield_curve']['steep']
+        
+        if spread_10_2 < inverted_threshold:
             interpretation = "INVERTIDA - Señal de recesión"
             risk_level = "Alto"
-        elif spread_10_2 < 0.3:
+        elif spread_10_2 < flat_threshold:
             interpretation = "PLANA - Posible desaceleración"
             risk_level = "Moderado"
-        elif spread_10_2 > 2.0:
+        elif spread_10_2 > steep_threshold:
             interpretation = "EMPINADA - Expansión económica"
             risk_level = "Bajo"
         else:
@@ -223,10 +234,10 @@ class MacroSituationAnalyzer:
         changes = []
         
         for factor, name in commodities.items():
-            if factor in factors_data and len(factors_data[factor]) >= 252:
+            if factor in factors_data and len(factors_data[factor]) >= PERIOD_YEAR:
                 series = factors_data[factor]
                 current = series.iloc[-1]
-                year_ago = series.iloc[-252]
+                year_ago = series.iloc[-PERIOD_YEAR]
                 
                 if year_ago > 0:
                     change_1y = (current / year_ago - 1) * 100
@@ -236,12 +247,15 @@ class MacroSituationAnalyzer:
 
         if changes:
             avg_change = np.mean(changes)
+            high_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['high']
+            moderate_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['moderate']
+            low_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['low']
             
-            if avg_change > 15:
+            if avg_change > high_threshold:
                 pressure = "ALTA - Presión inflacionaria fuerte"
-            elif avg_change > 5:
+            elif avg_change > moderate_threshold:
                 pressure = "MODERADA - Inflación controlada"
-            elif avg_change > -5:
+            elif avg_change > low_threshold:
                 pressure = "BAJA - Inflación contenida"
             else:
                 pressure = "DEFLACIÓN - Caída de precios"
@@ -290,13 +304,18 @@ class MacroSituationAnalyzer:
             vix = factors_data['VIX'].iloc[-1]
             vix_level = vix
             
-            if vix > 35:
+            vix_panic = MACRO_SITUATION_THRESHOLDS['vix']['panic']
+            vix_stress = MACRO_SITUATION_THRESHOLDS['vix']['stress']
+            vix_tension = MACRO_SITUATION_THRESHOLDS['vix']['tension']
+            vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
+            
+            if vix > vix_panic:
                 market_condition = "PÁNICO - Estrés extremo"
-            elif vix > 25:
+            elif vix > vix_stress:
                 market_condition = "ESTRÉS - Tensión alta"
-            elif vix > 20:
+            elif vix > vix_tension:
                 market_condition = "TENSIÓN - Nerviosismo"
-            elif vix > 15:
+            elif vix > vix_normal:
                 market_condition = "NORMAL - Volatilidad controlada"
             else:
                 market_condition = "COMPLACENCIA - Volatilidad muy baja"
@@ -343,13 +362,18 @@ class MacroSituationAnalyzer:
         if 'VIX' in factors_data and len(factors_data['VIX']) > 0:
             vix = factors_data['VIX'].iloc[-1]
             
-            if vix > 35:
+            vix_panic = MACRO_SITUATION_THRESHOLDS['vix']['panic']
+            vix_stress = MACRO_SITUATION_THRESHOLDS['vix']['stress']
+            vix_tension = MACRO_SITUATION_THRESHOLDS['vix']['tension']
+            vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
+            
+            if vix > vix_panic:
                 fear_level = "PÁNICO"
-            elif vix > 25:
+            elif vix > vix_stress:
                 fear_level = "ALTO MIEDO"
-            elif vix > 20:
+            elif vix > vix_tension:
                 fear_level = "NERVIOSISMO"
-            elif vix > 15:
+            elif vix > vix_normal:
                 fear_level = "MODERADO"
             else:
                 fear_level = "COMPLACENCIA"
@@ -362,14 +386,14 @@ class MacroSituationAnalyzer:
             dxy = factors_data['DXY']
             current = dxy.iloc[-1]
 
-            if len(dxy) >= 63 and dxy.iloc[-63] > 0:
-                dxy_trend_3m = (current / dxy.iloc[-63] - 1) * 100
+            if len(dxy) >= PERIOD_QUARTER and dxy.iloc[-PERIOD_QUARTER] > 0:
+                dxy_trend_3m = (current / dxy.iloc[-PERIOD_QUARTER] - 1) * 100
             
-            if len(dxy) >= 21 and dxy.iloc[-21] > 0:
-                dxy_trend_1m = (current / dxy.iloc[-21] - 1) * 100
+            if len(dxy) >= PERIOD_MONTH and dxy.iloc[-PERIOD_MONTH] > 0:
+                dxy_trend_1m = (current / dxy.iloc[-PERIOD_MONTH] - 1) * 100
 
-            if len(dxy) >= 5 and dxy.iloc[-5] > 0:
-                dxy_trend_1w = (current / dxy.iloc[-5] - 1) * 100
+            if len(dxy) >= PERIOD_WEEK and dxy.iloc[-PERIOD_WEEK] > 0:
+                dxy_trend_1w = (current / dxy.iloc[-PERIOD_WEEK] - 1) * 100
 
         gold_trend_3m = None
         gold_trend_1m = None
@@ -379,52 +403,60 @@ class MacroSituationAnalyzer:
             gold = factors_data['GOLD']
             current = gold.iloc[-1]
 
-            if len(gold) >= 63 and gold.iloc[-63] > 0:
-                gold_trend_3m = (current / gold.iloc[-63] - 1) * 100
+            if len(gold) >= PERIOD_QUARTER and gold.iloc[-PERIOD_QUARTER] > 0:
+                gold_trend_3m = (current / gold.iloc[-PERIOD_QUARTER] - 1) * 100
 
-            if len(gold) >= 21 and gold.iloc[-21] > 0:
-                gold_trend_1m = (current / gold.iloc[-21] - 1) * 100
+            if len(gold) >= PERIOD_MONTH and gold.iloc[-PERIOD_MONTH] > 0:
+                gold_trend_1m = (current / gold.iloc[-PERIOD_MONTH] - 1) * 100
             
-            if len(gold) >= 5 and gold.iloc[-5] > 0:
-                gold_trend_1w = (current / gold.iloc[-5] - 1) * 100
+            if len(gold) >= PERIOD_WEEK and gold.iloc[-PERIOD_WEEK] > 0:
+                gold_trend_1w = (current / gold.iloc[-PERIOD_WEEK] - 1) * 100
 
         # Análisis integrado de fortaleza del dólar
         dollar_strength = None
+        strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
+        moderate_move = MACRO_SITUATION_THRESHOLDS['trends']['moderate_move']
+        divergence_threshold = MACRO_SITUATION_THRESHOLDS['trends']['divergence_threshold']
+        momentum_ratio = MACRO_SITUATION_THRESHOLDS['trends']['momentum_ratio']
+        
         if dxy_trend_3m is not None:
-            if dxy_trend_3m > 5:
-                if gold_trend_3m is not None and gold_trend_3m > 5:
+            if dxy_trend_3m > strong_move:
+                if gold_trend_3m is not None and gold_trend_3m > strong_move:
                     dollar_strength = "FUERTE (flight to safety)"
-                elif gold_trend_3m is not None and gold_trend_3m < -2:
+                elif gold_trend_3m is not None and gold_trend_3m < -moderate_move:
                     dollar_strength = "FUERTE (fortaleza económica/política monetaria)"
                 else:
                     dollar_strength = "FUERTE"
             elif dxy_trend_3m > 0:
                 dollar_strength = "MODERADO"
-            elif dxy_trend_3m > -5:
+            elif dxy_trend_3m > -strong_move:
                 dollar_strength = "DÉBIL"
             else:
                 dollar_strength = "MUY DÉBIL"
 
             # Añadir tendencias recientes
             if dxy_trend_1m is not None and dxy_trend_1w is not None:
-                if dxy_trend_3m > 3 and dxy_trend_1w < 0.5:
+                if dxy_trend_3m > moderate_move and dxy_trend_1w < divergence_threshold:
                     dollar_strength += " (debilitándose recientemente)"
-                elif dxy_trend_3m < -3 and dxy_trend_1w > 0.5:
+                elif dxy_trend_3m < -moderate_move and dxy_trend_1w > divergence_threshold:
                     dollar_strength += " (fortaleciéndose recientemente)"
-                elif dxy_trend_3m > 3 and dxy_trend_1m < dxy_trend_3m * 0.4:
+                elif dxy_trend_3m > moderate_move and dxy_trend_1m < dxy_trend_3m * momentum_ratio:
                     dollar_strength += " (desacelerando)"
             elif dxy_trend_1m is not None:
-                if dxy_trend_1m < -2 and dxy_trend_3m > 0:
+                if dxy_trend_1m < -moderate_move and dxy_trend_3m > 0:
                     dollar_strength += " (debilitándose recientemente)"
-                elif dxy_trend_1m > 2 and dxy_trend_3m < 0:
+                elif dxy_trend_1m > moderate_move and dxy_trend_3m < 0:
                     dollar_strength += " (fortaleciéndose recientemente)"
 
         # Safe haven demand
         safe_haven = None
+        significant_gold = MACRO_SITUATION_THRESHOLDS['trends']['significant_gold']
+        strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
+        
         if gold_trend_3m is not None:
-            if gold_trend_3m > 10:
+            if gold_trend_3m > significant_gold:
                 safe_haven = "ALTA demanda de refugio"
-            elif gold_trend_3m > 5:
+            elif gold_trend_3m > strong_move:
                 safe_haven = "MODERADA demanda de refugio"
             elif gold_trend_3m > 0:
                 safe_haven = "BAJA demanda de refugio"
@@ -487,8 +519,8 @@ class MacroSituationAnalyzer:
                 current = series.iloc[-1]
                 bond_data = {'level': current}
 
-                if len(series) >= 252:
-                    year_ago = series.iloc[-252]
+                if len(series) >= PERIOD_YEAR:
+                    year_ago = series.iloc[-PERIOD_YEAR]
                     if year_ago > 0:
                         change_1y = (current / year_ago - 1) * 100
                         bond_data['change_1y'] = change_1y
@@ -497,8 +529,8 @@ class MacroSituationAnalyzer:
                 else:
                     bond_data['change_1y'] = np.nan
 
-                if len(series) >= 21:
-                    month_ago = series.iloc[-21]
+                if len(series) >= PERIOD_MONTH:
+                    month_ago = series.iloc[-PERIOD_MONTH]
                     if month_ago > 0:
                         change_1m = (current / month_ago - 1) * 100
                         bond_data['change_1m'] = change_1m

@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Dict
 from ..components.macro_regression import MacroRegressionCalculator
+from ..tools.config import SENSITIVITY_THRESHOLDS
 
 class MacroSensitivityAnalyzer:
     """
@@ -39,19 +40,22 @@ class MacroSensitivityAnalyzer:
             reverse=True
         )
 
+        high_threshold = SENSITIVITY_THRESHOLDS['high']
+        moderate_threshold = SENSITIVITY_THRESHOLDS['moderate']
+
         high_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if abs(beta) > 0.5
+            if abs(beta) > high_threshold
         ]
         
         moderate_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if 0.2 <= abs(beta) <= 0.5
+            if moderate_threshold <= abs(beta) <= high_threshold
         ]
         
         low_exposure = [
             (name, beta) for name, beta in betas_sorted
-            if abs(beta) < 0.2
+            if abs(beta) < moderate_threshold
         ]
         
         return {
