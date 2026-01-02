@@ -1,9 +1,10 @@
+from ...analyzers.macro_factor_analyzer import MacroFactorAnalyzer
+from ..components.factor_contributions_plotter import FactorContributionsPlotter
+from ..components.factor_loadings_plotter import FactorLoadingsPlotter
+
+from typing import Dict, Optional
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import Dict, Optional
-from ..analyzers.macro_factor_analyzer import MacroFactorAnalyzer
-from ..visualizations.factor_contributions_plotter import FactorContributionsPlotter
-from ..visualizations.factor_loadings_plotter import FactorLoadingsPlotter
 
 class MacroFactorVisualizer:
     

@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Dict
-from ..analyzers.macro_correlation_analyzer import MacroCorrelationAnalyzer
-from ..visualizations.correlation_plotter import CorrelationPlotter
+from ...analyzers.macro_correlation_analyzer import MacroCorrelationAnalyzer
+from ..components.correlation_plotter import CorrelationPlotter
 
 class MacroCorrelationVisualizer:
     

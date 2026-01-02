@@ -258,47 +258,75 @@ class MacroRegressionCalculator:
     def calculate_risk_decomposition(
         self,
         result: RegressionResult,
-        portfolio_returns: pd.Series 
+        portfolio_returns: pd.Series = None 
     ) -> Dict[str, float]:
         """
         Descompone riesgo en sistemático vs idiosincrático.
+        
+        Nota: Por construcción, fitted_values + residuals = retornos originales
+        de la regresión, así que no necesitamos portfolio_returns externo.
         """
-        # Usar el índice común de la regresión (residuales)
+        # Usar el índice común de la regresión (ya está alineado)
         common_index = result.residuals.index
         
-        # Alinear retornos observados al índice de la regresión
-        portfolio_aligned = portfolio_returns.reindex(common_index)
-
+        # Los retornos originales son fitted + residuals (por construcción de OLS)
+        # Esto garantiza que estamos usando exactamente los mismos datos de la regresión
+        portfolio_original = result.fitted_values + result.residuals
+        
+        # Asegurar que fitted y residuals son Series con el índice correcto
         fitted_vals = result.fitted_values
         residual_vals = result.residuals
         
-        # Si son arrays, convertirlos a Series
         if not isinstance(fitted_vals, pd.Series):
-            fitted_vals = pd.Series(fitted_vals.flatten() if hasattr(fitted_vals, 'flatten') and fitted_vals.ndim > 1 else fitted_vals, index=common_index)
+            fitted_vals = pd.Series(
+                fitted_vals.flatten() if hasattr(fitted_vals, 'flatten') and fitted_vals.ndim > 1 else fitted_vals, 
+                index=common_index
+            )
         
         if not isinstance(residual_vals, pd.Series):
-            residual_vals = pd.Series(residual_vals.flatten() if hasattr(residual_vals, 'flatten') and residual_vals.ndim > 1 else residual_vals, index=common_index)
+            residual_vals = pd.Series(
+                residual_vals.flatten() if hasattr(residual_vals, 'flatten') and residual_vals.ndim > 1 else residual_vals, 
+                index=common_index
+            )
         
-        # Usar pd.concat que maneja mejor la alineación
-        df_temp = pd.concat({
-            'portfolio': portfolio_aligned,
+        # Crear DataFrame con todos los datos ya alineados (mismo índice)
+        df_clean = pd.DataFrame({
+            'portfolio': portfolio_original,
             'fitted': fitted_vals,
             'residuals': residual_vals
-        }, axis=1)
+        })
         
-        # Eliminar filas con NaN
-        df_clean = df_temp.dropna()
+        # Verificar que no hay NaN (no debería haberlos si todo está bien)
+        if df_clean.isna().any().any():
+            print(f"⚠️  Advertencia: Se encontraron NaN, eliminando filas...")
+            df_clean = df_clean.dropna()
         
-        # Calcular varianzas con datos alineados y limpios
+        if len(df_clean) == 0:
+            raise ValueError("No hay datos válidos después de limpiar NaN")
+        
+        # Calcular varianzas
         var_total = float(np.var(df_clean['portfolio'].values, ddof=0))
         var_systematic = float(np.var(df_clean['fitted'].values, ddof=0))
         var_idiosyncratic = float(np.var(df_clean['residuals'].values, ddof=0))
         
-        # Verificación: la suma debería ser aproximadamente igual
+        # Verificación matemática: Var(Y) = Var(Ŷ) + Var(ε) + 2*Cov(Ŷ,ε)
+        # En OLS, por construcción Cov(Ŷ,ε) = 0, así que: Var(Y) = Var(Ŷ) + Var(ε)
         sum_vars = var_systematic + var_idiosyncratic
-        if abs(var_total - sum_vars) > 1e-4:  # Aumentar tolerancia a 1e-4
+        
+        # Calcular también la covarianza para diagnóstico
+        cov_fitted_residual = float(np.cov(df_clean['fitted'].values, df_clean['residuals'].values)[0, 1])
+        
+        if abs(var_total - sum_vars) > 1e-4:
             print(f"⚠️  Advertencia: Var(Y) = {var_total:.6f} vs Var(Ŷ)+Var(ε) = {sum_vars:.6f}")
             print(f"   Diferencia: {abs(var_total - sum_vars):.6f} ({abs(var_total - sum_vars)/var_total*100:.2f}%)")
+            print(f"   Cov(Ŷ,ε) = {cov_fitted_residual:.6f} (debería ser ~0)")
+            print(f"   Datos usados: {len(df_clean)} observaciones")
+            print(f"   Media portfolio: {df_clean['portfolio'].mean():.6f}")
+            print(f"   Media fitted: {df_clean['fitted'].mean():.6f}")
+            print(f"   Media residuals: {df_clean['residuals'].mean():.6f}")
+            print(f"   Std portfolio: {df_clean['portfolio'].std():.6f}")
+            print(f"   Std fitted: {df_clean['fitted'].std():.6f}")
+            print(f"   Std residuals: {df_clean['residuals'].std():.6f}")
         
         return {
             'total_variance': var_total,

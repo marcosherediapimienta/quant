@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from typing import Dict, Optional
-from ..analyzers.macro_situation_analyzer import MacroSituationAnalyzer
-from ..visualizations.yield_curve_plotter import YieldCurvePlotter
+from ...analyzers.macro_situation_analyzer import MacroSituationAnalyzer
+from ..components.yield_curve_plotter import YieldCurvePlotter
 
 class MacroSituationVisualizer:
     

@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Dict, Optional
-from ..analyzers.macro_sensitivity_analyzer import MacroSensitivityAnalyzer
-from ..visualizations.rolling_betas_plotter import RollingBetasPlotter
-from ..visualizations.factor_loadings_plotter import FactorLoadingsPlotter
+from ...analyzers.macro_sensitivity_analyzer import MacroSensitivityAnalyzer
+from ..components.rolling_betas_plotter import RollingBetasPlotter
+from ..components.factor_loadings_plotter import FactorLoadingsPlotter
 
 class MacroSensitivityVisualizer:
     
