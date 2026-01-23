@@ -22,7 +22,8 @@ class MacroSituationAnalyzer:
         Returns:
             Dict con todos los análisis de situación macro
         """
-        return {
+        # Realizar todos los análisis
+        analysis_result = {
             'yield_curve': self.calculator.analyze_yield_curve_usa(factors_data),
             'inflation': self.calculator.analyze_inflation_signals(factors_data),
             'credit': self.calculator.analyze_credit_conditions(factors_data),
@@ -30,6 +31,11 @@ class MacroSituationAnalyzer:
             'risk_sentiment': self.calculator.analyze_risk_sentiment(factors_data),
             'snapshot': self.calculator.get_current_snapshot(factors_data)
         }
+        
+        # Agregar resumen ejecutivo con nivel de riesgo global
+        analysis_result['summary'] = self.get_summary(analysis_result)
+        
+        return analysis_result
     
     def get_summary(self, analysis: Dict) -> Dict:
         """

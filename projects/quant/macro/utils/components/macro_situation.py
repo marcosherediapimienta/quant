@@ -221,12 +221,12 @@ class MacroSituationAnalyzer:
         - < -5%: DEFLACIÓN
         """
         commodities = {
-            'GOLD': 'Oro',
-            'SILVER': 'Plata',
-            'OIL': 'Petróleo',
-            'COPPER': 'Cobre',
-            'WHEAT': 'Trigo',
-            'CORN': 'Maíz'
+            'GOLD': 'Gold',
+            'SILVER': 'Silver',
+            'OIL': 'Oil',
+            'COPPER': 'Copper',
+            'WHEAT': 'Wheat',
+            'CORN': 'Corn'
         }
         
         commodity_changes = {}
@@ -252,13 +252,13 @@ class MacroSituationAnalyzer:
             low_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['low']
             
             if avg_change > high_threshold:
-                pressure = "ALTA - Presión inflacionaria fuerte"
+                pressure = "HIGH - Strong inflationary pressure"
             elif avg_change > moderate_threshold:
-                pressure = "MODERADA - Inflación controlada"
+                pressure = "MODERATE - Controlled inflation"
             elif avg_change > low_threshold:
-                pressure = "BAJA - Inflación contenida"
+                pressure = "LOW - Contained inflation"
             else:
-                pressure = "DEFLACIÓN - Caída de precios"
+                pressure = "DEFLATION - Falling prices"
         else:
             pressure = "N/A"
             avg_change = np.nan
@@ -493,54 +493,82 @@ class MacroSituationAnalyzer:
             
         Regiones monitoreadas:
         - USA: GOVT_20Y
-        - Japón: JPN_BOND
-        - Europa: EUR_BOND
-        - Alemania: GER_BOND
+        - Japan: JPN_BOND
+        - Europe: EUR_BOND
+        - Germany: GER_BOND
         - UK: UK_BOND
-        - Emergentes: EM_BOND
+        - Emerging Markets: EM_BOND
+        - China: CHINA_BOND
+        - Canada: CAN_BOND
+        - Australia: AUS_BOND
+        - International: INTL_BOND
         
         Para cada región:
         - Nivel actual
-        - Cambio 1m, 1y
+        - Cambio 1m (21 trading days), 1y (252 trading days)
         """
         bonds = {}
+        # Mapeo de factores a regiones con vencimientos
         regions = {
-            'USA': 'GOVT_20Y',
-            'Japón': 'JPN_BOND',
-            'Europa': 'EUR_BOND',
-            'Alemania': 'GER_BOND',
-            'UK': 'UK_BOND',
-            'Emergentes': 'EM_BOND'
+            'GOVT_20Y': {'region': 'USA', 'tenor': '20Y'},
+            'GOVT_7_10Y': {'region': 'USA', 'tenor': '7-10Y'},
+            'GOVT_1_3Y': {'region': 'USA', 'tenor': '1-3Y'},
+            'RATE_3M': {'region': 'USA', 'tenor': '3M'},
+            'RATE_2Y': {'region': 'USA', 'tenor': '2Y'},
+            'RATE_5Y': {'region': 'USA', 'tenor': '5Y'},
+            'RATE_10Y': {'region': 'USA', 'tenor': '10Y'},
+            'RATE_30Y': {'region': 'USA', 'tenor': '30Y'},
+            'JPN_BOND': {'region': 'Japan', 'tenor': '10Y'},
+            'EUR_BOND': {'region': 'Europe', 'tenor': '10Y'},
+            'GER_BOND': {'region': 'Germany', 'tenor': '10Y'},
+            'UK_BOND': {'region': 'UK', 'tenor': '10Y'},
+            'EM_BOND': {'region': 'Emerging Markets', 'tenor': '10Y'},
+            'CHINA_BOND': {'region': 'China', 'tenor': '10Y'},
+            'CAN_BOND': {'region': 'Canada', 'tenor': '10Y'},
+            'AUS_BOND': {'region': 'Australia', 'tenor': '10Y'},
+            'INTL_BOND': {'region': 'International', 'tenor': '10Y'}
         }
         
-        for region, factor in regions.items():
-            if factor in factors_data and len(factors_data[factor]) > 0:
+        print(f"[analyze_global_bonds Debug] Factores disponibles en factors_data: {list(factors_data.keys())}")
+        print(f"[analyze_global_bonds Debug] Factores buscados: {list(regions.keys())}")
+        
+        for factor, bond_info in regions.items():
+            if factor in factors_data:
                 series = factors_data[factor]
-                current = series.iloc[-1]
-                bond_data = {'level': current}
+                if len(series) > 0:
+                    current = series.iloc[-1]
+                    # Crear nombre con región y vencimiento
+                    region_name = f"{bond_info['region']} {bond_info['tenor']}"
+                    bond_data = {'level': current}
 
-                if len(series) >= PERIOD_YEAR:
-                    year_ago = series.iloc[-PERIOD_YEAR]
-                    if year_ago > 0:
-                        change_1y = (current / year_ago - 1) * 100
-                        bond_data['change_1y'] = change_1y
+                    if len(series) >= PERIOD_YEAR:
+                        year_ago = series.iloc[-PERIOD_YEAR]
+                        if year_ago > 0:
+                            change_1y = (current / year_ago - 1) * 100
+                            bond_data['change_1y'] = change_1y
+                        else:
+                            bond_data['change_1y'] = np.nan
                     else:
                         bond_data['change_1y'] = np.nan
-                else:
-                    bond_data['change_1y'] = np.nan
 
-                if len(series) >= PERIOD_MONTH:
-                    month_ago = series.iloc[-PERIOD_MONTH]
-                    if month_ago > 0:
-                        change_1m = (current / month_ago - 1) * 100
-                        bond_data['change_1m'] = change_1m
+                    if len(series) >= PERIOD_MONTH:
+                        month_ago = series.iloc[-PERIOD_MONTH]
+                        if month_ago > 0:
+                            change_1m = (current / month_ago - 1) * 100
+                            bond_data['change_1m'] = change_1m
+                        else:
+                            bond_data['change_1m'] = np.nan
                     else:
                         bond_data['change_1m'] = np.nan
+                    
+                    bonds[region_name] = bond_data
+                    print(f"[analyze_global_bonds Debug] Bono agregado: {region_name} (factor: {factor})")
                 else:
-                    bond_data['change_1m'] = np.nan
-                
-                bonds[region] = bond_data
+                    print(f"[analyze_global_bonds Debug] Factor {factor} encontrado pero sin datos (len={len(series)})")
+            else:
+                print(f"[analyze_global_bonds Debug] Factor {factor} NO encontrado en factors_data")
         
+        print(f"[analyze_global_bonds Debug] Bonos finales: {list(bonds.keys())}")
         return bonds
     
     def get_current_snapshot(

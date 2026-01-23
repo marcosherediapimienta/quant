@@ -21,12 +21,16 @@ MACRO_FACTORS = {
     'GOVT_20Y': 'TLT',
     'TIPS': 'TIP',
     
-    # Bonos internacionales
-    'JPN_BOND': 'JPGB.L',
-    'EUR_BOND': 'IEAG.L',
-    'GER_BOND': 'DBEU',
-    'UK_BOND': 'IGLT.L',
-    'EM_BOND': 'EMB',
+    # Bonos internacionales (ETFs)
+    'JPN_BOND': 'DBJP',      # iShares Japan Bond ETF
+    'EUR_BOND': 'IBND',      # SPDR International Corporate Bond ETF
+    'GER_BOND': 'BUNL',      # iShares Germany Government Bond ETF
+    'UK_BOND': 'IGOV',       # iShares International Treasury Bond ETF (includes UK)
+    'EM_BOND': 'EMB',        # iShares JP Morgan USD Emerging Markets Bond ETF
+    'CHINA_BOND': 'CBON',    # VanEck China Bond ETF
+    'CAN_BOND': 'AGG',       # iShares Core US Aggregate Bond ETF (proxy for Canada)
+    'AUS_BOND': 'BWX',       # SPDR Bloomberg International Treasury Bond ETF (proxy for Australia)
+    'INTL_BOND': 'BWX',      # SPDR Bloomberg International Treasury Bond ETF (general international)
     
     # Credit spreads
     'HYG': 'HYG',
@@ -74,7 +78,7 @@ MACRO_FACTOR_CATEGORIES = {
     'volatility': ['VIX', 'VXN'],
     'interest_rates': ['RATE_3M', 'RATE_2Y', 'RATE_5Y', 'RATE_10Y', 'RATE_30Y'],
     'us_bonds': ['GOVT_1_3Y', 'GOVT_7_10Y', 'GOVT_20Y', 'TIPS'],
-    'intl_bonds': ['JPN_BOND', 'EUR_BOND', 'GER_BOND', 'UK_BOND', 'EM_BOND'],
+    'intl_bonds': ['JPN_BOND', 'EUR_BOND', 'GER_BOND', 'UK_BOND', 'EM_BOND', 'CHINA_BOND', 'CAN_BOND', 'AUS_BOND', 'INTL_BOND'],
     'credit': ['HYG', 'LQD', 'JNK'],
     'currencies': ['DXY', 'EUR_USD', 'GBP_USD', 'USD_JPY'],
     'metals': ['GOLD', 'SILVER', 'COPPER'],

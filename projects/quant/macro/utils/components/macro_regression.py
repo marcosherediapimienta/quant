@@ -109,7 +109,16 @@ class MacroRegressionCalculator:
             fit = model.fit()
 
         alpha_daily = float(fit.params[0])
-        alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
+        
+        # Anualizar alpha con validación para evitar valores extremos
+        # Si alpha_daily <= -1 (-100% o peor), la fórmula compuesta no tiene sentido
+        # En ese caso, usar aproximación lineal
+        if alpha_daily > -0.99:  # Solo aplicar fórmula compuesta si alpha > -99%
+            alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
+        else:
+            # Para alphas muy negativos, usar aproximación lineal
+            alpha_annual = alpha_daily * self.annual_factor
+        
         betas = {name: float(fit.params[i+1]) for i, name in enumerate(factor_names)}
         t_stats = {name: float(fit.tvalues[i+1]) for i, name in enumerate(factor_names)}
         p_values = {name: float(fit.pvalues[i+1]) for i, name in enumerate(factor_names)}

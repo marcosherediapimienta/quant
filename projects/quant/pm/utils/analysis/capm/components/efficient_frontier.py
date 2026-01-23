@@ -67,8 +67,23 @@ class EfficientFrontierCalculator:
             )
         
         assets = list(returns.columns)
-        mean_ret = returns.mean() * self.annual_factor
-        cov_matrix = returns.cov() * self.annual_factor
+        
+        # Limpiar NaN antes de calcular estadísticas
+        returns_clean = returns.dropna()
+        
+        if returns_clean.empty:
+            return FrontierResult(
+                np.array([]), np.array([]), np.array([]), [],
+                None, None, 0
+            )
+        
+        mean_ret = returns_clean.mean() * self.annual_factor
+        cov_matrix = returns_clean.cov() * self.annual_factor
+        
+        # Verificar que no haya NaN en mean_ret
+        if mean_ret.isna().any():
+            # Si hay NaN, usar 0 como fallback o eliminar esos activos
+            mean_ret = mean_ret.fillna(0)
         
         n = len(assets)
         bounds = tuple((-1, 1) if allow_short else (0, 1) for _ in range(n))

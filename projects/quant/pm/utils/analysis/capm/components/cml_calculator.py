@@ -43,10 +43,27 @@ class CMLCalculator:
             )
 
         sharpe = (frontier_returns - risk_free_rate) / np.maximum(frontier_volatilities, EPSILON)
-
-        tangent_idx = int(np.argmax(sharpe))
-        tangent_ret = frontier_returns[tangent_idx]
-        tangent_vol = frontier_volatilities[tangent_idx]
+        
+        # Filtrar NaN en sharpe ratios
+        valid_indices = ~np.isnan(sharpe) & ~np.isnan(frontier_returns) & ~np.isnan(frontier_volatilities)
+        
+        if not np.any(valid_indices):
+            return CMLResult(
+                np.array([]), np.array([]), np.nan, np.nan, -1, np.nan
+            )
+        
+        # Usar solo índices válidos
+        valid_sharpe = sharpe[valid_indices]
+        valid_returns = frontier_returns[valid_indices]
+        valid_volatilities = frontier_volatilities[valid_indices]
+        
+        tangent_idx_valid = int(np.argmax(valid_sharpe))
+        tangent_ret = valid_returns[tangent_idx_valid]
+        tangent_vol = valid_volatilities[tangent_idx_valid]
+        
+        # Encontrar el índice original en el array completo
+        valid_indices_list = np.where(valid_indices)[0]
+        tangent_idx = valid_indices_list[tangent_idx_valid]
 
         slope = (tangent_ret - risk_free_rate) / tangent_vol if tangent_vol > 0 else 0.0
 
