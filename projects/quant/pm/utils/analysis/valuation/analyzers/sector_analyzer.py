@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import warnings
+# Suprimir warnings de Pandas4Warning de yfinance
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
 from typing import Dict, List, Callable
 from dataclasses import dataclass

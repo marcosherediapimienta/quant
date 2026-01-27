@@ -1,6 +1,9 @@
 # projects/quant/pm/utils/analysis/portfolio/components/index_fetcher.py
 import pandas as pd
 from typing import List, Dict
+import warnings
+# Suprimir warnings de Pandas4Warning de yfinance
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
 from ....tools.config import INDEX_CONFIG
 
