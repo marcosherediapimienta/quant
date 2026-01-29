@@ -57,26 +57,19 @@ class SectorAnalyzer:
         industry: str, 
         sector: str
     ) -> List[str]:
-        """
-        Fetcher por defecto de peers (placeholder).
-        
-        En producción, esto debería conectarse a:
-        - API de clasificación sectorial
-        - Base de datos de empresas por sector
-        - Screening de peers similares
-        """
+        """Usa SECTOR_PEERS de config si el sector está definido."""
         peers = []
-        
         try:
-            stock = yf.Ticker(ticker)
-            # yfinance no proporciona peers directamente
-            # Aquí iría lógica personalizada de identificación de peers
-            if hasattr(stock, 'recommendations') and stock.recommendations is not None:
-                pass
-            
+            from ....tools.config import SECTOR_PEERS
+            sector_key = (sector or '').strip()
+            # Opcional: quitar sufijo " Sector" para coincidir con la key
+            if sector_key.endswith(' Sector'):
+                sector_key = sector_key.replace(' Sector', '').strip()
+            if sector_key and sector_key in SECTOR_PEERS:
+                candidates = [p for p in SECTOR_PEERS[sector_key] if p.upper() != ticker.upper()]
+                peers = candidates[: self.max_peers]
         except Exception:
             pass
-        
         return peers
     
     def analyze_vs_peers(

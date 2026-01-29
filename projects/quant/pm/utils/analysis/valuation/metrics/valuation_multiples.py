@@ -103,7 +103,6 @@ class ValuationMultiples:
             'overall': self._overall_valuation(metrics)
         }
         
-        # Score usando pesos y rangos de config
         scores = []
         weights_list = []
         cfg_weights = self.config['weights']
@@ -143,6 +142,15 @@ class ValuationMultiples:
                 cfg_ranges['fcf_yield']['max']
             ))
             weights_list.append(cfg_weights['fcf_yield'])
+
+        if pd.notna(peg) and peg > 0 and 'peg_ratio' in cfg_ranges and 'peg_ratio' in cfg_weights:
+            scores.append(score_metric(
+                peg,
+                cfg_ranges['peg_ratio']['min'],
+                cfg_ranges['peg_ratio']['max'],
+                higher_is_better=False
+            ))
+            weights_list.append(cfg_weights['peg_ratio'])
         
         total_weight = sum(weights_list)
         valuation_score = sum(s * w for s, w in zip(scores, weights_list)) / total_weight if total_weight > 0 else np.nan
@@ -153,7 +161,7 @@ class ValuationMultiples:
             'score': valuation_score,
             'alerts': self._generate_alerts(metrics)
         }
-    
+
     def _classify_pe(self, value: float) -> str:
         """Clasifica P/E según umbrales."""
         if pd.isna(value) or value <= 0:
