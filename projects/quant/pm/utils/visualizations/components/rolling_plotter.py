@@ -3,7 +3,6 @@ import pandas as pd
 from typing import Optional, Tuple
 
 class RollingPlotter:
-    
     def __init__(self, figsize: Tuple[int, int] = (12, 6)):
         self.figsize = figsize
     

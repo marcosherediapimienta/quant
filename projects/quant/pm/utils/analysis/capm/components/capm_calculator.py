@@ -26,6 +26,7 @@ class CAPMCalculator:
         y = asset_returns - risk_free_rate_daily
         x = market_returns - risk_free_rate_daily
         X = np.c_[np.ones_like(x), x]
+
         try:
             params = np.linalg.lstsq(X, y, rcond=None)[0]
             alpha_daily = float(params[0])
@@ -39,7 +40,6 @@ class CAPMCalculator:
             corr = np.nan
 
         jensen_alpha = self._annualize_alpha(alpha_daily)
-        
         return CAPMResult(alpha_daily, beta, corr, jensen_alpha)
     
     def _annualize_alpha(self, alpha_daily: float) -> float:

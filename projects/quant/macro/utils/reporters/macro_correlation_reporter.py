@@ -2,7 +2,6 @@ from typing import Dict
 from ..analyzers.macro_correlation_analyzer import MacroCorrelationAnalyzer
 
 class MacroCorrelationReporter:
-
     def __init__(self, analyzer: MacroCorrelationAnalyzer):
         self.analyzer = analyzer
 

@@ -1,17 +1,17 @@
 import numpy as np
 import pandas as pd
-import warnings
-# Suprimir warnings de Pandas4Warning de yfinance
-warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
+import warnings
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+
 from typing import Dict, List, Callable
 from dataclasses import dataclass
+
 from .company_analyzer import CompanyAnalyzer
 from ....tools.config import SECTOR_ANALYSIS_CONFIG
 
 @dataclass
 class PercentileInterpretation:
-    """Configuración de interpretación de percentiles."""
     top_performer: float = None
     above_average: float = None
     average: float = None
@@ -19,7 +19,6 @@ class PercentileInterpretation:
     labels: Dict[str, str] = None
     
     def __post_init__(self):
-        # Cargar desde config si no se proporciona
         cfg = SECTOR_ANALYSIS_CONFIG
         self.top_performer = self.top_performer or cfg['percentile_thresholds']['top_performer']
         self.above_average = self.above_average or cfg['percentile_thresholds']['above_average']
@@ -28,17 +27,6 @@ class PercentileInterpretation:
         self.labels = self.labels or cfg['percentile_labels'].copy()
 
 class SectorAnalyzer:
-    """
-    Analiza empresa vs peers del sector.
-    
-    Responsabilidad: Comparar métricas de empresa con competidores del mismo sector.
-    
-    Metodología:
-    - Identifica peers (mismo sector/industria)
-    - Calcula posición relativa en cada métrica
-    - Determina percentil general (top 20%, promedio, etc.)
-    """
-
     def __init__(
         self,
         company_analyzer: CompanyAnalyzer = None,
@@ -57,14 +45,15 @@ class SectorAnalyzer:
         industry: str, 
         sector: str
     ) -> List[str]:
-        """Usa SECTOR_PEERS de config si el sector está definido."""
+
         peers = []
         try:
             from ....tools.config import SECTOR_PEERS
             sector_key = (sector or '').strip()
-            # Opcional: quitar sufijo " Sector" para coincidir con la key
+
             if sector_key.endswith(' Sector'):
                 sector_key = sector_key.replace(' Sector', '').strip()
+
             if sector_key and sector_key in SECTOR_PEERS:
                 candidates = [p for p in SECTOR_PEERS[sector_key] if p.upper() != ticker.upper()]
                 peers = candidates[: self.max_peers]
@@ -78,17 +67,7 @@ class SectorAnalyzer:
         peers: List[str] = None,
         fetch_peers: bool = True
     ) -> Dict:
-        """
-        Analiza empresa vs peers del sector.
-        
-        Args:
-            ticker: Ticker de la empresa
-            peers: Lista opcional de peers (si None, intenta fetch)
-            fetch_peers: Si True, intenta buscar peers automáticamente
-            
-        Returns:
-            Dict con análisis completo vs peers
-        """
+
         company_result = self.company_analyzer.analyze(ticker)
         
         if not company_result.get('success'):
@@ -131,7 +110,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> Dict:
-        """Calcula posición relativa en cada categoría de score."""
+
         if not peers:
             return {'note': 'Sin peers para comparar'}
         
@@ -171,7 +150,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> Dict:
-        """Calcula percentil de la empresa vs peers."""
+
         valid_peers = {t: r for t, r in peers.items() if r.get('success')}
         
         if not valid_peers:
@@ -202,7 +181,6 @@ class SectorAnalyzer:
         }
     
     def _interpret_percentile(self, percentile: float) -> str:
-        """Interpreta percentil usando config."""
         cfg = self.percentile_config
         labels = cfg.labels
         
@@ -222,7 +200,7 @@ class SectorAnalyzer:
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> pd.DataFrame:
-        """Crea DataFrame comparativo."""
+    
         all_results = {company['ticker']: company}
         all_results.update(peers)
         return self.company_analyzer.get_summary_df(all_results)

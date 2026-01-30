@@ -11,12 +11,6 @@ class SMLResult:
     slope: float
 
 class SMLCalculator:
-    """
-    Calcula la Security Market Line (SML).
-    
-    Responsabilidad: Determinar retornos esperados según CAPM para diferentes betas.
-    """
-
     def calculate(
         self,
         risk_free_rate: float,
@@ -24,18 +18,7 @@ class SMLCalculator:
         max_beta: float = None,
         n_points: int = None
     ) -> SMLResult:
-        """
-        Calcula la Security Market Line.
-        
-        Args:
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno esperado del mercado
-            max_beta: Beta máximo para graficar. Por defecto usa config
-            n_points: Número de puntos. Por defecto usa config
-            
-        Returns:
-            SMLResult con línea SML
-        """
+
         if max_beta is None:
             max_beta = SML_CONFIG['max_beta']
         
@@ -56,17 +39,7 @@ class SMLCalculator:
         risk_free_rate: float,
         market_return: float
     ) -> float:
-        """
-        Calcula el retorno esperado según CAPM para un beta específico.
-        
-        Args:
-            beta: Beta del activo
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno esperado del mercado
-            
-        Returns:
-            Retorno esperado según CAPM
-        """
+
         if np.isnan(beta):
             return np.nan
         return risk_free_rate + beta * (market_return - risk_free_rate)
@@ -78,18 +51,7 @@ class SMLCalculator:
         risk_free_rate: float,
         market_return: float
     ) -> bool:
-        """
-        Determina si un activo está infravalorado (retorno > esperado).
-        
-        Args:
-            actual_return: Retorno real del activo
-            beta: Beta del activo
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno del mercado
-            
-        Returns:
-            True si el activo está infravalorado
-        """
+
         expected = self.expected_return_for_beta(beta, risk_free_rate, market_return)
         if np.isnan(expected) or np.isnan(actual_return):
             return False

@@ -11,18 +11,7 @@ from ....tools.config import (
 )
 
 class VarEsAnalyzer:
-    """
-    Analyzer para calcular VaR y ES en múltiples niveles de confianza.
-    
-    Responsabilidad: Coordinar cálculos de VaR y ES para diferentes métodos 
-    y niveles de confianza.
-    """
-    
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.var_calc = VaRCalculator(self.annual_factor)
         self.es_calc = ESCalculator(self.annual_factor)
@@ -36,20 +25,7 @@ class VarEsAnalyzer:
         n_simulations: int = None,
         seed: int = None
     ) -> Dict[float, Dict[str, Dict[str, float]]]:
-        """
-        Calcula VaR y ES para múltiples niveles de confianza y métodos.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            confidence_levels: Tupla de niveles de confianza
-            methods: Lista de métodos a usar
-            n_simulations: Número de simulaciones para Monte Carlo
-            seed: Semilla para reproducibilidad
-            
-        Returns:
-            Dict con resultados organizados por nivel de confianza y método
-        """
+
         if confidence_levels is None:
             confidence_levels = (0.90, DEFAULT_CONFIDENCE_LEVEL, 0.99)
         
@@ -68,7 +44,7 @@ class VarEsAnalyzer:
             results[cl] = {}
             
             for method in methods:
-                # Manejo especial para Monte Carlo que requiere parámetros adicionales
+
                 if method == 'monte_carlo':
                     var_result = self.var_calc.calculate_monte_carlo(
                         returns, weights, cl,
@@ -81,15 +57,12 @@ class VarEsAnalyzer:
                         seed=seed
                     )
                 else:
-                    # Para historical, parametric, cornish_fisher
                     var_result = self.var_calc.calculate(
                         returns, weights, cl, method
                     )
                     es_result = self.es_calc.calculate(
                         returns, weights, cl, method
                     )
-                
-                # Combinar resultados de VaR y ES
                 results[cl][method] = {
                     **var_result,
                     **es_result

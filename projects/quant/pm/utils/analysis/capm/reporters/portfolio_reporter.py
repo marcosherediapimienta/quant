@@ -3,17 +3,7 @@ from ..analyzers.portfolio_optimization_analyzer import PortfolioOptimizationAna
 from ....tools.config import MIN_WEIGHT_DISPLAY
 
 class PortfolioReporter:
-    """
-    Reporter para generar informes de optimización de portafolio.
-    
-    Responsabilidad: Formatear y presentar resultados de optimización.
-    """
-
     def __init__(self, portfolio_analyzer: PortfolioOptimizationAnalyzer):
-        """
-        Args:
-            portfolio_analyzer: Instancia de PortfolioOptimizationAnalyzer
-        """
         self.analyzer = portfolio_analyzer
     
     def generate_tangent_report(
@@ -22,14 +12,7 @@ class PortfolioReporter:
         risk_free_rate: float,
         allow_short: bool = False
     ) -> None:
-        """
-        Genera reporte del portafolio tangente (máximo Sharpe).
-        
-        Args:
-            returns: DataFrame con retornos de activos
-            risk_free_rate: Tasa libre de riesgo anualizada
-            allow_short: Si permite ventas en corto
-        """
+
         results = self.analyzer.analyze_efficient_frontier(
             returns, risk_free_rate, allow_short=allow_short
         )
@@ -40,7 +23,6 @@ class PortfolioReporter:
             return
         
         print("PORTAFOLIO TANGENTE (Máximo Sharpe)".center(60))
-        
         print("CARACTERÍSTICAS")
         print(f"  Retorno Esperado:        {tangent['return']*100:>8.2f}%")
         print(f"  Volatilidad:             {tangent['volatility']*100:>8.2f}%")
@@ -63,13 +45,7 @@ class PortfolioReporter:
         returns: pd.DataFrame,
         allow_short: bool = False
     ) -> None:
-        """
-        Genera reporte del portafolio de mínima varianza.
-        
-        Args:
-            returns: DataFrame con retornos de activos
-            allow_short: Si permite ventas en corto
-        """
+
         results = self.analyzer.analyze_minimum_variance(returns, allow_short)
         
         if results['weights'] is None or len(results['weights']) == 0:
@@ -77,7 +53,6 @@ class PortfolioReporter:
             return
 
         print("PORTAFOLIO DE MÍNIMA VARIANZA".center(60))
-        
         print("CARACTERÍSTICAS")
         print(f"  Retorno Esperado:        {results['return']*100:>8.2f}%")
         print(f"  Volatilidad:             {results['volatility']*100:>8.2f}%")

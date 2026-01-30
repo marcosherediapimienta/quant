@@ -4,17 +4,7 @@ from ..components.rolling_plotter import RollingPlotter
 from ...tools.config import ANNUAL_FACTOR
 
 class RatioVisualizer:
-    """
-    Visualizer para gráficos de ratios rolling.
-    
-    Responsabilidad: Generar visualizaciones de Sharpe y Sortino rolling.
-    """
-    
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.rolling_plotter = RollingPlotter()
     
@@ -23,16 +13,7 @@ class RatioVisualizer:
         rolling_data: pd.DataFrame,
         figsize: tuple = (14, 8)
     ) -> plt.Figure:
-        """
-        Genera gráficos de ratios rolling.
-        
-        Args:
-            rolling_data: DataFrame con sharpe_rolling y sortino_rolling
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con los gráficos
-        """
+
         fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
 
         self.rolling_plotter.plot_rolling_ratio(

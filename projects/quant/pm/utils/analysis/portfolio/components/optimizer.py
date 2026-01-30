@@ -5,7 +5,6 @@ from scipy.optimize import minimize
 from ....tools.config import PORTFOLIO_CONFIG
 
 class WeightOptimizer:
-
     def __init__(
         self,
         risk_free_rate: float = 0.0,
@@ -73,8 +72,6 @@ class WeightOptimizer:
 
         constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
         bounds = tuple((0, 1) for _ in range(n))
-
-        # Agregar timeout y límite de iteraciones para evitar que se quede atascado
         result = minimize(
             neg_sharpe,
             x0=np.array([1/n] * n),

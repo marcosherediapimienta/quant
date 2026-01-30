@@ -48,6 +48,7 @@ def extract_adj_close_prices(data: pd.DataFrame, tickers: list) -> pd.DataFrame:
     return df.dropna(how='all').sort_index()
 
 def validate_benchmark(benchmark_name: str, available_benchmarks: dict) -> str:
+    
     if benchmark_name not in available_benchmarks:
         available = ', '.join(available_benchmarks.keys())
         raise ValueError(
