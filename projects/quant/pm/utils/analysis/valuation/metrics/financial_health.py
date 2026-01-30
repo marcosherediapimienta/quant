@@ -158,21 +158,21 @@ class FinancialHealthMetrics:
         debt_ebitda = metrics['debt_ebitda']
         if pd.notna(debt_ebitda):
             if debt_ebitda > alert_cfg['debt_ebitda_danger']:
-                alerts.append(f"Deuda/EBITDA muy alta ({debt_ebitda:.1f}x): riesgo de insolvencia")
+                alerts.append(f"Debt/EBITDA very high ({debt_ebitda:.1f}x): insolvency risk")
             elif debt_ebitda > alert_cfg['debt_ebitda_warning']:
-                alerts.append(f"Deuda/EBITDA elevada ({debt_ebitda:.1f}x): vigilar capacidad de pago")
+                alerts.append(f"Debt/EBITDA elevated ({debt_ebitda:.1f}x): monitor payment capacity")
 
         current_ratio = metrics['current_ratio']
         if pd.notna(current_ratio) and current_ratio < alert_cfg['current_ratio_low']:
-            alerts.append(f"Current Ratio bajo ({current_ratio:.2f}): problemas de liquidez")
+            alerts.append(f"Current Ratio low ({current_ratio:.2f}): liquidity issues")
 
         fcf = metrics['free_cash_flow']
         if pd.notna(fcf) and fcf < alert_cfg.get('fcf_negative', 0):
-            alerts.append("Free Cash Flow negativo: la empresa consume caja")
+            alerts.append("Negative Free Cash Flow: company is consuming cash")
 
         net_cash = metrics['net_cash']
         if pd.notna(net_cash) and net_cash < alert_cfg.get('net_cash_negative', 0):
-            alerts.append("Posición de caja neta negativa (más deuda que caja)")
+            alerts.append("Negative net cash position (more debt than cash)")
         
         return alerts
 

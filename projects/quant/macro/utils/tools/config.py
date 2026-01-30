@@ -188,7 +188,7 @@ MACRO_ANALYSIS = {
     'correlation': {
         'default_lag_window': 126,    # ~6 meses
         'min_observations': 60,
-        'max_lag': 126,
+        'max_lag': 30,                # Reducido de 126 a 30 días (~1 mes)
         'hac_maxlags': 5,
     },
     

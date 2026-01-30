@@ -18,7 +18,15 @@ class CompanySelector:
         
         self.min_score = min_score if min_score > 0 else config['min_score']
         self.max_companies = max_companies if max_companies > 0 else config['max_companies']
-        self.max_per_sector = max_per_sector if max_per_sector > 0 else config['max_per_sector']
+        # Si max_per_sector no se especifica, usar el valor por defecto
+        # Pero si max_companies es mayor, ajustar max_per_sector para que no limite innecesariamente
+        default_max_per_sector = config['max_per_sector']
+        if max_per_sector > 0:
+            self.max_per_sector = max_per_sector
+        else:
+            # Ajustar max_per_sector para que no limite si max_companies es mayor
+            # Si max_companies es 10 y max_per_sector es 3, permitir más empresas por sector
+            self.max_per_sector = max(default_max_per_sector, self.max_companies // 3)
         self.default_sector = default_sector if default_sector else defaults['sector_name']
         self.score_extractor = ScoreExtractor()
         self.scoring_weights = PORTFOLIO_CONFIG['scoring_weights']
@@ -32,14 +40,24 @@ class CompanySelector:
         if not method:
             method = PORTFOLIO_CONFIG['selection']['default_method']
         
+        print(f"   📊 Convirtiendo {len(analysis_results)} resultados a DataFrame...")
         df = self._to_dataframe(analysis_results)
+        print(f"   📊 DataFrame tiene {len(df)} filas")
+        
+        print(f"   🔍 Filtrando por min_score >= {self.min_score}...")
         df = df[df['total'] >= self.min_score].copy()
+        print(f"   ✅ {len(df)} empresas superan el min_score")
         
         if df.empty:
+            print(f"   ❌ No hay empresas con score >= {self.min_score}")
             return []
         
+        print(f"   📈 Aplicando método de scoring: {method}")
         df = self._score_by_method(df, method)
+        
+        print(f"   🎲 Aplicando diversificación (max_per_sector: {self.max_per_sector})...")
         selected = self._apply_diversification(df)
+        print(f"   ✅ Seleccionadas {len(selected)} empresas tras diversificación")
         
         return selected[:self.max_companies]
     
@@ -87,6 +105,7 @@ class CompanySelector:
         selected = []
         sector_count = {}
         
+        # Primera pasada: intentar diversificar respetando max_per_sector
         for _, row in df.iterrows():
             if len(selected) >= self.max_companies:
                 break
@@ -95,5 +114,29 @@ class CompanySelector:
             if sector_count.get(sector, 0) < self.max_per_sector:
                 selected.append(row['ticker'])
                 sector_count[sector] = sector_count.get(sector, 0) + 1
+        
+        # Segunda pasada: si no alcanzamos max_companies, relajar la restricción
+        # Calcular cuántos sectores únicos hay disponibles
+        unique_sectors = df['sector'].nunique()
+        
+        if len(selected) < self.max_companies:
+            # Si hay pocos sectores, permitir más empresas por sector
+            if unique_sectors <= 3:
+                # Con 3 o menos sectores, permitir hasta max_companies por sector
+                relaxed_limit = self.max_companies
+            else:
+                # Con más sectores, permitir más empresas por sector pero mantener diversificación
+                relaxed_limit = max(self.max_per_sector, self.max_companies // unique_sectors + 1)
+            
+            for _, row in df.iterrows():
+                if len(selected) >= self.max_companies:
+                    break
+                
+                ticker = row['ticker']
+                if ticker not in selected:
+                    sector = row['sector']
+                    if sector_count.get(sector, 0) < relaxed_limit:
+                        selected.append(ticker)
+                        sector_count[sector] = sector_count.get(sector, 0) + 1
         
         return selected

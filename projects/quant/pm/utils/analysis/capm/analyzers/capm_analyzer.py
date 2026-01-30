@@ -22,8 +22,18 @@ class CAPMAnalyzer:
     ) -> Dict:
  
         rf_daily = daily_risk_free_rate(risk_free_rate, self.annual_factor)
+        
+        # Calcular correlación usando el método simple (para R²)
         capm = self.capm_calc.calculate(asset_returns, market_returns, rf_daily)
+        
+        # Calcular alpha, beta y significancia usando statsmodels con HAC (más robusto)
         alpha_test = self.alpha_test.test(asset_returns, market_returns, rf_daily)
+
+        # Usar los valores del alpha_test para consistencia matemática
+        # (el t-statistic y p-value corresponden a estos valores)
+        alpha_daily = alpha_test.alpha_daily if not np.isnan(alpha_test.alpha_daily) else capm.alpha_daily
+        beta = alpha_test.beta if not np.isnan(alpha_test.beta) else capm.beta
+        alpha_annual = alpha_test.jensen_alpha if not np.isnan(alpha_test.jensen_alpha) else capm.jensen_alpha
 
         try:
             r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
@@ -31,9 +41,9 @@ class CAPMAnalyzer:
             r_squared = np.nan
 
         return {
-            'alpha_daily': capm.alpha_daily,
-            'alpha_annual': capm.jensen_alpha,
-            'beta': capm.beta,
+            'alpha_daily': alpha_daily,
+            'alpha_annual': alpha_annual,
+            'beta': beta,
             'correlation': capm.correlation,
             'r_squared': r_squared,
             't_statistic': alpha_test.t_statistic,

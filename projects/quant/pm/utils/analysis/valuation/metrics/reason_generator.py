@@ -60,7 +60,7 @@ class ReasonGenerator:
         # Alertas específicas (mostrar primeras 2)
         reasons.extend(self._extract_alerts(analysis))
         
-        return reasons if reasons else ["Sin razones específicas"]
+        return reasons if reasons else ["No specific reasons"]
     
     def _valuation_reasons(self, score: float) -> List[str]:
         """Genera razones de valoración."""
@@ -68,13 +68,13 @@ class ReasonGenerator:
         thresh = self.thresholds['valuation']
         
         if score >= thresh['excellent']:
-            reasons.append("💰 Valoración atractiva - Precio por debajo del valor justo")
+            reasons.append("💰 Attractive valuation - Price below fair value")
         elif score >= thresh['good']:
-            reasons.append("💵 Valoración razonable - Precio cerca del valor justo")
+            reasons.append("💵 Reasonable valuation - Price near fair value")
         elif score <= thresh['very_poor']:
-            reasons.append("⚠️ Sobrevalorada - Precio significativamente por encima del valor justo")
+            reasons.append("⚠️ Overvalued - Price significantly above fair value")
         elif score <= thresh['poor']:
-            reasons.append("⚡ Valoración elevada - Precio por encima del valor justo")
+            reasons.append("⚡ High valuation - Price above fair value")
         
         return reasons
     
@@ -84,11 +84,11 @@ class ReasonGenerator:
         thresh = self.thresholds['fundamental']
         
         if score >= thresh['exceptional']:
-            reasons.append("⭐ Empresa de calidad excepcional")
+            reasons.append("⭐ Exceptional quality company")
         elif score >= thresh['good']:
-            reasons.append("✅ Sólidos fundamentales")
+            reasons.append("✅ Solid fundamentals")
         elif score <= thresh['weak']:
-            reasons.append("⚠️ Fundamentales débiles - Mayor riesgo")
+            reasons.append("⚠️ Weak fundamentals - Higher risk")
         
         return reasons
     
@@ -98,9 +98,9 @@ class ReasonGenerator:
         thresh = self.thresholds['profitability']
         
         if score >= thresh['excellent']:
-            reasons.append("📈 Excelente rentabilidad")
+            reasons.append("📈 Excellent profitability")
         elif score <= thresh['poor']:
-            reasons.append("📉 Rentabilidad baja o negativa")
+            reasons.append("📉 Low or negative profitability")
         
         return reasons
     
@@ -110,9 +110,9 @@ class ReasonGenerator:
         thresh = self.thresholds['health']
         
         if score >= thresh['excellent']:
-            reasons.append("🛡️ Balance sólido - Baja deuda")
+            reasons.append("🛡️ Solid balance sheet - Low debt")
         elif score <= thresh['poor']:
-            reasons.append("⚠️ Riesgo financiero - Alta deuda o problemas de liquidez")
+            reasons.append("⚠️ Financial risk - High debt or liquidity issues")
         
         return reasons
     
@@ -122,9 +122,9 @@ class ReasonGenerator:
         thresh = self.thresholds['growth']
         
         if score >= thresh['high']:
-            reasons.append("🚀 Alto crecimiento sostenido")
+            reasons.append("🚀 High sustained growth")
         elif score <= thresh['low']:
-            reasons.append("📊 Crecimiento limitado o decrecimiento")
+            reasons.append("📊 Limited growth or decline")
         
         return reasons
     

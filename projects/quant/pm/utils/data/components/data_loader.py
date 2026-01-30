@@ -1,5 +1,8 @@
 from typing import List
 import pandas as pd
+import warnings
+# Suprimir warnings de Pandas4Warning de yfinance
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
 from ...tools.config import DOWNLOAD_DEFAULTS 
 

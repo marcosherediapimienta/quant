@@ -74,12 +74,14 @@ class WeightOptimizer:
         constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
         bounds = tuple((0, 1) for _ in range(n))
 
+        # Agregar timeout y límite de iteraciones para evitar que se quede atascado
         result = minimize(
             neg_sharpe,
             x0=np.array([1/n] * n),
             method=self.scipy_method,
             bounds=bounds,
-            constraints=constraints
+            constraints=constraints,
+            options={'maxiter': 1000, 'disp': False}  # Límite de iteraciones
         )
         
         if result.success:

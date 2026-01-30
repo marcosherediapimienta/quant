@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
+import warnings
+# Suprimir warnings de Pandas4Warning de yfinance
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
 
 from ..metrics import (
@@ -272,6 +275,71 @@ class CompanyAnalyzer:
                 'ticker': ticker
             }
 
+    def analyze_quick(self, ticker: str) -> Dict:
+        """
+        Análisis rápido que solo calcula el score total sin detalles completos.
+        Útil para filtrar empresas antes del análisis completo.
+        
+        Args:
+            ticker: Símbolo del ticker
+            
+        Returns:
+            Dict con success, ticker, scores.total, y datos básicos
+        """
+        fetch_result = self.fetch_data(ticker)
+        if not fetch_result.get('success'):
+            return {
+                'success': False,
+                'error': fetch_result.get('error'),
+                'ticker': ticker
+            }
+        
+        data = fetch_result['data']
+        
+        try:
+            # Calcular solo los scores sin todos los detalles
+            profitability_score = self.profitability.calculate(data).get('score', 0)
+            health_score = self.health.calculate(data).get('score', 0)
+            growth_score = self.growth.calculate(data).get('score', 0)
+            efficiency_score = self.efficiency.calculate(data).get('score', 0)
+            valuation_score = self.valuation.calculate(data).get('score', 0)
+            
+            scores = {
+                'profitability': profitability_score,
+                'financial_health': health_score,
+                'growth': growth_score,
+                'efficiency': efficiency_score,
+                'valuation': valuation_score
+            }
+            
+            # Calcular score total
+            total_score = 0
+            total_weight = 0
+            
+            for category in ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']:
+                score = scores[category]
+                if pd.notna(score):
+                    weight = getattr(self.weights, category)
+                    total_score += score * weight
+                    total_weight += weight
+            
+            scores['total'] = total_score / total_weight if total_weight > 0 else np.nan
+            
+            return {
+                'success': True,
+                'ticker': ticker,
+                'scores': scores,
+                'sector': data.get('sector', 'N/A'),
+                'industry': data.get('industry', 'N/A'),
+                'company_name': data.get('longName', data.get('shortName', ticker)),
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error en análisis rápido de {ticker}: {str(e)}',
+                'ticker': ticker
+            }
+    
     def analyze_multiple(self, tickers: List[str]) -> Dict[str, Dict]:
         """
         Analiza múltiples empresas.

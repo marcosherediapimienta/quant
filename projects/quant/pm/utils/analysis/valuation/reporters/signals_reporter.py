@@ -41,24 +41,24 @@ class SignalsReporter:
         
         w = self.config.line_width
         print("=" * w)
-        print(f"SEÑAL DE INVERSIÓN: {signal.ticker}")
+        print(f"INVESTMENT SIGNAL: {signal.ticker}")
         print("=" * w)
         
         emoji = self._get_signal_emoji(signal.signal)
-        print(f"\n{emoji} {signal.signal} (Confianza: {signal.confidence:.1f}%)")
+        print(f"\n{emoji} {signal.signal} (Confidence: {signal.confidence:.1f}%)")
 
         print(f"📊 SCORES:")
-        print(f"   Valoración:    {score_emoji(signal.valuation_score)} {score_bar(signal.valuation_score)} {signal.valuation_score:.1f}")
+        print(f"   Valuation:    {score_emoji(signal.valuation_score)} {score_bar(signal.valuation_score)} {signal.valuation_score:.1f}")
         print(f"   Fundamental:   {score_emoji(signal.fundamental_score)} {score_bar(signal.fundamental_score)} {signal.fundamental_score:.1f}")
         
         # Precios
-        print(f"💰 PRECIOS:")
-        print(f"   Actual:        {fmt_money(signal.current_price)}")
-        print(f"   Objetivo:      {fmt_money(signal.price_target)}")
-        print(f"   Potencial:     {fmt_pct(signal.upside_potential / 100)}")
+        print(f"💰 PRICES:")
+        print(f"   Current:       {fmt_money(signal.current_price)}")
+        print(f"   Target:        {fmt_money(signal.price_target)}")
+        print(f"   Potential:     {fmt_pct(signal.upside_potential / 100)}")
 
         if signal.reasons:
-            print(f"\n💡 RAZONES:")
+            print(f"\n💡 REASONS:")
             max_display = self.reporting_cfg['max_reasons_display']
             for reason in signal.reasons[:max_display + 1]:  # Mostrar un poco más que el límite
                 print(f"   {reason}")
@@ -70,28 +70,28 @@ class SignalsReporter:
         if not self.sections.summary:
             return
         
-        compras = [s for s in signals if s.signal == "COMPRA"]
-        ventas = [s for s in signals if s.signal == "VENTA"]
-        mantener = [s for s in signals if s.signal == "MANTENER"]
+        buys = [s for s in signals if s.signal in ["BUY", "COMPRA"]]
+        sells = [s for s in signals if s.signal in ["SELL", "VENTA"]]
+        holds = [s for s in signals if s.signal in ["HOLD", "MANTENER"]]
         
         w = self.config.line_width
         print("\n" + "=" * w)
-        print("RESUMEN DE SEÑALES")
+        print("SIGNALS SUMMARY")
         print("=" * w)
 
         top_n = self.reporting_cfg['top_opportunities']
         
-        print(f"\n🟢 COMPRAS: {len(compras)}")
-        if compras:
-            for s in sorted(compras, key=lambda x: x.confidence, reverse=True)[:top_n]:
-                print(f"   {s.ticker}: {s.confidence:.1f}% confianza, {fmt_pct(s.upside_potential / 100)} potencial")
+        print(f"\n🟢 BUYS: {len(buys)}")
+        if buys:
+            for s in sorted(buys, key=lambda x: x.confidence, reverse=True)[:top_n]:
+                print(f"   {s.ticker}: {s.confidence:.1f}% confidence, {fmt_pct(s.upside_potential / 100)} potential")
         
-        print(f"\n🔴 VENTAS: {len(ventas)}")
-        if ventas:
-            for s in sorted(ventas, key=lambda x: x.confidence, reverse=True)[:top_n]:
-                print(f"   {s.ticker}: {s.confidence:.1f}% confianza")
+        print(f"\n🔴 SELLS: {len(sells)}")
+        if sells:
+            for s in sorted(sells, key=lambda x: x.confidence, reverse=True)[:top_n]:
+                print(f"   {s.ticker}: {s.confidence:.1f}% confidence")
         
-        print(f"\n🟡 MANTENER: {len(mantener)}")
+        print(f"\n🟡 HOLDS: {len(holds)}")
         print("=" * w)
 
     def print_top_opportunities(self, signals: List, top_n: int = None) -> None:
@@ -102,51 +102,54 @@ class SignalsReporter:
         if top_n is None:
             top_n = self.reporting_cfg['top_opportunities']
         
-        compras = [s for s in signals if s.signal == "COMPRA"]
-        if not compras:
-            print("\n⚠️ No hay oportunidades de compra identificadas")
+        buys = [s for s in signals if s.signal in ["BUY", "COMPRA"]]
+        if not buys:
+            print("\n⚠️ No buy opportunities identified")
             return
         
         w = self.config.line_width
         print("\n" + "=" * w)
-        print(f"TOP {top_n} OPORTUNIDADES DE COMPRA")
+        print(f"TOP {top_n} BUY OPPORTUNITIES")
         print("=" * w)
 
-        top_compras = sorted(
-            compras, 
+        top_buys = sorted(
+            buys, 
             key=lambda x: (x.confidence, x.upside_potential), 
             reverse=True
         )[:top_n]
         
         max_reasons = self.reporting_cfg['max_reasons_display']
         
-        for i, s in enumerate(top_compras, 1):
+        for i, s in enumerate(top_buys, 1):
             print(f"\n{i}. {s.ticker}")
-            print(f"   Confianza: {s.confidence:.1f}%")
-            print(f"   Potencial: {fmt_pct(s.upside_potential / 100)}")
-            print(f"   Precio: {fmt_money(s.current_price)} → {fmt_money(s.price_target)}")
-            print(f"   Valoración: {s.valuation_score:.1f} | Fundamental: {s.fundamental_score:.1f}")
+            print(f"   Confidence: {s.confidence:.1f}%")
+            print(f"   Potential: {fmt_pct(s.upside_potential / 100)}")
+            print(f"   Price: {fmt_money(s.current_price)} → {fmt_money(s.price_target)}")
+            print(f"   Valuation: {s.valuation_score:.1f} | Fundamental: {s.fundamental_score:.1f}")
             if s.reasons:
-                print(f"   Razones: {', '.join(s.reasons[:max_reasons])}")
+                print(f"   Reasons: {', '.join(s.reasons[:max_reasons])}")
 
     def to_dataframe(self, signals: List) -> pd.DataFrame:
         """Convierte señales a DataFrame."""
         return pd.DataFrame([{
             'Ticker': s.ticker,
-            'Señal': s.signal,
-            'Confianza': f"{s.confidence:.1f}%",
-            'Valoración': f"{s.valuation_score:.1f}",
+            'Signal': s.signal,
+            'Confidence': f"{s.confidence:.1f}%",
+            'Valuation': f"{s.valuation_score:.1f}",
             'Fundamental': f"{s.fundamental_score:.1f}",
-            'Precio Actual': fmt_money(s.current_price),
-            'Precio Objetivo': fmt_money(s.price_target),
-            'Potencial': fmt_pct(s.upside_potential / 100)
+            'Current Price': fmt_money(s.current_price),
+            'Target Price': fmt_money(s.price_target),
+            'Potential': fmt_pct(s.upside_potential / 100)
         } for s in signals])
     
     def _get_signal_emoji(self, signal: str) -> str:
         """Obtiene emoji para la señal."""
         mapping = {
+            'BUY': '🟢',
             'COMPRA': '🟢',
+            'SELL': '🔴',
             'VENTA': '🔴',
+            'HOLD': '🟡',
             'MANTENER': '🟡'
         }
-        return mapping.get(signal, '⚪')
+        return mapping.get(signal.upper(), '⚪')

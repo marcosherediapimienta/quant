@@ -69,19 +69,28 @@ class AlphaCalculator:
                 'beta_used': np.nan
             }
 
-        # Anualizar retornos
-        portfolio_return_annual = annualize_return(df['portfolio'], self.annual_factor)
-        benchmark_return_annual = annualize_return(df['benchmark'], self.annual_factor)
+        # Convertir risk_free_rate anual a diario
+        risk_free_daily = (1 + risk_free_rate) ** (1 / self.annual_factor) - 1
 
         # Calcular beta si no se proporciona
         if beta is None:
             cov_matrix = np.cov(df['portfolio'], df['benchmark'], ddof=ddof)
             beta = cov_matrix[0, 1] / cov_matrix[1, 1] if cov_matrix[1, 1] > 0 else 1.0
 
-        # Alpha de Jensen
+        # Calcular alpha DIARIO primero (en la frecuencia original de los datos)
+        # Fórmula: α_daily = E[Rp - Rf] - β × E[Rm - Rf]
+        mean_excess_portfolio = df['portfolio'].mean() - risk_free_daily
+        mean_excess_benchmark = df['benchmark'].mean() - risk_free_daily
+        alpha_daily = float(mean_excess_portfolio - beta * mean_excess_benchmark)
+        
+        # Luego anualizar alpha usando composición geométrica
+        # Método correcto: (1 + α_daily)^252 - 1
+        alpha_annual = float((1 + alpha_daily) ** self.annual_factor - 1)
+        
+        # Anualizar retornos para reporting
+        portfolio_return_annual = annualize_return(df['portfolio'], self.annual_factor)
+        benchmark_return_annual = annualize_return(df['benchmark'], self.annual_factor)
         expected_return = risk_free_rate + beta * (benchmark_return_annual - risk_free_rate)
-        alpha_annual = float(portfolio_return_annual - expected_return)
-        alpha_daily = alpha_annual / self.annual_factor
         
         return {
             'alpha': alpha_daily,

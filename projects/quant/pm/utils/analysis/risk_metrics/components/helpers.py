@@ -9,12 +9,38 @@ def daily_risk_free_rate(annual_rate: float, annual_factor: float = None) -> flo
     return (1 + annual_rate) ** (1 / annual_factor) - 1
 
 def annualize_return(daily_returns: np.ndarray, annual_factor: float = None) -> float:
-    """Anualiza retornos diarios."""
+    """
+    Anualiza retornos diarios usando composición geométrica.
+    
+    Fórmula: (1 + r_daily)^annual_factor - 1
+    
+    Nota: Usa método geométrico compuesto, NO aritmético simple.
+    El método aritmético (mean × 252) subestima retornos con volatilidad.
+    
+    Args:
+        daily_returns: Array de retornos diarios
+        annual_factor: Factor de anualización (default: 252)
+        
+    Returns:
+        Retorno anualizado compuesto
+    """
     annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
     
     if len(daily_returns) == 0:
         return np.nan
-    return float(daily_returns.mean() * annual_factor)
+    
+    # Método geométrico (correcto)
+    # Calcula retorno acumulado y luego anualiza
+    cumulative_return = (1 + daily_returns).prod()
+    n_periods = len(daily_returns)
+    
+    # Evitar errores con retornos muy negativos
+    if cumulative_return <= 0:
+        return -1.0  # Pérdida total
+    
+    annual_return = cumulative_return ** (annual_factor / n_periods) - 1
+    
+    return float(annual_return)
 
 def annualize_volatility(daily_returns: np.ndarray, annual_factor: float = None, ddof: int = 0) -> float:
     """
