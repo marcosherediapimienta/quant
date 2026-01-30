@@ -487,16 +487,18 @@ EFFICIENCY_SCORING = {
 # Basados en Damodaran (NYU) y medias históricas del mercado
 VALUATION_SCORING = {
     'weights': {
-        'pe_ttm': 0.25,             # P/E ratio
-        'ev_ebitda': 0.25,          # EV/EBITDA
-        'pb_ratio': 0.20,           # Price/Book
-        'fcf_yield': 0.30           # FCF Yield
+        'pe_ttm': 0.20,             # P/E ratio
+        'ev_ebitda': 0.20,         # EV/EBITDA
+        'pb_ratio': 0.15,          # Price/Book
+        'fcf_yield': 0.25,         # FCF Yield
+        'peg_ratio': 0.20          # PEG (P/E to Growth): menor = mejor valoración
     },
     'ranges': {
         'pe_ttm': {'min': 5, 'max': 40},            # 5x a 40x (media ~16x)
         'ev_ebitda': {'min': 4, 'max': 25},         # 4x a 25x (media ~12x)
         'pb_ratio': {'min': 1.5, 'max': 8},         # 1.5x a 8x
-        'fcf_yield': {'min': -0.02, 'max': 0.12}    # -2% a 12%
+        'fcf_yield': {'min': -0.02, 'max': 0.12},   # -2% a 12%
+        'peg_ratio': {'min': 0.5, 'max': 3.5}       # PEG <1 barato, ~1 fair, >2 caro
     }
 }
 
@@ -667,7 +669,7 @@ VALUATION_MULTIPLES_FALLBACKS = {
 
 # CONFIGURACIÓN DE ANÁLISIS DE SECTOR
 SECTOR_ANALYSIS_CONFIG = {
-    'max_peers': 5,
+    'max_peers': 10,
     'percentile_thresholds': {
         'top_performer': 80,
         'above_average': 60,
@@ -681,6 +683,19 @@ SECTOR_ANALYSIS_CONFIG = {
         'below': 'Por debajo del promedio',
         'bottom': 'Rezagado del sector'
     }
+}
+
+# Peers por sector (yfinance suele devolver "Technology", "Financial Services", etc.)
+SECTOR_PEERS = {
+    'Technology': ['MSFT', 'AAPL', 'GOOGL', 'META', 'AMZN', 'NVDA', 'ORCL', 'ADBE', 'CRM'],
+    'Financial Services': ['JPM', 'BAC', 'GS', 'MS', 'C', 'WFC', 'BLK'],
+    'Healthcare': ['JNJ', 'UNH', 'PFE', 'ABBV', 'TMO', 'ABT', 'MRK'],
+    'Consumer Cyclical': ['AMZN', 'TSLA', 'HD', 'NKE', 'MCD', 'SBUX'],
+    'Communication Services': ['GOOGL', 'META', 'NFLX', 'DIS', 'CMCSA', 'T', 'VZ'],
+    'Consumer Defensive': ['PG', 'KO', 'PEP', 'WMT', 'COST', 'PM'],
+    'Industrials': ['CAT', 'HON', 'UPS', 'UNP', 'BA', 'GE', 'DE'],
+    'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC'],
+    'Basic Materials': ['LIN', 'APD', 'SHW', 'ECL', 'FCX', 'NEM'],
 }
 
 # CONFIGURACIÓN DE REPORTES
@@ -792,12 +807,12 @@ CONCLUSION_THRESHOLDS = {
     'fair': 50,
     'weak': 35,
     'labels': {
-        'excellent': 'EXCELENTE',
-        'good': 'BUENA',
-        'fair': 'REGULAR',
-        'weak': 'DÉBIL',
-        'critical': 'CRÍTICA',
-        'insufficient': 'DATOS INSUFICIENTES'
+        'excellent': 'EXCELLENT',
+        'good': 'GOOD',
+        'fair': 'FAIR',
+        'weak': 'WEAK',
+        'critical': 'CRITICAL',
+        'insufficient': 'INSUFFICIENT DATA'
     }
 }
 

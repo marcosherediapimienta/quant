@@ -110,13 +110,19 @@ class MacroRegressionCalculator:
 
         alpha_daily = float(fit.params[0])
         
-        # Anualizar alpha con validación para evitar valores extremos
-        # Si alpha_daily <= -1 (-100% o peor), la fórmula compuesta no tiene sentido
-        # En ese caso, usar aproximación lineal
-        if alpha_daily > -0.99:  # Solo aplicar fórmula compuesta si alpha > -99%
+        # Validar alpha diario extremo (posible error de datos)
+        if alpha_daily <= -0.95:
+            print(f"⚠️ WARNING: Alpha diario extremo detectado: {alpha_daily:.4f}")
+            print(f"   Esto indica pérdida diaria ≥95%, probablemente error de datos.")
+            print(f"   Se retornará NaN. Revisar datos de entrada.")
+            alpha_annual = np.nan
+        elif alpha_daily > -0.99:
+            # Anualización geométrica estándar (correcto)
             alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
         else:
-            # Para alphas muy negativos, usar aproximación lineal
+            # Alpha muy negativo pero no extremo: usar aproximación lineal como fallback
+            # Esto solo ocurre en casos raros (-99% < alpha < -95%)
+            print(f"⚠️ Alpha diario muy negativo: {alpha_daily:.4f}, usando aproximación lineal")
             alpha_annual = alpha_daily * self.annual_factor
         
         betas = {name: float(fit.params[i+1]) for i, name in enumerate(factor_names)}

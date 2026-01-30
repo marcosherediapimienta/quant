@@ -79,6 +79,44 @@ class ValuationMultiples:
         market_cap = nan_if_missing(data.get('marketCap'))
         fcf = nan_if_missing(data.get('freeCashflow'))
         
+        # Si PEG no está disponible, calcularlo manualmente usando P/E y Earnings Growth
+        if pd.isna(peg) or peg <= 0:
+            earnings_growth = nan_if_missing(data.get('earningsGrowth'))
+            # También intentar con forward earnings growth si está disponible
+            if pd.isna(earnings_growth) or earnings_growth <= 0:
+                earnings_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
+            
+            if pd.notna(pe_ttm) and pe_ttm > 0 and pd.notna(earnings_growth) and earnings_growth != 0:
+                # yfinance devuelve earningsGrowth como decimal (0.15 = 15%) o como porcentaje
+                # Necesitamos convertir a porcentaje para la fórmula PEG = P/E / Growth%
+                # Si earnings_growth está entre 0 y 1, es decimal (0.15 = 15%)
+                # Si earnings_growth > 1, ya viene como porcentaje (15 = 15%)
+                # Si earnings_growth < 0, es crecimiento negativo (no válido para PEG)
+                
+                if earnings_growth < 0:
+                    # Crecimiento negativo: no tiene sentido calcular PEG
+                    peg = np.nan
+                else:
+                    # Convertir a porcentaje si es necesario
+                    if earnings_growth <= 1:
+                        # Viene como decimal (0.15 = 15%), convertir a porcentaje
+                        earnings_growth_pct = earnings_growth * 100
+                    else:
+                        # Ya viene como porcentaje (15 = 15%)
+                        earnings_growth_pct = earnings_growth
+                    
+                    # Calcular PEG = P/E / Earnings Growth Rate (%)
+                    # Ejemplo: P/E = 30, Growth = 15% → PEG = 30 / 15 = 2.0
+                    # PEG < 1 = infravalorado, PEG = 1 = fair value, PEG > 1 = sobrevalorado
+                    if pd.notna(earnings_growth_pct) and earnings_growth_pct > 0:
+                        peg = pe_ttm / earnings_growth_pct
+                        # Validar que el PEG sea razonable (entre 0.1 y 50)
+                        # Si es muy extremo, probablemente hay un error en los datos
+                        if peg < 0.1 or peg > 50:
+                            peg = np.nan
+                    else:
+                        peg = np.nan
+        
         fcf_yield = safe_div(fcf, market_cap)
         earnings_yield = safe_div(1, pe_ttm) if pd.notna(pe_ttm) and pe_ttm > 0 else np.nan
         
@@ -100,10 +138,10 @@ class ValuationMultiples:
             'ev_ebitda_class': self._classify_ev_ebitda(ev_ebitda),
             'pb_class': self._classify_pb(pb),
             'fcf_yield_class': self._classify_fcf_yield(fcf_yield),
+            'peg_class': self._classify_peg(peg),
             'overall': self._overall_valuation(metrics)
         }
         
-        # Score usando pesos y rangos de config
         scores = []
         weights_list = []
         cfg_weights = self.config['weights']
@@ -143,6 +181,15 @@ class ValuationMultiples:
                 cfg_ranges['fcf_yield']['max']
             ))
             weights_list.append(cfg_weights['fcf_yield'])
+
+        if pd.notna(peg) and peg > 0 and 'peg_ratio' in cfg_ranges and 'peg_ratio' in cfg_weights:
+            scores.append(score_metric(
+                peg,
+                cfg_ranges['peg_ratio']['min'],
+                cfg_ranges['peg_ratio']['max'],
+                higher_is_better=False
+            ))
+            weights_list.append(cfg_weights['peg_ratio'])
         
         total_weight = sum(weights_list)
         valuation_score = sum(s * w for s, w in zip(scores, weights_list)) / total_weight if total_weight > 0 else np.nan
@@ -153,7 +200,7 @@ class ValuationMultiples:
             'score': valuation_score,
             'alerts': self._generate_alerts(metrics)
         }
-    
+
     def _classify_pe(self, value: float) -> str:
         """Clasifica P/E según umbrales."""
         if pd.isna(value) or value <= 0:
@@ -205,6 +252,29 @@ class ValuationMultiples:
         elif value >= thresholds['fair']:
             return 'fair'
         return 'poor'
+    
+    def _classify_peg(self, value: float) -> str:
+        """
+        Clasifica PEG ratio según metodología de Peter Lynch.
+        
+        Interpretación:
+        - PEG < 0.5: Muy barato (posiblemente demasiado bueno para ser cierto)
+        - PEG 0.5-1.0: Barato/atractivo
+        - PEG 1.0-1.5: Fair value
+        - PEG 1.5-2.0: Caro
+        - PEG > 2.0: Muy caro
+        """
+        if pd.isna(value) or value <= 0:
+            return 'N/A'
+        if value < 0.5:
+            return 'very_cheap'
+        elif value < 1.0:
+            return 'cheap'
+        elif value < 1.5:
+            return 'fair'
+        elif value < 2.0:
+            return 'expensive'
+        return 'very_expensive'
     
     def _overall_valuation(self, metrics: Dict) -> str:
         """
@@ -282,20 +352,20 @@ class ValuationMultiples:
         pe = metrics['pe_ttm']
         if pd.notna(pe):
             if pe > alert_cfg['pe_very_high']:
-                alerts.append(f"P/E muy alto (>{alert_cfg['pe_very_high']}): posiblemente sobrevalorado")
+                alerts.append(f"P/E very high (>{alert_cfg['pe_very_high']}): possibly overvalued")
             elif pe < alert_cfg['pe_negative']:
-                alerts.append("P/E negativo: la empresa tiene pérdidas")
+                alerts.append("Negative P/E: company has losses")
         
         ev_ebitda = metrics['ev_ebitda']
         if pd.notna(ev_ebitda) and ev_ebitda > alert_cfg['ev_ebitda_high']:
-            alerts.append(f"EV/EBITDA muy alto (>{alert_cfg['ev_ebitda_high']})")
+            alerts.append(f"EV/EBITDA very high (>{alert_cfg['ev_ebitda_high']})")
         
         fcf_yield = metrics['fcf_yield']
         if pd.notna(fcf_yield) and fcf_yield < alert_cfg['fcf_yield_negative']:
-            alerts.append("FCF Yield negativo: no genera caja libre")
+            alerts.append("Negative FCF Yield: not generating free cash flow")
         
         peg = metrics['peg_ratio']
         if pd.notna(peg) and peg > alert_cfg['peg_high']:
-            alerts.append(f"PEG > {alert_cfg['peg_high']}: precio alto respecto al crecimiento")
+            alerts.append(f"PEG > {alert_cfg['peg_high']}: high price relative to growth")
         
         return alerts

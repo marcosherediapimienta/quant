@@ -169,12 +169,18 @@ class VaRCalculator:
         
         # Cuantil histórico
         var_daily = np.quantile(portfolio_ret, alpha)
+        
+        # ⚠️ NOTA: Anualización de VaR con sqrt(T) asume retornos i.i.d. normales
+        # Esta es una aproximación. Para uso riguroso, considerar:
+        # 1. No anualizar (reportar VaR diario directamente)
+        # 2. Usar bootstrap para VaR en horizontes largos
+        # 3. Simular trayectorias multi-periodo
         var_annual = var_daily * np.sqrt(self.annual_factor)
         
         return {
             'method': 'historical',
             'var_daily': float(var_daily),
-            'var_annual': float(var_annual),
+            'var_annual': float(var_annual),  # Aproximación bajo normalidad
             'var_daily_pct': float(var_daily * 100),
             'var_annual_pct': float(var_annual * 100),
             'confidence_level': confidence_level,
@@ -240,6 +246,8 @@ class VaRCalculator:
         
         # VaR = mu + z_score * sigma (z_score es negativo)
         var_daily = mu + z_score * sigma
+        
+        # ⚠️ Anualización con sqrt(T) válida solo bajo normalidad
         var_annual = var_daily * np.sqrt(self.annual_factor)
         
         result = {
