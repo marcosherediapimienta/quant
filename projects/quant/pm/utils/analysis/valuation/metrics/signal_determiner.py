@@ -3,7 +3,7 @@ from ....tools.config import TRADING_SIGNAL_RULES
 
 class SignalDeterminer:
     """
-    Determina señales de trading (COMPRA/VENTA/MANTENER) basado en scores.
+    Determines trading signals (BUY/SELL/HOLD) based on scores.
     
     Responsabilidad: Aplicar reglas cuantitativas para generar señales de inversión.
     
@@ -34,14 +34,14 @@ class SignalDeterminer:
             
         Returns:
             Tupla (señal, confianza) donde:
-            - señal: "COMPRA", "VENTA", "MANTENER"
+            - señal: "BUY", "SELL", "HOLD"
             - confianza: nivel de confianza 0-100
             
         Lógica:
-        1. Evalúa reglas de COMPRA (de más estrictas a menos)
-        2. Evalúa reglas de VENTA
-        3. Evalúa reglas de MANTENER
-        4. Default: MANTENER con confianza 50
+        1. Evalúa reglas de BUY (de más estrictas a menos)
+        2. Evalúa reglas de SELL
+        3. Evalúa reglas de HOLD
+        4. Default: HOLD con confianza calculada dinámicamente
         """
         # ========== REGLAS DE COMPRA ==========
         
@@ -59,7 +59,7 @@ class SignalDeterminer:
                 val_weight=buy_strong['valuation_weight'],
                 fund_weight=buy_strong['fundamental_weight']
             )
-            return "COMPRA", confidence
+            return "BUY", confidence
 
         # COMPRA MODERADA: Buena calidad + Buen precio
         buy_mod = self.rules['buy']['moderate']
@@ -75,7 +75,7 @@ class SignalDeterminer:
                 val_weight=buy_mod['valuation_weight'],
                 fund_weight=buy_mod['fundamental_weight']
             )
-            return "COMPRA", confidence
+            return "BUY", confidence
 
         # COMPRA POR VALOR: Precio muy atractivo
         buy_value = self.rules['buy']['value']
@@ -88,7 +88,7 @@ class SignalDeterminer:
                 val_min=buy_value['valuation_min'],
                 val_weight=buy_value['valuation_weight']
             )
-            return "COMPRA", confidence
+            return "BUY", confidence
 
         # COMPRA POR CALIDAD: Empresa excelente (aunque algo cara)
         buy_quality = self.rules['buy']['quality']
@@ -101,7 +101,7 @@ class SignalDeterminer:
                 fund_min=buy_quality['fundamental_min'],
                 fund_weight=buy_quality['fundamental_weight']
             )
-            return "COMPRA", confidence
+            return "BUY", confidence
 
         # ========== REGLAS DE VENTA ==========
         
@@ -120,7 +120,7 @@ class SignalDeterminer:
                 fund_weight=sell_strong['fundamental_weight'],
                 is_sell=True
             )
-            return "VENTA", confidence
+            return "SELL", confidence
 
         # VENTA MODERADA: Calidad regular + Caro
         sell_mod = self.rules['sell']['moderate']
@@ -137,7 +137,7 @@ class SignalDeterminer:
                 fund_weight=sell_mod['fundamental_weight'],
                 is_sell=True
             )
-            return "VENTA", confidence
+            return "SELL", confidence
 
         # VENTA POR SOBREVALORACIÓN: Extremadamente caro
         sell_overval = self.rules['sell']['overvalued']
@@ -150,24 +150,37 @@ class SignalDeterminer:
                 val_weight=sell_overval['valuation_weight'],
                 is_sell=True
             )
-            return "VENTA", confidence
+            return "SELL", confidence
 
-        # ========== REGLAS DE MANTENER ==========
+        # ========== REGLAS DE HOLD ==========
         
-        # MANTENER: Excelente empresa pero cara
+        # HOLD: Excelente empresa pero cara
         hold_qual = self.rules['hold']['mixed_quality_price']
         if (valuation_score <= hold_qual['valuation_max'] and 
             fundamental_score >= hold_qual['fundamental_min']):
-            return "MANTENER", hold_qual['confidence']
+            # Calcular confianza dinámica basada en scores
+            confidence = self._calculate_hold_confidence(
+                valuation_score, fundamental_score,
+                hold_qual['valuation_max'], hold_qual['fundamental_min']
+            )
+            return "HOLD", confidence
 
-        # MANTENER: Empresa buena pero algo cara
+        # HOLD: Empresa buena pero algo cara
         hold_mod = self.rules['hold']['mixed_moderate']
         if (valuation_score <= hold_mod['valuation_max'] and 
             fundamental_score >= hold_mod['fundamental_min']):
-            return "MANTENER", hold_mod['confidence']
+            # Calcular confianza dinámica basada en scores
+            confidence = self._calculate_hold_confidence(
+                valuation_score, fundamental_score,
+                hold_mod['valuation_max'], hold_mod['fundamental_min']
+            )
+            return "HOLD", confidence
         
-        # DEFAULT: MANTENER
-        return "MANTENER", self.rules['hold']['default']['confidence']
+        # DEFAULT: HOLD con confianza basada en scores
+        default_conf = self._calculate_hold_confidence(
+            valuation_score, fundamental_score, 50, 50
+        )
+        return "HOLD", default_conf
     
     def _calculate_confidence(
         self,
@@ -226,3 +239,49 @@ class SignalDeterminer:
         
         # Limitar entre base y max_conf
         return min(max_conf, max(base, confidence))
+    
+    def _calculate_hold_confidence(
+        self,
+        valuation_score: float,
+        fundamental_score: float,
+        val_max: float,
+        fund_min: float
+    ) -> float:
+        """
+        Calcula confianza para señales HOLD basada en scores.
+        
+        La confianza varía según qué tan cerca estén los scores de los umbrales:
+        - Si está muy cerca de ser BUY o SELL → menor confianza (40-50%)
+        - Si está claramente en zona neutral → mayor confianza (50-65%)
+        - Si tiene buen fundamental pero mala valoración → confianza media (50-60%)
+        """
+        # Confianza base
+        base_confidence = 50.0
+        
+        # Calcular distancia a umbrales
+        val_distance = abs(valuation_score - val_max) if val_max else 0
+        fund_distance = abs(fundamental_score - fund_min) if fund_min else 0
+        
+        # Si está muy cerca de umbrales (zona ambigua), menor confianza
+        if val_distance < 5 or fund_distance < 5:
+            return max(40.0, base_confidence - 10)
+        
+        # Si tiene buen fundamental pero mala valoración (típico HOLD)
+        if fundamental_score >= 70 and valuation_score <= 45:
+            # Más confianza si el fundamental es muy bueno
+            if fundamental_score >= 80:
+                return 60.0
+            return 55.0
+        
+        # Si está en zona neutral (ni muy bueno ni muy malo)
+        if 45 <= valuation_score <= 55 and 60 <= fundamental_score <= 75:
+            return 55.0
+        
+        # Default: confianza base ajustada por calidad general
+        avg_score = (valuation_score + fundamental_score) / 2
+        if avg_score >= 65:
+            return 55.0
+        elif avg_score >= 55:
+            return 52.0
+        else:
+            return 48.0
