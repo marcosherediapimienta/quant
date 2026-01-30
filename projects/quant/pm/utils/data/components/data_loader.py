@@ -1,13 +1,12 @@
 from typing import List
 import pandas as pd
-import warnings
-# Suprimir warnings de Pandas4Warning de yfinance
-warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 import yfinance as yf
+import warnings
+warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+
 from ...tools.config import DOWNLOAD_DEFAULTS 
 
-class DataLoader:
-    
+class DataLoader: 
     def download(
         self,
         tickers: List[str],

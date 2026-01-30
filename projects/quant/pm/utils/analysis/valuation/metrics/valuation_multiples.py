@@ -13,7 +13,6 @@ from ....tools.config import (
 
 @dataclass
 class ValuationThresholds:
-    """Umbrales para clasificación de múltiplos de valoración."""
     pe_ratio: Dict[str, float] = None
     ev_ebitda: Dict[str, float] = None
     pb_ratio: Dict[str, float] = None
@@ -44,31 +43,12 @@ class ValuationThresholds:
         }
 
 class ValuationMultiples:
-    """
-    Calcula múltiplos de valoración.
-    
-    Responsabilidad: Evaluar si el precio actual es atractivo vs fundamentales.
-    
-    Múltiplos clave:
-    - P/E (Price to Earnings): Cuánto pagas por cada $ de beneficio
-    - EV/EBITDA: Valoración enterprise vs EBITDA
-    - P/B (Price to Book): Precio vs valor en libros
-    - FCF Yield: Rendimiento de caja libre (inverso de P/FCF)
-    - PEG: P/E ajustado por crecimiento
-    
-    Benchmarks históricos (S&P 500):
-    - P/E medio: ~16x
-    - EV/EBITDA medio: ~12x
-    - P/B medio: ~3x
-    """
-    
     def __init__(self, thresholds: ValuationThresholds = None):
         self.thresholds = thresholds or ValuationThresholds()
         self.config = VALUATION_SCORING
         self.overall_logic = OVERALL_VALUATION_LOGIC
     
     def calculate(self, data: Dict) -> Dict:
-        """Calcula múltiplos, clasificaciones y score de valoración."""
         pe_ttm = nan_if_missing(data.get('trailingPE'))
         pe_fwd = nan_if_missing(data.get('forwardPE'))
         pb = nan_if_missing(data.get('priceToBook'))
@@ -78,40 +58,25 @@ class ValuationMultiples:
         peg = nan_if_missing(data.get('pegRatio'))
         market_cap = nan_if_missing(data.get('marketCap'))
         fcf = nan_if_missing(data.get('freeCashflow'))
-        
-        # Si PEG no está disponible, calcularlo manualmente usando P/E y Earnings Growth
+
         if pd.isna(peg) or peg <= 0:
             earnings_growth = nan_if_missing(data.get('earningsGrowth'))
-            # También intentar con forward earnings growth si está disponible
+
             if pd.isna(earnings_growth) or earnings_growth <= 0:
                 earnings_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
             
             if pd.notna(pe_ttm) and pe_ttm > 0 and pd.notna(earnings_growth) and earnings_growth != 0:
-                # yfinance devuelve earningsGrowth como decimal (0.15 = 15%) o como porcentaje
-                # Necesitamos convertir a porcentaje para la fórmula PEG = P/E / Growth%
-                # Si earnings_growth está entre 0 y 1, es decimal (0.15 = 15%)
-                # Si earnings_growth > 1, ya viene como porcentaje (15 = 15%)
-                # Si earnings_growth < 0, es crecimiento negativo (no válido para PEG)
-                
                 if earnings_growth < 0:
-                    # Crecimiento negativo: no tiene sentido calcular PEG
                     peg = np.nan
                 else:
-                    # Convertir a porcentaje si es necesario
                     if earnings_growth <= 1:
-                        # Viene como decimal (0.15 = 15%), convertir a porcentaje
                         earnings_growth_pct = earnings_growth * 100
                     else:
-                        # Ya viene como porcentaje (15 = 15%)
                         earnings_growth_pct = earnings_growth
-                    
-                    # Calcular PEG = P/E / Earnings Growth Rate (%)
-                    # Ejemplo: P/E = 30, Growth = 15% → PEG = 30 / 15 = 2.0
-                    # PEG < 1 = infravalorado, PEG = 1 = fair value, PEG > 1 = sobrevalorado
+
                     if pd.notna(earnings_growth_pct) and earnings_growth_pct > 0:
                         peg = pe_ttm / earnings_growth_pct
-                        # Validar que el PEG sea razonable (entre 0.1 y 50)
-                        # Si es muy extremo, probablemente hay un error en los datos
+
                         if peg < 0.1 or peg > 50:
                             peg = np.nan
                     else:
@@ -202,10 +167,12 @@ class ValuationMultiples:
         }
 
     def _classify_pe(self, value: float) -> str:
-        """Clasifica P/E según umbrales."""
+
         if pd.isna(value) or value <= 0:
             return 'N/A'
+
         thresholds = self.thresholds.pe_ratio
+
         if value < thresholds['cheap']:
             return 'cheap'
         elif value < thresholds['fair']:
@@ -215,10 +182,12 @@ class ValuationMultiples:
         return 'very_expensive'
     
     def _classify_ev_ebitda(self, value: float) -> str:
-        """Clasifica EV/EBITDA según umbrales."""
+
         if pd.isna(value) or value <= 0:
             return 'N/A'
+
         thresholds = self.thresholds.ev_ebitda
+
         if value < thresholds['cheap']:
             return 'cheap'
         elif value < thresholds['fair']:
@@ -228,10 +197,12 @@ class ValuationMultiples:
         return 'very_expensive'
     
     def _classify_pb(self, value: float) -> str:
-        """Clasifica P/B según umbrales."""
+
         if pd.isna(value) or value <= 0:
             return 'N/A'
+
         thresholds = self.thresholds.pb_ratio
+
         if value < thresholds['cheap']:
             return 'cheap'
         elif value < thresholds['fair']:
@@ -241,10 +212,12 @@ class ValuationMultiples:
         return 'very_expensive'
     
     def _classify_fcf_yield(self, value: float) -> str:
-        """Clasifica FCF Yield según umbrales."""
+
         if pd.isna(value):
             return 'N/A'
+
         thresholds = self.thresholds.fcf_yield
+
         if value >= thresholds['excellent']:
             return 'excellent'
         elif value >= thresholds['good']:
@@ -254,16 +227,7 @@ class ValuationMultiples:
         return 'poor'
     
     def _classify_peg(self, value: float) -> str:
-        """
-        Clasifica PEG ratio según metodología de Peter Lynch.
-        
-        Interpretación:
-        - PEG < 0.5: Muy barato (posiblemente demasiado bueno para ser cierto)
-        - PEG 0.5-1.0: Barato/atractivo
-        - PEG 1.0-1.5: Fair value
-        - PEG 1.5-2.0: Caro
-        - PEG > 2.0: Muy caro
-        """
+
         if pd.isna(value) or value <= 0:
             return 'N/A'
         if value < 0.5:
@@ -277,32 +241,24 @@ class ValuationMultiples:
         return 'very_expensive'
     
     def _overall_valuation(self, metrics: Dict) -> str:
-        """
-        Determina valoración general por consenso de métricas.
-        
-        Lógica de votación:
-        - Cada métrica vota: cheap, neutral, expensive
-        - Se necesita mínimo 2 votos para decidir UNDERVALUED/OVERVALUED
-        - Si señales mixtas → FAIR_VALUE
-        """
         cheap_count = 0
         expensive_count = 0
         valid_metrics = 0
-        
         thresholds = self.overall_logic['thresholds']
         voting = self.overall_logic['voting']
 
-        # P/E
         pe = metrics['pe_ttm']
+
         if pd.notna(pe) and thresholds['pe']['min_valid'] < pe < thresholds['pe']['max_valid']:
             valid_metrics += 1
+
             if pe < thresholds['pe']['cheap']:
                 cheap_count += 1
             elif pe > thresholds['pe']['expensive']:
                 expensive_count += 1
 
-        # EV/EBITDA
         ev = metrics['ev_ebitda']
+
         if pd.notna(ev) and thresholds['ev_ebitda']['min_valid'] < ev < thresholds['ev_ebitda']['max_valid']:
             valid_metrics += 1
             if ev < thresholds['ev_ebitda']['cheap']:
@@ -310,8 +266,8 @@ class ValuationMultiples:
             elif ev > thresholds['ev_ebitda']['expensive']:
                 expensive_count += 1
 
-        # FCF Yield
         fcf_y = metrics['fcf_yield']
+
         if pd.notna(fcf_y) and thresholds['fcf_yield']['min_valid'] < fcf_y < thresholds['fcf_yield']['max_valid']:
             valid_metrics += 1
             if fcf_y > thresholds['fcf_yield']['cheap']:
@@ -319,8 +275,8 @@ class ValuationMultiples:
             elif fcf_y < thresholds['fcf_yield']['expensive']:
                 expensive_count += 1
 
-        # P/B
         pb = metrics.get('pb_ratio')
+
         if pd.notna(pb) and thresholds['pb']['min_valid'] < pb < thresholds['pb']['max_valid']:
             valid_metrics += 1
             if pb < thresholds['pb']['cheap']:
@@ -328,15 +284,12 @@ class ValuationMultiples:
             elif pb > thresholds['pb']['expensive']:
                 expensive_count += 1
 
-        # Decisión
         if valid_metrics < voting['min_valid_metrics']:
             return 'FAIR_VALUE'
 
-        # Señales mixtas
         if cheap_count > 0 and expensive_count > 0:
             return 'FAIR_VALUE'
 
-        # Decisión por mayoría
         if cheap_count >= voting['min_votes_for_decision']:
             return 'UNDERVALUED'
         elif expensive_count >= voting['min_votes_for_decision']:
@@ -345,11 +298,11 @@ class ValuationMultiples:
         return 'FAIR_VALUE'
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-        """Genera alertas usando umbrales de config."""
         alerts = []
         alert_cfg = ALERT_THRESHOLDS['valuation']
         
         pe = metrics['pe_ttm']
+
         if pd.notna(pe):
             if pe > alert_cfg['pe_very_high']:
                 alerts.append(f"P/E very high (>{alert_cfg['pe_very_high']}): possibly overvalued")
@@ -357,14 +310,17 @@ class ValuationMultiples:
                 alerts.append("Negative P/E: company has losses")
         
         ev_ebitda = metrics['ev_ebitda']
+
         if pd.notna(ev_ebitda) and ev_ebitda > alert_cfg['ev_ebitda_high']:
             alerts.append(f"EV/EBITDA very high (>{alert_cfg['ev_ebitda_high']})")
         
         fcf_yield = metrics['fcf_yield']
+
         if pd.notna(fcf_yield) and fcf_yield < alert_cfg['fcf_yield_negative']:
             alerts.append("Negative FCF Yield: not generating free cash flow")
         
         peg = metrics['peg_ratio']
+        
         if pd.notna(peg) and peg > alert_cfg['peg_high']:
             alerts.append(f"PEG > {alert_cfg['peg_high']}: high price relative to growth")
         

@@ -3,7 +3,6 @@ from typing import Dict
 from ..analyzers.macro_factor_analyzer import MacroFactorAnalyzer
 
 class MacroFactorReporter:
-
     def __init__(self, analyzer: MacroFactorAnalyzer):
         self.analyzer = analyzer
     

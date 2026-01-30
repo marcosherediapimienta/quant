@@ -4,7 +4,6 @@ import numpy as np
 from typing import Dict, Optional, Tuple
 
 class VarEsPlotter:
-    
     def __init__(self, figsize: Tuple[int, int] = (12, 6)):
         self.figsize = figsize
     

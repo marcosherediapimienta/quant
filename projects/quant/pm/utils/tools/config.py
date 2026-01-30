@@ -1,8 +1,3 @@
-"""
-CONFIGURACIÓN - ANÁLISIS DE PORTAFOLIO (PM)
-Benchmarks, análisis de riesgo, CAPM y valoración.
-"""
-
 # ============================================================================
 # BENCHMARKS
 # ============================================================================

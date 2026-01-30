@@ -5,17 +5,7 @@ from ...analysis.capm.analyzers.multi_asset_capm_analyzer import MultiAssetCAPMA
 from ...tools.config import TOP_ASSETS_DISPLAY
 
 class MultiAssetCAPMVisualizer:
-    """
-    Visualizer para análisis CAPM de múltiples activos.
-    
-    Responsabilidad: Generar visualizaciones comparativas de múltiples activos.
-    """
-
     def __init__(self, multi_asset_analyzer: MultiAssetCAPMAnalyzer):
-        """
-        Args:
-            multi_asset_analyzer: Instancia de MultiAssetCAPMAnalyzer
-        """
         self.analyzer = multi_asset_analyzer
         self.plotter = CAPMPlotter()
     
@@ -26,18 +16,7 @@ class MultiAssetCAPMVisualizer:
         risk_free_rate: float,
         figsize: tuple = (16, 10)
     ) -> plt.Figure:
-        """
-        Genera análisis visual completo de múltiples activos.
-        
-        Args:
-            returns: DataFrame con retornos de múltiples activos
-            market_returns: Serie con retornos del mercado
-            risk_free_rate: Tasa libre de riesgo anualizada
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con los gráficos
-        """
+
         results_df = self.analyzer.analyze_multiple(returns, market_returns, risk_free_rate)
         
         if results_df.empty:

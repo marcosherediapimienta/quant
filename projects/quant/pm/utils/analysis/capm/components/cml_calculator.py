@@ -12,12 +12,6 @@ class CMLResult:
     slope: float
 
 class CMLCalculator:
-    """
-    Calcula la Capital Market Line (CML).
-    
-    Responsabilidad: Determinar el portafolio tangente y la línea de mercado de capitales.
-    """
-
     def calculate(
         self,
         frontier_returns: np.ndarray,
@@ -25,43 +19,28 @@ class CMLCalculator:
         risk_free_rate: float,
         n_points: int = 100
     ) -> CMLResult:
-        """
-        Calcula la Capital Market Line.
-        
-        Args:
-            frontier_returns: Retornos de la frontera eficiente
-            frontier_volatilities: Volatilidades de la frontera eficiente
-            risk_free_rate: Tasa libre de riesgo
-            n_points: Número de puntos para la línea CML
-            
-        Returns:
-            CMLResult con línea CML y portafolio tangente
-        """
+
         if len(frontier_returns) == 0:
             return CMLResult(
                 np.array([]), np.array([]), np.nan, np.nan, -1, np.nan
             )
 
         sharpe = (frontier_returns - risk_free_rate) / np.maximum(frontier_volatilities, EPSILON)
-        
-        # Filtrar NaN en sharpe ratios
         valid_indices = ~np.isnan(sharpe) & ~np.isnan(frontier_returns) & ~np.isnan(frontier_volatilities)
         
         if not np.any(valid_indices):
             return CMLResult(
                 np.array([]), np.array([]), np.nan, np.nan, -1, np.nan
             )
-        
-        # Usar solo índices válidos
+
         valid_sharpe = sharpe[valid_indices]
         valid_returns = frontier_returns[valid_indices]
         valid_volatilities = frontier_volatilities[valid_indices]
-        
+    
         tangent_idx_valid = int(np.argmax(valid_sharpe))
         tangent_ret = valid_returns[tangent_idx_valid]
         tangent_vol = valid_volatilities[tangent_idx_valid]
-        
-        # Encontrar el índice original en el array completo
+    
         valid_indices_list = np.where(valid_indices)[0]
         tangent_idx = valid_indices_list[tangent_idx_valid]
 
@@ -81,17 +60,7 @@ class CMLCalculator:
         volatility: float,
         risk_free_rate: float
     ) -> float:
-        """
-        Calcula el Sharpe Ratio.
-        
-        Args:
-            expected_return: Retorno esperado del activo/portafolio
-            volatility: Volatilidad del activo/portafolio
-            risk_free_rate: Tasa libre de riesgo
-            
-        Returns:
-            Sharpe Ratio
-        """
+
         if np.isnan(expected_return) or np.isnan(volatility) or volatility <= 0:
             return np.nan
         return (expected_return - risk_free_rate) / volatility

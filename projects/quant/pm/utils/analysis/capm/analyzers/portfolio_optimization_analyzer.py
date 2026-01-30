@@ -11,18 +11,7 @@ from ....tools.config import (
 )
 
 class PortfolioOptimizationAnalyzer:
-    """
-    Analyzer para optimización de portafolios con frontera eficiente.
-    
-    Responsabilidad: Coordinar cálculos de frontera eficiente, CML, SML
-    y portafolios óptimos.
-    """
-
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.frontier_calc = EfficientFrontierCalculator(self.annual_factor)
         self.cml_calc = CMLCalculator()
@@ -35,18 +24,7 @@ class PortfolioOptimizationAnalyzer:
         n_points: int = None,
         allow_short: bool = False
     ) -> Dict:
-        """
-        Analiza la frontera eficiente y el portafolio tangente.
-        
-        Args:
-            returns: DataFrame de retornos de activos
-            risk_free_rate: Tasa libre de riesgo anualizada
-            n_points: Puntos para frontera. Por defecto usa config.FRONTIER_POINTS
-            allow_short: Si permite ventas en corto
-            
-        Returns:
-            Dict con frontera, CML y portafolio tangente
-        """
+
         if n_points is None:
             n_points = FRONTIER_POINTS
 
@@ -87,16 +65,7 @@ class PortfolioOptimizationAnalyzer:
         returns: pd.DataFrame,
         allow_short: bool = False
     ) -> Dict:
-        """
-        Calcula el portafolio de mínima varianza.
-        
-        Args:
-            returns: DataFrame de retornos de activos
-            allow_short: Si permite ventas en corto
-            
-        Returns:
-            Dict con retorno, volatilidad, pesos y activos
-        """
+
         ret, vol, weights = self.frontier_calc.minimum_variance_portfolio(
             returns, allow_short
         )
@@ -115,18 +84,7 @@ class PortfolioOptimizationAnalyzer:
         max_beta: float = None,
         n_points: int = None
     ) -> SMLResult:
-        """
-        Calcula la Security Market Line (SML).
-        
-        Args:
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno esperado del mercado
-            max_beta: Beta máximo para graficar. Por defecto usa config
-            n_points: Puntos para generar línea. Por defecto usa config
-            
-        Returns:
-            SMLResult con betas y retornos esperados
-        """
+
         if max_beta is None:
             max_beta = SML_CONFIG['max_beta']
         
@@ -142,18 +100,7 @@ class PortfolioOptimizationAnalyzer:
         risk_free_rate: float,
         market_return: float
     ) -> bool:
-        """
-        Determina si un activo está infravalorado (retorno > esperado).
-        
-        Args:
-            actual_return: Retorno real del activo
-            beta: Beta del activo
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno del mercado
-            
-        Returns:
-            True si está infravalorado
-        """
+
         return self.sml_calc.is_undervalued(
             actual_return, beta, risk_free_rate, market_return
         )

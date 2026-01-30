@@ -18,9 +18,7 @@ class ReportSections:
     valuation: bool = True
     alerts: bool = True
 
-
 class CompanyReporter:
-
     def __init__(
         self, 
         format_config: FormatConfig = None,

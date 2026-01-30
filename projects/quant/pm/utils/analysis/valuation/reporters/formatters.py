@@ -57,23 +57,19 @@ def score_bar(score, width: int = 20, fill_char: str = "█", empty_char: str = 
     return "[" + fill_char * filled + empty_char * (width - filled) + "]"
 
 def score_emoji(score) -> str:
-    """
-    Retorna emoji basado en score.
-    
-    Umbrales definidos en config.SCORE_INTERPRETATION['visual']
-    """
+
     if pd.isna(score):
         return "❓"
 
     thresh = SCORE_INTERPRETATION['visual']
     
-    if score >= thresh['excellent']:  # >= 80
+    if score >= thresh['excellent']: 
         return "🟢"
-    if score >= thresh['good']:  # >= 60
+    if score >= thresh['good']:  
         return "🟡"
-    if score >= thresh['fair']:  # >= 40
+    if score >= thresh['fair']:  
         return "🟠"
-    return "🔴"  # < 40
+    return "🔴"  
     
 def classification_emoji(classification: str) -> str:
 

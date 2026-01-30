@@ -10,17 +10,7 @@ from ....tools.config import (
 )
 
 class VarEsReporter:
-    """
-    Reporter para generar informes de VaR y ES.
-    
-    Responsabilidad: Formatear y presentar resultados de VaR/ES de forma legible.
-    """
-
     def __init__(self, var_es_analyzer: VarEsAnalyzer):
-        """
-        Args:
-            var_es_analyzer: Instancia de VarEsAnalyzer para cálculos
-        """
         self.analyzer = var_es_analyzer
     
     def generate_report(
@@ -31,16 +21,7 @@ class VarEsReporter:
         n_simulations: int = None,
         seed: int = None
     ) -> None:
-        """
-        Genera reporte de VaR y ES comparando métodos.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            confidence_level: Nivel de confianza. Por defecto usa config
-            n_simulations: Simulaciones Monte Carlo. Por defecto usa config
-            seed: Semilla para reproducibilidad. Por defecto usa config
-        """
+
         if confidence_level is None:
             confidence_level = DEFAULT_CONFIDENCE_LEVEL
         
@@ -63,7 +44,6 @@ class VarEsReporter:
         self.print_comparison(comparison, confidence_level)
     
     def _results_to_dataframe(self, method_results: Dict) -> pd.DataFrame:
-        """Convierte resultados a DataFrame para visualización."""
         data = []
         for method, values in method_results.items():
             data.append({
@@ -81,7 +61,7 @@ class VarEsReporter:
         comparison: pd.DataFrame,
         confidence_level: float = None
     ) -> None:
-        """Imprime comparación formateada de VaR y ES."""
+
         if confidence_level is None:
             confidence_level = DEFAULT_CONFIDENCE_LEVEL
 
@@ -126,17 +106,7 @@ class VarEsReporter:
         n_simulations: int = None,
         seed: int = None
     ) -> None:
-        """
-        Genera reporte de VaR y ES para múltiples niveles de confianza.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            confidence_levels: Tupla de niveles de confianza
-            method: Método a utilizar
-            n_simulations: Simulaciones Monte Carlo. Por defecto usa config
-            seed: Semilla para reproducibilidad. Por defecto usa config
-        """
+
         if confidence_levels is None:
             confidence_levels = (0.90, DEFAULT_CONFIDENCE_LEVEL, 0.99)
         

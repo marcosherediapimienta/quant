@@ -6,7 +6,6 @@ from ..components.distribution_plotter import DistributionPlotter
 from ...analysis.risk_metrics.components.helpers import calculate_portfolio_returns
 
 class DistributionVisualizer:
-    
     def __init__(self):
         self.dist_plotter = DistributionPlotter()
     

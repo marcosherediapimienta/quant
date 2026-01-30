@@ -7,17 +7,7 @@ from ...analysis.risk_metrics.components.helpers import calculate_portfolio_retu
 from ...tools.config import ANNUAL_FACTOR, DEFAULT_CONFIDENCE_LEVEL
 
 class VarEsVisualizer:
-    """
-    Visualizer para gráficos de VaR y ES.
-    
-    Responsabilidad: Generar visualizaciones de VaR y ES.
-    """
-    
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.var_es_plotter = VarEsPlotter()
     
@@ -29,24 +19,12 @@ class VarEsVisualizer:
         confidence_level: float = None,
         figsize: tuple = (14, 10)
     ) -> plt.Figure:
-        """
-        Genera análisis visual completo de VaR y ES.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            var_es_results: Resultados de VaR y ES por nivel de confianza y método
-            confidence_level: Nivel de confianza. Por defecto usa config
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con los gráficos
-        """
+
         if confidence_level is None:
             confidence_level = DEFAULT_CONFIDENCE_LEVEL
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)
-        
+
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
 

@@ -4,7 +4,6 @@ import pandas as pd
 from typing import Optional
 
 class CAPMPlotter:
-
     def plot_regression(
         self,
         market_returns: np.ndarray,

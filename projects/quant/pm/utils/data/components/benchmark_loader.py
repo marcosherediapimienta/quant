@@ -4,7 +4,6 @@ from .data_loader import DataLoader
 from .helpers import extract_close_price, validate_benchmark
 
 class BenchmarkLoader:
-
     def __init__(self, loader: DataLoader = None):
         self.loader = loader if loader else DataLoader()
         self.benchmarks = BENCHMARKS
