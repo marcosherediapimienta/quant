@@ -5,7 +5,6 @@ from ...analysis.capm.analyzers.capm_analyzer import CAPMAnalyzer
 from ...analysis.capm.components.helpers import daily_risk_free_rate
 
 class CAPMVisualizer:
-
     def __init__(self, capm_analyzer: CAPMAnalyzer):
         self.analyzer = capm_analyzer
         self.plotter = CAPMPlotter()
@@ -59,7 +58,6 @@ class CAPMVisualizer:
         ax2.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
                 verticalalignment='center', transform=ax2.transAxes)
         
-        # 3. Distribución de residuos (si hay suficientes datos)
         ax3 = fig.add_subplot(gs[1, 1])
         market_excess = market_returns - rf_daily
         asset_excess = asset_returns - rf_daily

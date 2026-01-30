@@ -4,7 +4,6 @@ from typing import Dict, List
 from .company_analyzer import CompanyAnalyzer, AnalysisWeights, ConclusionThresholds
 
 class ComparisonAnalyzer:
-    
     def __init__(self, company_analyzer: CompanyAnalyzer = None):
         self.company_analyzer = company_analyzer or CompanyAnalyzer()
     

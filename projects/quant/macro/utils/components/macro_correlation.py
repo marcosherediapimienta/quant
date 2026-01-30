@@ -12,7 +12,6 @@ from ..tools.config import (
 
 @dataclass
 class CorrelationResult:
-    """Resultado de correlación lagged."""
     lag: int
     corr: float
     t_stat: float
@@ -21,7 +20,6 @@ class CorrelationResult:
 
 @dataclass
 class BestLagResult:
-    """Resultado del mejor lag para un factor."""
     factor: str
     lag: int
     corr: float
@@ -31,32 +29,12 @@ class BestLagResult:
 
 
 class MacroCorrelationCalculator:
-    """
-    Calcula correlaciones entre retornos de portfolio y factores macro.
-    
-    Responsabilidad única: Calcular correlaciones con lags y estadísticas robustas.
-    
-    Métodos:
-    - calculate_lagged: Correlación con diferentes lags
-    - find_best_lag: Encuentra el lag óptimo para cada factor
-    - calculate_matrix_with_lags: Matriz de correlaciones para varios lags
-    - calculate_rolling: Correlación móvil entre series
-    """
-    
     def __init__(
         self,
         max_lag: int = None,
         min_obs: int = None,
         hac_maxlags: int = None
     ):
-        """
-        Inicializa el calculador de correlaciones.
-        
-        Args:
-            max_lag: Máximo lag a evaluar (None = usar config)
-            min_obs: Mínimo de observaciones requeridas (None = usar config)
-            hac_maxlags: Lags para HAC standard errors (None = usar config)
-        """
         self.max_lag = max_lag if max_lag is not None else MAX_LAG
         self.min_obs = min_obs if min_obs is not None else CORRELATION_MIN_OBS
         self.hac_maxlags = hac_maxlags if hac_maxlags is not None else HAC_MAXLAGS
@@ -66,21 +44,7 @@ class MacroCorrelationCalculator:
         y: pd.Series,
         x: pd.Series
     ) -> pd.DataFrame:
-        """
-        Calcula correlación entre y y x para diferentes lags.
-        
-        Args:
-            y: Serie temporal dependiente (ej: retornos de portfolio)
-            x: Serie temporal independiente (ej: factor macro)
-            
-        Returns:
-            DataFrame con lag, corr, t-stat, p-value, n_obs
-            
-        Método:
-        - Prueba lags desde -max_lag hasta +max_lag
-        - Calcula correlación Pearson
-        - Estima significancia con regresión OLS + HAC standard errors
-        """
+
         results = []
         
         for lag in range(-self.max_lag, self.max_lag + 1):
@@ -93,8 +57,7 @@ class MacroCorrelationCalculator:
                 continue
             
             corr = df.iloc[:, 0].corr(df.iloc[:, 1])
-            
-            # Test de significancia con HAC
+
             try:
                 X = sm.add_constant(df.iloc[:, 1].values)
                 model = sm.OLS(df.iloc[:, 0].values, X)
@@ -122,20 +85,7 @@ class MacroCorrelationCalculator:
         portfolio_returns: pd.Series,
         macro_factors: pd.DataFrame
     ) -> pd.DataFrame:
-        """
-        Encuentra el lag óptimo para cada factor macro.
-        
-        Args:
-            portfolio_returns: Retornos del portfolio
-            macro_factors: DataFrame con factores macro
-            
-        Returns:
-            DataFrame con mejor lag por factor, ordenado por |correlación|
-            
-        Criterio:
-        - Selecciona el lag con mayor |correlación|
-        - Incluye estadísticas de significancia
-        """
+
         results = []
         
         for factor_name in macro_factors.columns:
@@ -147,17 +97,14 @@ class MacroCorrelationCalculator:
                 
                 if lag_df.empty:
                     continue
-                
-                # Filtrar correlaciones significativas (p < 0.05)
+
                 significant_lags = lag_df[lag_df['p'] < 0.05].copy()
                 
                 if not significant_lags.empty:
-                    # Si hay correlaciones significativas, elegir la de mayor |corr|
                     idx_best = significant_lags['corr'].abs().idxmax()
                     best_row = significant_lags.loc[idx_best]
                     is_significant = True
                 else:
-                    # Si ninguna es significativa, usar la de mayor |corr| pero advertir
                     idx_best = lag_df['corr'].abs().idxmax()
                     best_row = lag_df.loc[idx_best]
                     is_significant = False
@@ -188,21 +135,7 @@ class MacroCorrelationCalculator:
         macro_factors: pd.DataFrame,
         lags: list = None
     ) -> Dict[int, pd.Series]:
-        """
-        Calcula matriz de correlaciones para diferentes lags fijos.
-        
-        Args:
-            portfolio_returns: Retornos del portfolio
-            macro_factors: DataFrame con factores macro
-            lags: Lista de lags a evaluar (None = [0, 1, 5, 21, 63, 126])
-            
-        Returns:
-            Dict {lag: Serie de correlaciones por factor}
-            
-        Uso:
-        - Útil para visualizar cómo cambia la correlación con el lag
-        - Cada lag es un "snapshot" de correlaciones simultáneas
-        """
+
         if lags is None:
             lags = CORRELATION_LAGS_DEFAULT
         
@@ -232,22 +165,7 @@ class MacroCorrelationCalculator:
         window: int = 252,
         min_periods: int = None
     ) -> pd.Series:
-        """
-        Calcula correlación móvil entre dos series.
-        
-        Args:
-            portfolio_returns: Retornos del portfolio
-            macro_factor: Factor macro individual
-            window: Ventana móvil (default: 252 días = 1 año)
-            min_periods: Mínimo de observaciones (None = window // 2)
-            
-        Returns:
-            Serie temporal de correlaciones móviles
-            
-        Uso:
-        - Detecta cambios en la relación portfolio-factor a lo largo del tiempo
-        - Útil para identificar régimenes cambiantes
-        """
+
         if min_periods is None:
             min_periods = window // 2
 

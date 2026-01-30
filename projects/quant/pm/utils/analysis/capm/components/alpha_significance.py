@@ -13,22 +13,11 @@ class AlphaTestResult:
     jensen_alpha: float
 
 class AlphaSignificanceTest:
-    """
-    Test de significancia estadística para el alpha de Jensen.
-    
-    Responsabilidad: Realizar regresión CAPM con errores robustos HAC (Newey-West).
-    """
-
     def __init__(
         self, 
         annual_factor: float = None,
         significance_level: float = None
     ):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-            significance_level: Nivel de significancia. Por defecto usa config.SIGNIFICANCE_LEVEL
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.significance_level = significance_level or SIGNIFICANCE_LEVEL
     
@@ -39,18 +28,7 @@ class AlphaSignificanceTest:
         risk_free_rate_daily: float,
         maxlags: int = None
     ) -> AlphaTestResult:
-        """
-        Realiza test de significancia del alpha.
-        
-        Args:
-            asset_returns: Retornos del activo
-            market_returns: Retornos del mercado
-            risk_free_rate_daily: Tasa libre de riesgo diaria
-            maxlags: Lags para HAC. Por defecto usa sqrt(n)
-            
-        Returns:
-            AlphaTestResult con resultados del test
-        """
+
         if len(asset_returns) != len(market_returns) or len(asset_returns) < MIN_OBSERVATIONS:
             return AlphaTestResult(np.nan, np.nan, np.nan, np.nan, False, np.nan)
         
@@ -61,20 +39,17 @@ class AlphaSignificanceTest:
             X = sm.add_constant(x, has_constant='add')
             model = sm.OLS(y, X, hasconst=True)
             res = model.fit()
-            
-            # Lags HAC: sqrt(n) por defecto (regla de pulgar de Newey-West)
             n = len(y)
+
             if maxlags is None:
                 maxlags = self._calculate_default_maxlags(n)
-            
-            # Errores robustos HAC (Newey-West)
+
             robust = res.get_robustcov_results(cov_type='HAC', maxlags=maxlags)
             
             alpha_daily = float(robust.params[0])
             beta = float(robust.params[1])
             t_stat = float(robust.tvalues[0])
             p_value = float(robust.pvalues[0])
-            
             jensen_alpha = (1 + alpha_daily) ** self.annual_factor - 1
             is_significant = p_value < self.significance_level
             
@@ -86,13 +61,4 @@ class AlphaSignificanceTest:
             return AlphaTestResult(np.nan, np.nan, np.nan, np.nan, False, np.nan)
     
     def _calculate_default_maxlags(self, n: int) -> int:
-        """
-        Calcula los lags por defecto para HAC usando la regla de Newey-West.
-        
-        Args:
-            n: Número de observaciones
-            
-        Returns:
-            Número de lags óptimo
-        """
         return max(1, int(np.sqrt(n)))

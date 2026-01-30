@@ -12,7 +12,6 @@ from ..tools.config import (
 
 @dataclass
 class YieldCurveAnalysis:
-    """Análisis de la curva de rendimientos."""
     levels: Dict[str, float]
     spreads: Dict[str, float]
     rate_changes: Dict[str, Dict[str, float]]
@@ -20,28 +19,22 @@ class YieldCurveAnalysis:
     interpretation: str
     risk_level: str
 
-
 @dataclass
 class InflationSignals:
-    """Señales de inflación desde commodities."""
     commodity_changes: Dict[str, float]
     commodity_names: Dict[str, str]
     inflation_pressure: str
     avg_commodity_change: float
 
-
 @dataclass
 class CreditConditions:
-    """Condiciones de crédito y estrés de mercado."""
     vix_level: float
     market_condition: str
     hyg_level: float = None
     lqd_level: float = None
 
-
 @dataclass
 class RiskSentiment:
-    """Sentimiento de riesgo global."""
     vix: float
     fear_level: str
     dollar_strength: str
@@ -55,51 +48,15 @@ class RiskSentiment:
     gold_trend_1w: float = None
     safe_haven: str = None
 
-
-class MacroSituationAnalyzer:
-    """
-    Analiza la situación macroeconómica actual.
-    
-    Responsabilidad única: Proporcionar análisis interpretativo de factores macro.
-    
-    Análisis disponibles:
-    - Yield curve USA: Interpretación de la curva de rendimientos
-    - Inflation signals: Presión inflacionaria desde commodities
-    - Credit conditions: Condiciones de crédito y estrés
-    - Risk sentiment: Sentimiento de riesgo global
-    - Global bonds: Análisis de bonos globales
-    - Current snapshot: Niveles actuales de todos los factores
-    """
-    
+class MacroSituationAnalyzer: 
     def __init__(self):
-        """Inicializa el analizador de situación macro."""
         pass
     
     def analyze_yield_curve_usa(
         self,
         factors_data: Dict[str, pd.Series]
     ) -> YieldCurveAnalysis:
-        """
-        Analiza la curva de rendimientos de USA.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            YieldCurveAnalysis con niveles, spreads e interpretación
-            
-        Análisis:
-        - Niveles actuales de tasas (2Y, 5Y, 10Y, 30Y)
-        - Cambios en 1m, 3m, 1y
-        - Spreads clave: 10Y-2Y, 10Y-5Y, 30Y-10Y
-        - Divergencia entre corto y largo plazo
-        
-        Interpretación del spread 10Y-2Y:
-        - < 0: INVERTIDA - Señal de recesión
-        - 0-0.3: PLANA - Posible desaceleración
-        - 0.3-2.0: NORMAL - Crecimiento estable
-        - > 2.0: EMPINADA - Expansión económica
-        """
+
         rates = {}
         rate_changes = {}
         tenors_map = {
@@ -140,7 +97,6 @@ class MacroSituationAnalyzer:
         if '30Y' in rates and '10Y' in rates:
             spreads['30Y-10Y'] = rates['30Y'] - rates['10Y']
 
-        # Análisis de divergencia corto vs largo plazo
         divergence_analysis = {}
         if '2Y' in rate_changes and '10Y' in rate_changes:
             short_changes = rate_changes['2Y']
@@ -197,29 +153,7 @@ class MacroSituationAnalyzer:
         self,
         factors_data: Dict[str, pd.Series]
     ) -> InflationSignals:
-        """
-        Analiza señales de inflación desde commodities.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            InflationSignals con cambios en commodities y presión inflacionaria
-            
-        Commodities monitoreados:
-        - GOLD: Oro (safe haven + inflación)
-        - SILVER: Plata (industrial + inflación)
-        - OIL: Petróleo (energía)
-        - COPPER: Cobre (actividad económica)
-        - WHEAT: Trigo (alimentos)
-        - CORN: Maíz (alimentos)
-        
-        Interpretación (cambio promedio 1Y):
-        - > 15%: ALTA presión inflacionaria
-        - 5-15%: MODERADA inflación controlada
-        - -5 a 5%: BAJA inflación contenida
-        - < -5%: DEFLACIÓN
-        """
+
         commodities = {
             'GOLD': 'Gold',
             'SILVER': 'Silver',
@@ -274,27 +208,7 @@ class MacroSituationAnalyzer:
         self,
         factors_data: Dict[str, pd.Series]
     ) -> CreditConditions:
-        """
-        Analiza condiciones de crédito y estrés de mercado.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            CreditConditions con VIX y niveles de bonos corporativos
-            
-        Indicadores:
-        - VIX: Volatilidad implícita (índice del miedo)
-        - HYG: High Yield Corporate Bonds
-        - LQD: Investment Grade Corporate Bonds
-        
-        Interpretación VIX:
-        - > 35: PÁNICO - Estrés extremo
-        - 25-35: ESTRÉS - Tensión alta
-        - 20-25: TENSIÓN - Nerviosismo
-        - 15-20: NORMAL - Volatilidad controlada
-        - < 15: COMPLACENCIA - Volatilidad muy baja
-        """
+
         vix_level = None
         market_condition = None
         hyg_level = None
@@ -336,26 +250,7 @@ class MacroSituationAnalyzer:
         self,
         factors_data: Dict[str, pd.Series]
     ) -> RiskSentiment:
-        """
-        Analiza sentimiento de riesgo global.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            RiskSentiment con VIX, dólar, oro y análisis integrado
-            
-        Indicadores clave:
-        - VIX: Miedo en mercados
-        - DXY (Dollar Index): Fortaleza del dólar
-        - GOLD: Demanda de refugio seguro
-        
-        Análisis integrado:
-        - DXY ↑ + GOLD ↑ = Flight to safety (pánico)
-        - DXY ↑ + GOLD ↓ = Fortaleza económica/hawkish Fed
-        - DXY ↓ + GOLD ↑ = Búsqueda de rendimiento
-        - DXY ↓ + GOLD ↓ = Risk-on generalizado
-        """
+
         vix = None
         fear_level = None
         
@@ -412,7 +307,6 @@ class MacroSituationAnalyzer:
             if len(gold) >= PERIOD_WEEK and gold.iloc[-PERIOD_WEEK] > 0:
                 gold_trend_1w = (current / gold.iloc[-PERIOD_WEEK] - 1) * 100
 
-        # Análisis integrado de fortaleza del dólar
         dollar_strength = None
         strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
         moderate_move = MACRO_SITUATION_THRESHOLDS['trends']['moderate_move']
@@ -434,7 +328,6 @@ class MacroSituationAnalyzer:
             else:
                 dollar_strength = "MUY DÉBIL"
 
-            # Añadir tendencias recientes
             if dxy_trend_1m is not None and dxy_trend_1w is not None:
                 if dxy_trend_3m > moderate_move and dxy_trend_1w < divergence_threshold:
                     dollar_strength += " (debilitándose recientemente)"
@@ -482,33 +375,8 @@ class MacroSituationAnalyzer:
         self,
         factors_data: Dict[str, pd.Series]
     ) -> Dict[str, Dict]:
-        """
-        Analiza bonos gubernamentales globales.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            Dict con análisis por región
-            
-        Regiones monitoreadas:
-        - USA: GOVT_20Y
-        - Japan: JPN_BOND
-        - Europe: EUR_BOND
-        - Germany: GER_BOND
-        - UK: UK_BOND
-        - Emerging Markets: EM_BOND
-        - China: CHINA_BOND
-        - Canada: CAN_BOND
-        - Australia: AUS_BOND
-        - International: INTL_BOND
-        
-        Para cada región:
-        - Nivel actual
-        - Cambio 1m (21 trading days), 1y (252 trading days)
-        """
+
         bonds = {}
-        # Mapeo de factores a regiones con vencimientos
         regions = {
             'GOVT_20Y': {'region': 'USA', 'tenor': '20Y'},
             'GOVT_7_10Y': {'region': 'USA', 'tenor': '7-10Y'},
@@ -537,7 +405,6 @@ class MacroSituationAnalyzer:
                 series = factors_data[factor]
                 if len(series) > 0:
                     current = series.iloc[-1]
-                    # Crear nombre con región y vencimiento
                     region_name = f"{bond_info['region']} {bond_info['tenor']}"
                     bond_data = {'level': current}
 
@@ -575,19 +442,7 @@ class MacroSituationAnalyzer:
         self,
         factors_data: Dict[str, pd.Series]
     ) -> Dict[str, Dict]:
-        """
-        Obtiene snapshot actual de todos los factores.
-        
-        Args:
-            factors_data: Dict con series de factores macro
-            
-        Returns:
-            Dict con {factor: {current, date}}
-            
-        Uso:
-        - Vista rápida de niveles actuales
-        - Verificación de datos disponibles
-        """
+
         snapshot = {}
         
         for name, series in factors_data.items():

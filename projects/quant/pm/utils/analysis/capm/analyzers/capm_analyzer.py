@@ -5,9 +5,7 @@ from ..components.alpha_significance import AlphaSignificanceTest
 from ..components.helpers import daily_risk_free_rate
 from ....tools.config import ANNUAL_FACTOR, SIGNIFICANCE_LEVEL
 
-
 class CAPMAnalyzer:
-
     def __init__(self, annual_factor: float = ANNUAL_FACTOR, significance_level: float = SIGNIFICANCE_LEVEL):
         self.annual_factor = annual_factor
         self.significance_level = significance_level
@@ -22,15 +20,8 @@ class CAPMAnalyzer:
     ) -> Dict:
  
         rf_daily = daily_risk_free_rate(risk_free_rate, self.annual_factor)
-        
-        # Calcular correlación usando el método simple (para R²)
         capm = self.capm_calc.calculate(asset_returns, market_returns, rf_daily)
-        
-        # Calcular alpha, beta y significancia usando statsmodels con HAC (más robusto)
         alpha_test = self.alpha_test.test(asset_returns, market_returns, rf_daily)
-
-        # Usar los valores del alpha_test para consistencia matemática
-        # (el t-statistic y p-value corresponden a estos valores)
         alpha_daily = alpha_test.alpha_daily if not np.isnan(alpha_test.alpha_daily) else capm.alpha_daily
         beta = alpha_test.beta if not np.isnan(alpha_test.beta) else capm.beta
         alpha_annual = alpha_test.jensen_alpha if not np.isnan(alpha_test.jensen_alpha) else capm.jensen_alpha

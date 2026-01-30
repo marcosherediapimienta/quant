@@ -12,12 +12,10 @@ from ....tools.config import (
 
 @dataclass
 class GrowthThresholds:
-    """Thresholds para clasificación de crecimiento."""
     revenue_growth: Dict[str, float] = None
     earnings_growth: Dict[str, float] = None
     
     def __post_init__(self):
-        # Usar thresholds de config si están disponibles
         val_thresh = VALUATION_THRESHOLDS.get('growth', {})
         self.revenue_growth = self.revenue_growth or val_thresh.get('revenue_growth',
             {'excellent': 0.25, 'good': 0.15, 'fair': 0.08, 'poor': 0.03})
@@ -25,32 +23,12 @@ class GrowthThresholds:
             {'excellent': 0.30, 'good': 0.20, 'fair': 0.10, 'poor': 0.05})
 
 class GrowthMetrics:
-    """
-    Calcula métricas de crecimiento.
-    
-    Responsabilidad: Evaluar tasas de crecimiento de revenue y earnings.
-    
-    Métricas clave:
-    - Revenue Growth YoY: Crecimiento de ingresos año sobre año
-    - Earnings Growth YoY: Crecimiento de beneficios
-    - Earnings Quarterly Growth: Crecimiento trimestral
-    
-    Interpretación:
-    - Growth >20%: Alto crecimiento (verificar sostenibilidad)
-    - Growth 10-20%: Crecimiento sólido
-    - Growth 5-10%: Crecimiento moderado
-    - Growth <5%: Crecimiento bajo/maduro
-    - Growth negativo: Declive (requiere análisis profundo)
-    """
-    
     def __init__(self, thresholds: GrowthThresholds = None):
         self.thresholds = thresholds or GrowthThresholds()
-        # Obtener rangos y pesos desde config
         self.ranges = SCORING_RANGES['growth']
         self.weights = GROWTH_SCORING_WEIGHTS
     
     def calculate(self, data: Dict) -> Dict:
-        """Calcula scores y clasificaciones de crecimiento."""
         revenue_growth = nan_if_missing(data.get('revenueGrowth'))
         earnings_growth = nan_if_missing(data.get('earningsGrowth'))
         earnings_quarterly_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
@@ -68,7 +46,6 @@ class GrowthMetrics:
             'earnings_growth_class': classify_metric(earnings_growth, self.thresholds.earnings_growth)
         }
 
-        # Usar rangos y pesos de config
         scores = []
         if pd.notna(revenue_growth):
             scores.append(score_metric(
@@ -82,8 +59,7 @@ class GrowthMetrics:
                 self.ranges['earnings']['min'], 
                 self.ranges['earnings']['max']
             ) * self.weights['earnings'])
-        
-        # Total weight es la suma de pesos usados
+
         total_weight = sum([self.weights['revenue'], self.weights['earnings']][:len(scores)])
         growth_score = sum(scores) / total_weight if total_weight > 0 else np.nan
         sustainability = self._analyze_sustainability(metrics)
@@ -97,13 +73,6 @@ class GrowthMetrics:
         }
     
     def _analyze_sustainability(self, metrics: Dict) -> Dict:
-        """
-        Analiza sostenibilidad del crecimiento.
-        
-        Red flags:
-        - Earnings crecen mucho más rápido que revenue (posible manipulación contable)
-        - Revenue en declive sostenido
-        """
         analysis = {
             'is_sustainable': True,
             'concerns': []
@@ -128,7 +97,6 @@ class GrowthMetrics:
         return analysis
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-        """Genera alertas basadas en métricas usando umbrales de config."""
         alerts = []
         alert_cfg = ALERT_THRESHOLDS['growth']
         

@@ -6,11 +6,11 @@ from .formatters import (
     score_bar, score_emoji,
     FormatConfig
 )
+
 from ....tools.config import REPORTING_CONFIG
 
 @dataclass
 class SignalsReportSections:
-    """Configuración de secciones a incluir en reporte."""
     individual: bool = True
     summary: bool = True
     top_opportunities: bool = True
@@ -18,12 +18,6 @@ class SignalsReportSections:
 
 
 class SignalsReporter:
-    """
-    Reporter para señales de trading.
-    
-    Responsabilidad: Formatear y presentar señales de inversión de forma clara.
-    """
-
     def __init__(
         self,
         format_config: FormatConfig = None,
@@ -31,11 +25,10 @@ class SignalsReporter:
     ):
         self.config = format_config or FormatConfig()
         self.sections = sections or SignalsReportSections()
-        # Cargar configuración de reporting
         self.reporting_cfg = REPORTING_CONFIG
     
     def print_signal(self, signal) -> None:
-        """Imprime señal individual."""
+
         if not self.sections.individual:
             return
         
@@ -50,8 +43,7 @@ class SignalsReporter:
         print(f"📊 SCORES:")
         print(f"   Valuation:    {score_emoji(signal.valuation_score)} {score_bar(signal.valuation_score)} {signal.valuation_score:.1f}")
         print(f"   Fundamental:   {score_emoji(signal.fundamental_score)} {score_bar(signal.fundamental_score)} {signal.fundamental_score:.1f}")
-        
-        # Precios
+
         print(f"💰 PRICES:")
         print(f"   Current:       {fmt_money(signal.current_price)}")
         print(f"   Target:        {fmt_money(signal.price_target)}")
@@ -60,13 +52,13 @@ class SignalsReporter:
         if signal.reasons:
             print(f"\n💡 REASONS:")
             max_display = self.reporting_cfg['max_reasons_display']
-            for reason in signal.reasons[:max_display + 1]:  # Mostrar un poco más que el límite
+            for reason in signal.reasons[:max_display + 1]: 
                 print(f"   {reason}")
         
         print("=" * w)
     
     def print_summary(self, signals: List) -> None:
-        """Imprime resumen de señales."""
+
         if not self.sections.summary:
             return
         
@@ -95,7 +87,7 @@ class SignalsReporter:
         print("=" * w)
 
     def print_top_opportunities(self, signals: List, top_n: int = None) -> None:
-        """Imprime top oportunidades de compra."""
+
         if not self.sections.top_opportunities:
             return
         
@@ -130,7 +122,6 @@ class SignalsReporter:
                 print(f"   Reasons: {', '.join(s.reasons[:max_reasons])}")
 
     def to_dataframe(self, signals: List) -> pd.DataFrame:
-        """Convierte señales a DataFrame."""
         return pd.DataFrame([{
             'Ticker': s.ticker,
             'Signal': s.signal,
@@ -143,7 +134,6 @@ class SignalsReporter:
         } for s in signals])
     
     def _get_signal_emoji(self, signal: str) -> str:
-        """Obtiene emoji para la señal."""
         mapping = {
             'BUY': '🟢',
             'COMPRA': '🟢',

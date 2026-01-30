@@ -5,17 +5,7 @@ from ..analyzers.ratio_analyzer import RatioAnalyzer
 from ....tools.config import RATIO_INTERPRETATION, SORTINO_THRESHOLDS
 
 class RatioReporter:
-    """
-    Reporter para generar informes de ratios de rendimiento/riesgo.
-    
-    Responsabilidad: Formatear y presentar resultados de ratios de forma legible.
-    """
-
     def __init__(self, ratio_analyzer: RatioAnalyzer):
-        """
-        Args:
-            ratio_analyzer: Instancia de RatioAnalyzer para cálculos
-        """
         self.analyzer = ratio_analyzer
     
     def generate_report(
@@ -25,22 +15,13 @@ class RatioReporter:
         risk_free_rate: float,
         ddof: int = 0
     ) -> None:
-        """
-        Genera reporte de todos los ratios de rendimiento/riesgo.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            risk_free_rate: Tasa libre de riesgo anualizada
-            ddof: Grados de libertad para cálculos estadísticos
-        """
+
         results = self.analyzer.calculate_all_ratios(
             returns, weights, risk_free_rate, ddof
         )
         self.print_ratios(results)
     
     def print_ratios(self, results: Dict) -> None:
-        """Imprime ratios formateados con interpretaciones."""
         print("ANÁLISIS DE RATIOS DE RENDIMIENTO".center(60))
         
         print("SHARPE RATIO")
@@ -59,7 +40,6 @@ class RatioReporter:
 
     
     def _interpret_sharpe(self, sharpe: float) -> None:
-        """Interpreta el Sharpe Ratio usando thresholds de config."""
         thresholds = RATIO_INTERPRETATION['sharpe']
         if sharpe > thresholds['excellent']:
             print("  Interpretación:          Excelente")
@@ -71,7 +51,6 @@ class RatioReporter:
             print("  Interpretación:          Por debajo del aceptable")
 
     def _interpret_sortino(self, sortino: float) -> None:
-        """Interpreta el Sortino Ratio usando thresholds de config."""
         if sortino > SORTINO_THRESHOLDS['excellent']:
             print("  Interpretación:          Excelente control de downside")
         elif sortino > SORTINO_THRESHOLDS['good']:
@@ -82,7 +61,6 @@ class RatioReporter:
             print("  Interpretación:          Downside risk elevado")
     
     def print_rolling_summary(self, rolling_data: pd.DataFrame) -> None:
-        """Imprime resumen de métricas rolling."""
         print("RESUMEN DE MÉTRICAS ROLLING".center(60))
         
         print("SHARPE RATIO ROLLING")

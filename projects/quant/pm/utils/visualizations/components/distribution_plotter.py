@@ -5,7 +5,6 @@ from scipy import stats
 from typing import Optional, Tuple
 
 class DistributionPlotter:
-    
     def __init__(self, figsize: Tuple[int, int] = (12, 5)):
         self.figsize = figsize
     

@@ -3,7 +3,6 @@ import numpy as np
 from ....tools.config import CLOSE_COL
 
 class ReturnsCalculator:
-
     def __init__(self, price_column: str = CLOSE_COL):
         self.price_column = price_column
     

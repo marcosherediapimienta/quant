@@ -21,44 +21,26 @@ class EfficiencyThresholds:
 
 
 class EfficiencyMetrics:
-    """
-    Calcula métricas de eficiencia operativa.
-    
-    Responsabilidad: Evaluar eficiencia en uso de activos y gestión de working capital.
-    
-    Métricas clave:
-    - Asset Turnover: Ingresos generados por cada $ de activos
-    - DSO (Days Sales Outstanding): Días promedio de cobro
-    - DIO (Days Inventory Outstanding): Días que dura el inventario
-    - Revenue per Employee: Productividad
-    
-    Working Capital Cycle = DSO + DIO - DPO (Days Payable Outstanding)
-    """
-
     def __init__(self, thresholds: EfficiencyThresholds = None):
         self.thresholds = thresholds or EfficiencyThresholds()
         self.config = EFFICIENCY_SCORING
         self.days_per_year = REPORTING_CONFIG['days_per_year']
     
     def calculate(self, data: Dict) -> Dict:
-        """Calcula scores y clasificaciones de eficiencia."""
         total_revenue = nan_if_missing(data.get('totalRevenue'))
         total_assets = nan_if_missing(data.get('totalAssets'))
         inventory = nan_if_missing(data.get('inventory'))
         receivables = nan_if_missing(data.get('netReceivables'))
         cogs = nan_if_missing(data.get('costOfRevenue'))
         employees = nan_if_missing(data.get('fullTimeEmployees'))
-        
-        # Asset Turnover
         asset_turnover = nan_if_missing(data.get('assetTurnover'))
+
         if pd.isna(asset_turnover) and pd.notna(total_revenue) and pd.notna(total_assets) and total_assets != 0:
             asset_turnover = total_revenue / total_assets
 
-        # Turnover ratios
         inventory_turnover = safe_div(cogs, inventory)
         receivables_turnover = safe_div(total_revenue, receivables)
-        
-        # Days ratios (usando days_per_year de config)
+
         dso = safe_div(self.days_per_year, receivables_turnover)
         dio = safe_div(self.days_per_year, inventory_turnover)
         revenue_per_employee = safe_div(total_revenue, employees)
@@ -92,7 +74,7 @@ class EfficiencyMetrics:
         }
     
     def _classify_value(self, value: float, thresholds: Dict, higher_is_better: bool = True) -> str:
-        """Clasifica un valor según umbrales."""
+
         if pd.isna(value):
             return 'N/A'
         
@@ -110,7 +92,6 @@ class EfficiencyMetrics:
             return 'poor'
     
     def _calculate_score(self, metrics: Dict) -> float:
-        """Calcula score usando pesos y rangos de config."""
         scores = []
         weights = []
         cfg_weights = self.config['weights']
@@ -155,7 +136,6 @@ class EfficiencyMetrics:
         return weighted_sum / total_weight if total_weight > 0 else np.nan
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-        """Genera alertas usando umbrales de config."""
         alerts = []
         alert_cfg = ALERT_THRESHOLDS['efficiency']
         

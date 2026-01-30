@@ -10,7 +10,6 @@ from ..tools.config import (
 
 @dataclass
 class RegressionResult:
-    """Resultado de regresión multifactor."""
     alpha: float
     alpha_annual: float
     betas: Dict[str, float]
@@ -25,19 +24,6 @@ class RegressionResult:
 
 
 class MacroRegressionCalculator:
-    """
-    Calcula regresiones multifactor entre retornos y factores macro.
-    
-    Responsabilidad única: Estimación de modelos multifactor con estadísticas robustas.
-    
-    Modelos:
-    - Regresión OLS multifactor con HAC standard errors
-    - Descomposición de retornos por factor
-    - Regresión móvil para análisis dinámico
-    - Identificación de factores significativos
-    - Descomposición de riesgo sistemático vs idiosincrático
-    """
-    
     def __init__(
         self,
         annual_factor: int = 252,
@@ -46,16 +32,6 @@ class MacroRegressionCalculator:
         min_obs: int = None,
         significance_level: float = None
     ):
-        """
-        Inicializa el calculador de regresiones.
-        
-        Args:
-            annual_factor: Factor de anualización (default: 252)
-            use_hac: Si usar HAC standard errors (default: True)
-            hac_maxlags: Lags para HAC (None = sqrt(n))
-            min_obs: Mínimo de observaciones (None = usar config)
-            significance_level: Nivel de significancia (None = usar config)
-        """
         self.annual_factor = annual_factor
         self.use_hac = use_hac
         self.hac_maxlags = hac_maxlags
@@ -67,26 +43,7 @@ class MacroRegressionCalculator:
         portfolio_returns: pd.Series,
         factors: pd.DataFrame
     ) -> RegressionResult:
-        """
-        Estima regresión multifactor.
-        
-        Modelo:
-            r_p = α + β₁·F₁ + β₂·F₂ + ... + βₙ·Fₙ + ε
-        
-        Args:
-            portfolio_returns: Retornos del portfolio
-            factors: DataFrame con factores macro
-            
-        Returns:
-            RegressionResult con coeficientes y estadísticas
-            
-        Estadísticas:
-        - Alpha (intercepto): Retorno no explicado por factores
-        - Betas: Sensibilidad a cada factor
-        - t-stats y p-values: Significancia estadística
-        - R²: Proporción de varianza explicada
-        - Residuales: Retornos no explicados
-        """
+
         df = pd.concat([portfolio_returns, factors], axis=1).dropna()
         
         if len(df) < self.min_obs:
@@ -109,19 +66,15 @@ class MacroRegressionCalculator:
             fit = model.fit()
 
         alpha_daily = float(fit.params[0])
-        
-        # Validar alpha diario extremo (posible error de datos)
+
         if alpha_daily <= -0.95:
             print(f"⚠️ WARNING: Alpha diario extremo detectado: {alpha_daily:.4f}")
             print(f"   Esto indica pérdida diaria ≥95%, probablemente error de datos.")
             print(f"   Se retornará NaN. Revisar datos de entrada.")
             alpha_annual = np.nan
         elif alpha_daily > -0.99:
-            # Anualización geométrica estándar (correcto)
             alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
         else:
-            # Alpha muy negativo pero no extremo: usar aproximación lineal como fallback
-            # Esto solo ocurre en casos raros (-99% < alpha < -95%)
             print(f"⚠️ Alpha diario muy negativo: {alpha_daily:.4f}, usando aproximación lineal")
             alpha_annual = alpha_daily * self.annual_factor
         
@@ -150,24 +103,7 @@ class MacroRegressionCalculator:
         result: RegressionResult,
         factors: pd.DataFrame
     ) -> Dict[str, pd.Series]:
-        """
-        Descompone retornos del portfolio por factor.
-        
-        Descomposición:
-            r_p = α + β₁·F₁ + β₂·F₂ + ... + ε
-            
-        Args:
-            result: Resultado de regresión
-            factors: DataFrame con factores macro
-            
-        Returns:
-            Dict con series de contribución por factor
-            
-        Componentes:
-        - 'alpha': Contribución del alpha constante
-        - '{factor_name}': Contribución de cada factor (β·F)
-        - 'residual': Retorno no explicado (ε)
-        """
+
         decomposition = {}
         factors_aligned = factors.reindex(result.residuals.index)
 
@@ -192,22 +128,7 @@ class MacroRegressionCalculator:
         window: int = 252,
         min_periods: int = None
     ) -> pd.DataFrame:
-        """
-        Regresión multifactor móvil.
-        
-        Args:
-            portfolio_returns: Retornos del portfolio
-            factors: DataFrame con factores macro
-            window: Ventana móvil (default: 252 días)
-            min_periods: Mínimo de observaciones (None = window)
-            
-        Returns:
-            DataFrame con alpha, betas y R² móviles
-            
-        Uso:
-        - Detecta cambios en sensibilidades a factores
-        - Identifica régimenes con diferentes exposiciones
-        """
+
         if min_periods is None:
             min_periods = window
 
@@ -250,18 +171,7 @@ class MacroRegressionCalculator:
         self,
         result: RegressionResult
     ) -> List[str]:
-        """
-        Identifica factores estadísticamente significativos.
-        
-        Args:
-            result: Resultado de regresión
-            
-        Returns:
-            Lista de nombres de factores significativos
-            
-        Criterio:
-        - p-value < significance_level (default: 0.05)
-        """
+
         significant = []
         
         for factor_name in result.factor_names:
@@ -275,20 +185,9 @@ class MacroRegressionCalculator:
         result: RegressionResult,
         portfolio_returns: pd.Series = None 
     ) -> Dict[str, float]:
-        """
-        Descompone riesgo en sistemático vs idiosincrático.
-        
-        Nota: Por construcción, fitted_values + residuals = retornos originales
-        de la regresión, así que no necesitamos portfolio_returns externo.
-        """
-        # Usar el índice común de la regresión (ya está alineado)
+
         common_index = result.residuals.index
-        
-        # Los retornos originales son fitted + residuals (por construcción de OLS)
-        # Esto garantiza que estamos usando exactamente los mismos datos de la regresión
         portfolio_original = result.fitted_values + result.residuals
-        
-        # Asegurar que fitted y residuals son Series con el índice correcto
         fitted_vals = result.fitted_values
         residual_vals = result.residuals
         
@@ -303,32 +202,24 @@ class MacroRegressionCalculator:
                 residual_vals.flatten() if hasattr(residual_vals, 'flatten') and residual_vals.ndim > 1 else residual_vals, 
                 index=common_index
             )
-        
-        # Crear DataFrame con todos los datos ya alineados (mismo índice)
+
         df_clean = pd.DataFrame({
             'portfolio': portfolio_original,
             'fitted': fitted_vals,
             'residuals': residual_vals
         })
-        
-        # Verificar que no hay NaN (no debería haberlos si todo está bien)
+
         if df_clean.isna().any().any():
             print(f"⚠️  Advertencia: Se encontraron NaN, eliminando filas...")
             df_clean = df_clean.dropna()
         
         if len(df_clean) == 0:
             raise ValueError("No hay datos válidos después de limpiar NaN")
-        
-        # Calcular varianzas
+
         var_total = float(np.var(df_clean['portfolio'].values, ddof=0))
         var_systematic = float(np.var(df_clean['fitted'].values, ddof=0))
         var_idiosyncratic = float(np.var(df_clean['residuals'].values, ddof=0))
-        
-        # Verificación matemática: Var(Y) = Var(Ŷ) + Var(ε) + 2*Cov(Ŷ,ε)
-        # En OLS, por construcción Cov(Ŷ,ε) = 0, así que: Var(Y) = Var(Ŷ) + Var(ε)
         sum_vars = var_systematic + var_idiosyncratic
-        
-        # Calcular también la covarianza para diagnóstico
         cov_fitted_residual = float(np.cov(df_clean['fitted'].values, df_clean['residuals'].values)[0, 1])
         
         if abs(var_total - sum_vars) > 1e-4:

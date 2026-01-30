@@ -5,7 +5,6 @@ from ..analyzers.drawdown_analyzer import DrawdownAnalyzer
 from ....tools.config import DRAWDOWN_RISK_LEVELS, RATIO_INTERPRETATION
 
 class DrawdownReporter:
-
     def __init__(self, drawdown_analyzer: DrawdownAnalyzer):
         self.analyzer = drawdown_analyzer
     
@@ -19,7 +18,6 @@ class DrawdownReporter:
         self.print_drawdown(results)
     
     def print_drawdown(self, results: Dict) -> None:
-
         print("ANÁLISIS DE DRAWDOWN".center(60))
 
         print("MAX DRAWDOWN")
@@ -37,7 +35,6 @@ class DrawdownReporter:
         self._interpret_drawdown(results)
 
     def _interpret_drawdown(self, results: Dict) -> None:
-
         print("INTERPRETACIÓN")
         
         max_dd = abs(results['max_drawdown']) * 100
