@@ -206,10 +206,14 @@ class BuySellSignalsAnalyzer:
     
     def _calculate_upside(self, price_target: float, current_price: float) -> float:
         """
-        Calcula el potencial de subida en porcentaje.
+        Calcula el potencial de subida en porcentaje (como decimal).
         
         Responsabilidad: Cálculo simple aislado.
+        
+        Returns:
+            Potencial como decimal (0.1123 = 11.23%), no como porcentaje
         """
         if current_price <= 0:
             return 0.0
-        return ((price_target / current_price) - 1) * 100
+        # Retornar como decimal (0.1123 = 11.23%), el frontend lo convertirá a porcentaje
+        return (price_target / current_price) - 1

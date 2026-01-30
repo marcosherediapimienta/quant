@@ -133,12 +133,12 @@ class GrowthMetrics:
         alert_cfg = ALERT_THRESHOLDS['growth']
         
         if pd.notna(metrics['revenue_growth_yoy']) and metrics['revenue_growth_yoy'] < alert_cfg['revenue_decline_significant']:
-            alerts.append(f"Caída significativa de ingresos (>{abs(alert_cfg['revenue_decline_significant'])*100:.0f}%)")
+            alerts.append(f"Significant revenue decline (>{abs(alert_cfg['revenue_decline_significant'])*100:.0f}%)")
         
         if pd.notna(metrics['earnings_growth_yoy']) and metrics['earnings_growth_yoy'] < alert_cfg['earnings_decline_strong']:
-            alerts.append(f"Caída fuerte de beneficios (>{abs(alert_cfg['earnings_decline_strong'])*100:.0f}%)")
+            alerts.append(f"Strong earnings decline (>{abs(alert_cfg['earnings_decline_strong'])*100:.0f}%)")
         
         if pd.notna(metrics['revenue_growth_yoy']) and metrics['revenue_growth_yoy'] > alert_cfg['growth_too_high']:
-            alerts.append(f"Crecimiento muy alto (>{alert_cfg['growth_too_high']*100:.0f}%) - verificar sostenibilidad")
+            alerts.append(f"Very high growth (>{alert_cfg['growth_too_high']*100:.0f}%) - verify sustainability")
         
         return alerts

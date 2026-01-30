@@ -77,8 +77,20 @@ class PriceTargetCalculator:
         fair_peg = cfg['fair_peg']
         fair_pe = fair_peg * implied_growth
         
-        # Price target objetivo (sin ajustes circulares)
+        # Price target objetivo
         price_target = eps * fair_pe
+        
+        # Validación: Limitar cambios extremos (protección contra errores de PEG)
+        # Permitir máximo ±75% de cambio desde precio actual
+        max_upside = current_price * 1.75
+        max_downside = current_price * 0.25
+        
+        if price_target > max_upside:
+            print(f"⚠️ Price target PEG ({price_target:.2f}) limitado a +75%: {max_upside:.2f}")
+            price_target = max_upside
+        elif price_target < max_downside:
+            print(f"⚠️ Price target PEG ({price_target:.2f}) limitado a -75%: {max_downside:.2f}")
+            price_target = max_downside
         
         return price_target
 
@@ -136,6 +148,17 @@ class PriceTargetCalculator:
             fair_pe = pe * cfg['fair_multiplier_base']
 
         price_target = eps * fair_pe
+        
+        # Validación: Limitar cambios extremos
+        max_upside = current_price * 1.75
+        max_downside = current_price * 0.25
+        
+        if price_target > max_upside:
+            print(f"⚠️ Price target P/E ({price_target:.2f}) limitado a +75%: {max_upside:.2f}")
+            price_target = max_upside
+        elif price_target < max_downside:
+            print(f"⚠️ Price target P/E ({price_target:.2f}) limitado a -75%: {max_downside:.2f}")
+            price_target = max_downside
         
         return price_target
     

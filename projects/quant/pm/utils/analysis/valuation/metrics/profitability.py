@@ -126,15 +126,15 @@ class ProfitabilityMetrics:
         alert_cfg = ALERT_THRESHOLDS['profitability']
         
         if pd.notna(metrics['roic']) and metrics['roic'] < alert_cfg['roic_low']:
-            alerts.append("ROIC bajo: la empresa no genera retornos suficientes sobre el capital invertido")
+            alerts.append("Low ROIC: company does not generate sufficient returns on invested capital")
         
         if pd.notna(metrics['roe']) and metrics['roe'] < ALERT_THRESHOLDS['financial_health'].get('roe_negative', 0):
-            alerts.append("ROE negativo: la empresa está perdiendo dinero")
+            alerts.append("Negative ROE: company is losing money")
         
         if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_cfg['operating_margin_low']:
-            alerts.append("Margen operativo muy bajo: problemas de eficiencia operativa")
+            alerts.append("Very low operating margin: operational efficiency issues")
         
         if pd.notna(metrics['net_margin']) and metrics['net_margin'] < ALERT_THRESHOLDS['financial_health'].get('net_margin_negative', 0):
-            alerts.append("Margen neto negativo: la empresa no es rentable")
+            alerts.append("Negative net margin: company is not profitable")
         
         return alerts

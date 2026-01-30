@@ -161,14 +161,14 @@ class EfficiencyMetrics:
         
         dso = metrics['days_sales_outstanding']
         if pd.notna(dso) and dso > alert_cfg['dso_high']:
-            alerts.append(f"DSO alto ({dso:.0f} días): cobranza lenta")
+            alerts.append(f"High DSO ({dso:.0f} days): slow collection")
         
         dio = metrics['days_inventory_outstanding']
         if pd.notna(dio) and dio > alert_cfg['dio_high']:
-            alerts.append(f"Inventario tarda {dio:.0f} días en rotar")
+            alerts.append(f"Inventory takes {dio:.0f} days to turn over")
         
         at = metrics['asset_turnover']
         if pd.notna(at) and at < alert_cfg['asset_turnover_low']:
-            alerts.append(f"Asset Turnover bajo ({at:.2f}x): uso ineficiente de activos")
+            alerts.append(f"Low Asset Turnover ({at:.2f}x): inefficient asset usage")
         
         return alerts

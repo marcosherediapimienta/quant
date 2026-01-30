@@ -70,6 +70,8 @@ class ESCalculator:
         else:
             es_daily = tail_losses.mean()
         
+        # ⚠️ NOTA: Anualización con sqrt(T) asume i.i.d. normalidad
+        # Es una aproximación. ES anual real puede diferir significativamente.
         es_annual = es_daily * np.sqrt(self.annual_factor)
         
         return {
@@ -109,6 +111,8 @@ class ESCalculator:
         
         # Fórmula cerrada para ES bajo normalidad
         es_daily = mu - sigma * stats.norm.pdf(z) / alpha
+        
+        # ⚠️ Anualización asume normalidad
         es_annual = es_daily * np.sqrt(self.annual_factor)
         
         return {
