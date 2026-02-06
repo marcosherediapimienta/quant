@@ -1,9 +1,3 @@
-"""
-Script de prueba para el chatbot
-
-Uso:
-    python test_chatbot.py
-"""
 import os
 from pathlib import Path
 from chat_engine import ChatEngine
