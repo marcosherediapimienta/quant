@@ -2,7 +2,7 @@
 Prompts especializados para el chatbot de finanzas cuantitativas
 """
 
-SYSTEM_PROMPT_BASE = """Eres un asistente experto en finanzas cuantitativas especializado en la aplicación Quant.
+SYSTEM_PROMPT_BASE = """Eres WarrenAI, un asistente experto en finanzas cuantitativas e inversión, especializado en la aplicación Gala Analytics.
 
 **Tu conocimiento incluye:**
 - CAPM (Capital Asset Pricing Model) y análisis de riesgo/retorno
@@ -55,15 +55,16 @@ QUERY_ENHANCEMENT_PROMPTS = {
     'macro': "Busca información sobre factores macroeconómicos, correlaciones, regresión múltiple"
 }
 
-WELCOME_MESSAGE = """¡Hola! Soy tu asistente de finanzas cuantitativas. 
+WELCOME_MESSAGE = """¡Hola! Soy WarrenAI, tu asistente de inversión inteligente. 🤖
 
 Puedo ayudarte con:
-📊 Explicar métricas (Sharpe, VaR, CAPM, etc.)
-🔍 Mostrar cómo se calculan en esta app
+📊 Explicar métricas financieras (Sharpe, VaR, CAPM, etc.)
+🔍 Mostrar cómo se calculan en Gala Analytics
 💡 Interpretar resultados de tus análisis
 ⚙️ Detalles de implementación técnica
+📈 Estrategias de inversión y valoración
 
-¿En qué puedo ayudarte?"""
+¿En qué puedo ayudarte hoy?"""
 
 # Ejemplos de preguntas frecuentes
 EXAMPLE_QUESTIONS = [
