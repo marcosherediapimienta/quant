@@ -263,7 +263,7 @@ PORTFOLIO_CONFIG = {
         }
     },
     'optimization': {
-        'default_method': 'equal',
+        'default_method': 'score_risk_adjusted',
         'risk_free_rate': 0.045,
         'annual_trading_days': 252,
         'min_data_points': 30,
