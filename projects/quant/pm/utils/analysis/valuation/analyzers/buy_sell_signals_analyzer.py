@@ -75,6 +75,12 @@ class BuySellSignalsAnalyzer:
             current_price
         )
         upside = self._calculate_upside(price_target, current_price)
+
+        # Sanity check: evitar contradicciones entre señal y upside
+        signal, confidence = self.signal_determiner.validate_with_upside(
+            signal, confidence, upside
+        )
+
         reasons = self.reason_gen.generate(analysis, scores['fundamental'], None)
         
         return TradingSignal(
