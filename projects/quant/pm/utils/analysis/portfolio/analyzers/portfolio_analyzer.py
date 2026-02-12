@@ -48,7 +48,7 @@ class PortfolioAnalyzer:
         self.metrics_calc = PortfolioMetricsCalculator()
         self._rate_limit_lock = Lock()
         self._last_request_time = 0
-        self._min_request_interval = 0.5  
+        self._min_request_interval = 0.5
     
     def analyze(
         self,
@@ -129,7 +129,8 @@ class PortfolioAnalyzer:
         print(f"✅ Seleccionadas {len(selected_tickers)} empresas: {', '.join(selected_tickers)}")
 
         returns_data = None
-        if self.config.weight_method == 'markowitz':
+        methods_requiring_returns = ('markowitz', 'score_risk_adjusted', 'black_litterman')
+        if self.config.weight_method in methods_requiring_returns:
             print(f"📥 Descargando datos históricos para {len(selected_tickers)} empresas...")
             try:
                 hist_data = self.data_manager.download_assets(
@@ -145,7 +146,7 @@ class PortfolioAnalyzer:
                     returns_data = None
             except Exception as e:
                 print(f"⚠️  Error descargando datos históricos: {e}")
-                print(f"⚠️  Usando pesos iguales en lugar de optimización Markowitz")
+                print(f"⚠️  Usando pesos iguales como fallback")
                 returns_data = None
 
         print(f"⚖️  Optimizando pesos del portfolio (método: {self.config.weight_method})...")
@@ -245,8 +246,7 @@ class PortfolioAnalyzer:
         max_workers = max(1, min(os.cpu_count() or 4, len(tickers), 10)) 
         
         def analyze_quick_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit()  
-
+            self._rate_limit()
             try:
                 result = self.company_analyzer.analyze_quick(ticker)
                 error_str = str(result.get('error', ''))
@@ -259,7 +259,7 @@ class PortfolioAnalyzer:
                 error_msg = str(e)
 
                 if '401' in error_msg or 'Unauthorized' in error_msg or 'Rate limit' in error_msg or 'Too Many Requests' in error_msg:
-                    time.sleep(2)  
+                    time.sleep(2)
                     try:
                         result = self.company_analyzer.analyze_quick(ticker)
                         return (ticker, result)
@@ -294,11 +294,10 @@ class PortfolioAnalyzer:
             return {}
             
         results = {}
-        max_workers = max(1, min(3, len(tickers)))  
+        max_workers = max(1, min(3, len(tickers)))
 
         def analyze_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit() 
-            
+            self._rate_limit()
             try:
                 result = self.company_analyzer.analyze(ticker)
 

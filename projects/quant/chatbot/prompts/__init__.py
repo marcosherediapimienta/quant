@@ -1,0 +1,19 @@
+"""Prompts especializados para el chatbot"""
+
+from .finance_prompts import (
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_BASE,
+    RAG_PROMPT_TEMPLATE,
+    QUERY_ENHANCEMENT_PROMPTS,
+    WELCOME_MESSAGE,
+    EXAMPLE_QUESTIONS
+)
+
+__all__ = [
+    'SYSTEM_PROMPT',
+    'SYSTEM_PROMPT_BASE',
+    'RAG_PROMPT_TEMPLATE',
+    'QUERY_ENHANCEMENT_PROMPTS',
+    'WELCOME_MESSAGE',
+    'EXAMPLE_QUESTIONS'
+]
