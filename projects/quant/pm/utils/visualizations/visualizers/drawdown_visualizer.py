@@ -7,17 +7,7 @@ from ...analysis.risk_metrics.components.helpers import calculate_portfolio_retu
 from ...tools.config import ANNUAL_FACTOR
 
 class DrawdownVisualizer:
-    """
-    Visualizer para gráficos de drawdown.
-    
-    Responsabilidad: Generar visualizaciones de drawdowns y retornos acumulados.
-    """
-    
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.dd_plotter = DrawdownPlotter()
     
@@ -28,18 +18,7 @@ class DrawdownVisualizer:
         dd_results: Dict[str, float],
         figsize: tuple = (14, 8)
     ) -> plt.Figure:
-        """
-        Genera análisis visual de drawdowns.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            dd_results: Resultados del análisis de drawdown
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con los gráficos
-        """
+
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         cumulative_returns = (1 + portfolio_ret).cumprod() - 1
         running_max = cumulative_returns.cummax()

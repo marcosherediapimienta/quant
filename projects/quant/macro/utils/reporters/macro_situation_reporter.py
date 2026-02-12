@@ -3,7 +3,6 @@ from typing import Dict
 from ..analyzers.macro_situation_analyzer import MacroSituationAnalyzer
 
 class MacroSituationReporter:
-    
     def __init__(self, analyzer: MacroSituationAnalyzer = None):
         self.analyzer = analyzer if analyzer is not None else MacroSituationAnalyzer()
     
@@ -19,7 +18,6 @@ class MacroSituationReporter:
     
     def _print_executive_summary(self, summary: Dict) -> None:
         print("RESUMEN EJECUTIVO")
-
         risk_level = summary.get('overall_risk', 'N/A')
 
         if risk_level == "ALTO":
@@ -30,8 +28,8 @@ class MacroSituationReporter:
             risk_display = "🟢 BAJO"
         
         print(f"\n  Nivel de riesgo global: {risk_display}")
-        
         risk_factors = summary.get('risk_factors', [])
+
         if risk_factors:
             print(f"\n  Factores de riesgo detectados:")
             for factor in risk_factors:
@@ -40,10 +38,7 @@ class MacroSituationReporter:
             print(f"\n  ✅ No se detectan factores de riesgo significativos")
     
     def _print_yield_curve(self, curve) -> None:
-        """Imprime análisis de curva de rendimientos (dataclass o dict)."""
         print("CURVA DE TIPOS DE INTERÉS (USA)")
-
-        # Soportar tanto dataclass como dict
         levels = getattr(curve, 'levels', curve.get('levels', {})) if hasattr(curve, 'get') else curve.levels
         if levels:
             print("\n  Niveles actuales:")
@@ -57,7 +52,6 @@ class MacroSituationReporter:
                 symbol = "🔴" if value < 0 else "🟢"
                 print(f"    {symbol} {spread_name:>10}: {value:>+6.2f} pp")
 
-        # Mostrar cambios en las tasas
         rate_changes = getattr(curve, 'rate_changes', curve.get('rate_changes', {})) if hasattr(curve, 'get') else curve.rate_changes
         if rate_changes:
             print("\n  Cambios en tasas:")
@@ -107,10 +101,7 @@ class MacroSituationReporter:
         print(f"\n  💡 {interpretation}")
     
     def _print_inflation(self, inflation) -> None:
-        """Imprime señales de inflación (dataclass o dict)."""
         print("SEÑALES DE INFLACIÓN (Commodities)")
-
-        # Obtener commodity_changes (dataclass o dict)
         commodity_changes = getattr(inflation, 'commodity_changes', inflation.get('commodity_changes', {})) if hasattr(inflation, 'get') else inflation.commodity_changes
         commodity_names = getattr(inflation, 'commodity_names', inflation.get('commodity_names', {})) if hasattr(inflation, 'get') else inflation.commodity_names
         
@@ -129,10 +120,7 @@ class MacroSituationReporter:
             print(f"     Cambio promedio: {avg_change:>+.2f}%")
     
     def _print_credit(self, credit) -> None:
-        """Imprime condiciones de crédito (dataclass o dict)."""
         print("CONDICIONES DE CRÉDITO Y VOLATILIDAD")
-
-        # Obtener vix_level (dataclass o dict)
         vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
         if vix is not None:
             vix_symbol = "🔴" if vix > 30 else "🟡" if vix > 20 else "🟢"
@@ -180,16 +168,14 @@ class MacroSituationReporter:
             print(f"  {region:<15} {level_str:<12} {change_1m_str:<12} {change_1y_str:<12}")
     
     def _print_risk_sentiment(self, sentiment) -> None:
-        """Imprime sentimiento de riesgo (dataclass o dict)."""
         print("SENTIMIENTO DE RIESGO")
-
-        # Fear level
         fear = getattr(sentiment, 'fear_level', sentiment.get('fear_level')) if hasattr(sentiment, 'get') else sentiment.fear_level
+
         if fear:
             print(f"\n  Nivel de miedo:           {fear}")
 
-        # Dollar strength
         dollar = getattr(sentiment, 'dollar_strength', sentiment.get('dollar_strength')) if hasattr(sentiment, 'get') else sentiment.dollar_strength
+
         if dollar:
             trends = []
             dxy_1w = getattr(sentiment, 'dxy_trend_1w', sentiment.get('dxy_trend_1w')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_1w
@@ -206,7 +192,6 @@ class MacroSituationReporter:
             trend_str = f"({', '.join(trends)})" if trends else ""
             print(f"  Fortaleza del dólar:      {dollar} {trend_str}")
 
-        # Safe haven
         safe_haven = getattr(sentiment, 'safe_haven', sentiment.get('safe_haven')) if hasattr(sentiment, 'get') else sentiment.safe_haven
         if safe_haven:
             trends = []
@@ -225,9 +210,7 @@ class MacroSituationReporter:
             print(f"  Demanda de refugio:       {safe_haven} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
-        """Imprime resumen compacto del análisis macro."""
         print("SNAPSHOT MACRO".center(60))
-
         curve = analysis['yield_curve']
         spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
         if '10Y-2Y' in spreads:

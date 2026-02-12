@@ -1,8 +1,3 @@
-"""
-CONFIGURACIÓN - ANÁLISIS MACRO
-Factores macroeconómicos y parámetros de análisis.
-"""
-
 MACRO_FACTORS = {
     # Volatilidad
     'VIX': '^VIX',

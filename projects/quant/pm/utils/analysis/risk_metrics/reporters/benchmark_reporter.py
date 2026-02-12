@@ -10,17 +10,7 @@ from ....tools.config import (
 )
 
 class BenchmarkReporter:
-    """
-    Reporter para generar informes de análisis vs benchmark.
-    
-    Responsabilidad: Formatear y presentar resultados de comparación con benchmark.
-    """
-
     def __init__(self, benchmark_analyzer: BenchmarkAnalyzer):
-        """
-        Args:
-            benchmark_analyzer: Instancia de BenchmarkAnalyzer para cálculos
-        """
         self.analyzer = benchmark_analyzer
     
     def generate_report(
@@ -30,22 +20,13 @@ class BenchmarkReporter:
         benchmark_returns: pd.Series,
         risk_free_rate: float
     ) -> None:
-        """
-        Genera reporte de análisis vs benchmark.
-        
-        Args:
-            returns: DataFrame de retornos diarios de activos
-            weights: Array de pesos del portafolio
-            benchmark_returns: Serie de retornos del benchmark
-            risk_free_rate: Tasa libre de riesgo anualizada
-        """
+
         results = self.analyzer.analyze(
             returns, weights, benchmark_returns, risk_free_rate
         )
         self.print_benchmark_analysis(results)
         
     def print_benchmark_analysis(self, results: Dict) -> None:
-        """Imprime análisis vs benchmark formateado."""
         print("ANÁLISIS VS BENCHMARK".center(60))
     
         print("TRACKING ERROR")
@@ -71,7 +52,6 @@ class BenchmarkReporter:
         self._interpret_alpha(results['alpha_annual'])  
 
     def _interpret_te(self, te: float) -> None:
-        """Interpreta Tracking Error usando thresholds de config."""
         te_pct = te * 100
         if te_pct < TRACKING_ERROR_THRESHOLDS['very_close']:
             print(f"  Interpretación:          Muy cercano al benchmark")
@@ -83,7 +63,6 @@ class BenchmarkReporter:
             print(f"  Interpretación:          Alta desviación del benchmark")
     
     def _interpret_ir(self, ir: float) -> None:
-        """Interpreta Information Ratio usando thresholds de config."""
         if ir > INFORMATION_RATIO_THRESHOLDS['excellent']:
             print(f"  Interpretación:          Excelente - supera al benchmark")
         elif ir > INFORMATION_RATIO_THRESHOLDS['positive']:
@@ -94,7 +73,6 @@ class BenchmarkReporter:
             print(f"  Interpretación:          Bajo desempeño significativo")
     
     def _interpret_beta(self, beta: float) -> None:
-        """Interpreta Beta usando thresholds de config."""
         if beta > BETA_THRESHOLDS['aggressive']:
             print(f"  Interpretación:          Alta sensibilidad (agresivo)")
         elif beta > BETA_THRESHOLDS['market']:
@@ -105,7 +83,6 @@ class BenchmarkReporter:
             print(f"  Interpretación:          Correlación inversa")
     
     def _interpret_alpha(self, alpha: float) -> None:
-        """Interpreta Alpha usando thresholds de config."""
         alpha_pct = alpha * 100
         if alpha_pct > ALPHA_THRESHOLDS['excellent']:
             print(f"  Interpretación:          Excelente - supera expectativas")

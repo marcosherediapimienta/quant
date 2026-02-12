@@ -5,17 +5,7 @@ from ...analysis.capm.analyzers.portfolio_optimization_analyzer import Portfolio
 from ...tools.config import FRONTIER_POINTS, MIN_WEIGHT_DISPLAY, SML_CONFIG
 
 class PortfolioOptimizationVisualizer:
-    """
-    Visualizer para optimización de portafolios.
-    
-    Responsabilidad: Generar visualizaciones de frontera eficiente, CML y SML.
-    """
-    
     def __init__(self, portfolio_analyzer: PortfolioOptimizationAnalyzer):
-        """
-        Args:
-            portfolio_analyzer: Instancia de PortfolioOptimizationAnalyzer
-        """
         self.analyzer = portfolio_analyzer
         self.plotter = FrontierPlotter()
     
@@ -27,19 +17,7 @@ class PortfolioOptimizationVisualizer:
         allow_short: bool = False,
         figsize: tuple = (16, 12)
     ) -> plt.Figure:
-        """
-        Genera análisis visual de frontera eficiente.
-        
-        Args:
-            returns: DataFrame con retornos de activos
-            risk_free_rate: Tasa libre de riesgo anualizada
-            n_points: Puntos para frontera. Por defecto usa config.FRONTIER_POINTS
-            allow_short: Si permite ventas en corto
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con los gráficos
-        """
+
         if n_points is None:
             n_points = FRONTIER_POINTS
 
@@ -53,8 +31,8 @@ class PortfolioOptimizationVisualizer:
         
         fig = plt.figure(figsize=figsize)
         gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
-
         ax1 = fig.add_subplot(gs[0, :])
+
         if cml is not None:
             self.plotter.plot_frontier_with_cml(
                 frontier, cml, risk_free_rate,
@@ -65,13 +43,13 @@ class PortfolioOptimizationVisualizer:
             self.plotter.plot_efficient_frontier(frontier, ax=ax1)
 
         ax2 = fig.add_subplot(gs[1, 0])
+
         if tangent and tangent['weights'] is not None:
             weights_df = pd.DataFrame({
                 'Activo': tangent['assets'],
                 'Peso': tangent['weights']
             })
             weights_df = weights_df[weights_df['Peso'] > MIN_WEIGHT_DISPLAY].sort_values('Peso', ascending=True)
-            
             ax2.barh(weights_df['Activo'], weights_df['Peso'] * 100)
             ax2.set_xlabel('Peso (%)', fontsize=11)
             ax2.set_title('Composición Portafolio Tangente', fontsize=12, fontweight='bold')
@@ -112,20 +90,7 @@ class PortfolioOptimizationVisualizer:
         max_beta: float = None,
         figsize: tuple = (12, 8)
     ) -> plt.Figure:
-        """
-        Genera análisis visual de Security Market Line (SML).
-        
-        Args:
-            risk_free_rate: Tasa libre de riesgo
-            market_return: Retorno del mercado
-            asset_betas: Dict opcional con betas de activos
-            asset_returns: Dict opcional con retornos de activos
-            max_beta: Beta máximo para graficar. Por defecto usa config
-            figsize: Tamaño de la figura
-            
-        Returns:
-            Figura de matplotlib con el gráfico
-        """
+
         if max_beta is None:
             max_beta = SML_CONFIG['max_beta']
    

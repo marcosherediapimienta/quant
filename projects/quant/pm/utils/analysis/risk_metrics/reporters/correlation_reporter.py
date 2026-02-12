@@ -4,7 +4,6 @@ from typing import Dict
 from ..analyzers.correlation_analyzer import CorrelationAnalyzer
 
 class CorrelationReporter:
-
     def __init__(self, correlation_analyzer: CorrelationAnalyzer):
         self.analyzer = correlation_analyzer
     
@@ -13,7 +12,6 @@ class CorrelationReporter:
         self.print_correlation_summary(results)   
 
     def print_correlation_summary(self, results: Dict) -> None:
-
         print("ANÁLISIS DE CORRELACIÓN".center(60))
     
         corr_matrix = results['correlation_matrix']  

@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, score_metric, classify_metric
-from ....tools.config import VALUATION_THRESHOLDS, SCORING_WEIGHTS, ALERT_THRESHOLDS
+from ....tools.config import VALUATION_THRESHOLDS, SCORING_WEIGHTS, PROFITABILITY_SCORING_RANGES, ALERT_THRESHOLDS
 
 @dataclass
 class ProfitabilityThresholds:
@@ -24,33 +24,19 @@ class ProfitabilityThresholds:
         self.net_margin = self.net_margin or profitability_thresholds['net_margin']
 
 class ProfitabilityMetrics:
-    """
-    Calcula métricas de rentabilidad.
-    
-    Responsabilidad: Evaluar capacidad de generar beneficios sobre capital invertido.
-    
-    Métricas clave:
-    - ROIC (Return on Invested Capital): Buffett's favorite
-    - ROE (Return on Equity): Rentabilidad sobre patrimonio
-    - ROA (Return on Assets): Eficiencia en uso de activos
-    - Márgenes (Gross, Operating, Net): Rentabilidad operativa
-    """
-    
     def __init__(self, thresholds: ProfitabilityThresholds = None):
         self.thresholds = thresholds or ProfitabilityThresholds()
         self.weights = SCORING_WEIGHTS['profitability']
-        # Cargar rangos desde config
-        from ....tools.config import PROFITABILITY_SCORING_RANGES
         self.ranges = PROFITABILITY_SCORING_RANGES
     
     def calculate(self, data: Dict) -> Dict:
-        """Calcula scores y clasificaciones de rentabilidad."""
-        # ... (extracción de métricas igual) ...
         roic = nan_if_missing(data.get('returnOnCapital'))
+
         if pd.isna(roic):
-            roic = nan_if_missing(data.get('roic'))  # ❌ Este campo no existe
-        roe = nan_if_missing(data.get('returnOnEquity'))  # Este SÍ existe
-        roa = nan_if_missing(data.get('returnOnAssets'))   # Este SÍ existe
+            roic = nan_if_missing(data.get('roic')) 
+
+        roe = nan_if_missing(data.get('returnOnEquity'))  
+        roa = nan_if_missing(data.get('returnOnAssets'))   
         gross_margin = nan_if_missing(data.get('grossMargins'))
         operating_margin = nan_if_missing(data.get('operatingMargins'))
         net_margin = nan_if_missing(data.get('profitMargins'))
@@ -73,7 +59,6 @@ class ProfitabilityMetrics:
             'net_margin_class': classify_metric(net_margin, self.thresholds.net_margin)
         }
 
-        # Usar rangos de config
         scores = []
         weights_used = []
         
@@ -120,21 +105,19 @@ class ProfitabilityMetrics:
         }
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-        """Genera alertas usando umbrales de config."""
-        from ....tools.config import ALERT_THRESHOLDS
         alerts = []
         alert_cfg = ALERT_THRESHOLDS['profitability']
         
         if pd.notna(metrics['roic']) and metrics['roic'] < alert_cfg['roic_low']:
-            alerts.append("ROIC bajo: la empresa no genera retornos suficientes sobre el capital invertido")
+            alerts.append("Low ROIC: company does not generate sufficient returns on invested capital")
         
         if pd.notna(metrics['roe']) and metrics['roe'] < ALERT_THRESHOLDS['financial_health'].get('roe_negative', 0):
-            alerts.append("ROE negativo: la empresa está perdiendo dinero")
+            alerts.append("Negative ROE: company is losing money")
         
         if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_cfg['operating_margin_low']:
-            alerts.append("Margen operativo muy bajo: problemas de eficiencia operativa")
+            alerts.append("Very low operating margin: operational efficiency issues")
         
         if pd.notna(metrics['net_margin']) and metrics['net_margin'] < ALERT_THRESHOLDS['financial_health'].get('net_margin_negative', 0):
-            alerts.append("Margen neto negativo: la empresa no es rentable")
+            alerts.append("Negative net margin: company is not profitable")
         
         return alerts

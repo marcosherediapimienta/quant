@@ -4,7 +4,6 @@ from typing import Dict
 from ..components.momentum import DistributionMoments
 
 class DistributionAnalyzer:
-
     def __init__(self):
         self.moments_calc = DistributionMoments()
     

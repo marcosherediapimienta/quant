@@ -17,7 +17,6 @@ from ....tools.config import PORTFOLIO_CONFIG
 
 @dataclass
 class PortfolioConfig:
-    """Configuración del analizador de portfolio."""
     min_score: float = PORTFOLIO_CONFIG['selection']['min_score']
     max_companies: int = PORTFOLIO_CONFIG['selection']['max_companies']
     max_per_sector: int = PORTFOLIO_CONFIG['selection']['max_per_sector']
@@ -36,7 +35,6 @@ class PortfolioAnalyzer:
 
         self.config = config if config else PortfolioConfig()
         self.data_manager = data_manager if data_manager else DataManager()
-
         self.company_analyzer = CompanyAnalyzer()
         self.selector = CompanySelector(
             min_score=self.config.min_score,
@@ -48,10 +46,9 @@ class PortfolioAnalyzer:
         self.date_calc = DateCalculator()
         self.returns_calc = ReturnsCalculator()
         self.metrics_calc = PortfolioMetricsCalculator()
-
         self._rate_limit_lock = Lock()
         self._last_request_time = 0
-        self._min_request_interval = 0.5 
+        self._min_request_interval = 0.5
     
     def analyze(
         self,
@@ -66,7 +63,6 @@ class PortfolioAnalyzer:
             print(f"⚡ Fase 1: Análisis rápido de todas las {len(candidate_tickers)} empresas para identificar mejores candidatas...")
             print(f"   ⏱️  Esto puede tomar varios minutos debido a rate limiting de Yahoo Finance...")
             quick_results = self._analyze_companies_quick(candidate_tickers)
-
             valid_tickers = [
                 ticker for ticker, result in quick_results.items()
                 if result.get('success') and result.get('scores', {}).get('total', 0) >= self.config.min_score
@@ -78,7 +74,7 @@ class PortfolioAnalyzer:
             )
             
             print(f"   ✅ {len(valid_tickers)} empresas superan el min_score de {self.config.min_score}")
-            
+
             if len(valid_tickers) == 0:
                 success_count = sum(1 for r in quick_results.values() if r.get('success'))
                 fail_count = len(quick_results) - success_count
@@ -116,7 +112,6 @@ class PortfolioAnalyzer:
             return {'success': False, 'error': 'No se pudo analizar ninguna empresa'}
 
         print(f"✅ Se analizaron {len(analysis_results)} empresas correctamente")
-
         print(f"🎯 Seleccionando mejores empresas según criterios...")
         print(f"   - Método: {self.config.selection_method}")
         print(f"   - Min score: {self.config.min_score}")
@@ -170,7 +165,6 @@ class PortfolioAnalyzer:
         )
         
         print(f"✅ Portfolio construido exitosamente con {len(selected_tickers)} empresas")
-
         print(f"📦 Preparando respuesta...")
         selected_analysis = {t: analysis_results[t] for t in selected_tickers}
         
@@ -236,7 +230,6 @@ class PortfolioAnalyzer:
         return start_date, end_date
     
     def _rate_limit(self):
-
         with self._rate_limit_lock:
             current_time = time.time()
             time_since_last = current_time - self._last_request_time
@@ -253,19 +246,20 @@ class PortfolioAnalyzer:
         max_workers = max(1, min(os.cpu_count() or 4, len(tickers), 10)) 
         
         def analyze_quick_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit()  
+            self._rate_limit()
             try:
                 result = self.company_analyzer.analyze_quick(ticker)
                 error_str = str(result.get('error', ''))
+
                 if not result.get('success') and ('401' in error_str or 'Rate limit' in error_str or 'Too Many Requests' in error_str):
                     time.sleep(2)  
                     result = self.company_analyzer.analyze_quick(ticker)
                 return (ticker, result)
             except Exception as e:
                 error_msg = str(e)
-   
+
                 if '401' in error_msg or 'Unauthorized' in error_msg or 'Rate limit' in error_msg or 'Too Many Requests' in error_msg:
-                    time.sleep(2) 
+                    time.sleep(2)
                     try:
                         result = self.company_analyzer.analyze_quick(ticker)
                         return (ticker, result)
@@ -280,10 +274,12 @@ class PortfolioAnalyzer:
             completed = 0
             successful = 0
             total = len(tickers)
+
             for future in as_completed(future_to_ticker):
                 ticker, result = future.result()
                 completed += 1
                 results[ticker] = result
+
                 if result.get('success'):
                     successful += 1
 
@@ -298,10 +294,10 @@ class PortfolioAnalyzer:
             return {}
             
         results = {}
-        max_workers = max(1, min(3, len(tickers)))  
-        
+        max_workers = max(1, min(3, len(tickers)))
+
         def analyze_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit()  
+            self._rate_limit()
             try:
                 result = self.company_analyzer.analyze(ticker)
 
@@ -311,14 +307,16 @@ class PortfolioAnalyzer:
                 return (ticker, result)
             except Exception as e:
                 error_msg = str(e)
- 
+
                 if '401' in error_msg or 'Unauthorized' in error_msg:
                     time.sleep(1)
+
                     try:
                         result = self.company_analyzer.analyze(ticker)
                         return (ticker, result)
                     except:
                         pass
+
                 print(f"⚠️  {ticker}: {error_msg}")
                 return (ticker, {'success': False, 'error': error_msg})
 
@@ -326,7 +324,7 @@ class PortfolioAnalyzer:
             future_to_ticker = {executor.submit(analyze_single, ticker): ticker for ticker in tickers}
             completed = 0
             total = len(tickers)
-            
+
             for future in as_completed(future_to_ticker):
                 ticker, result = future.result()
                 completed += 1
@@ -336,5 +334,5 @@ class PortfolioAnalyzer:
 
                 if completed % 10 == 0 or completed == total:
                     print(f"📊 Progreso: {completed}/{total} empresas analizadas...")
-        
+                    
         return results

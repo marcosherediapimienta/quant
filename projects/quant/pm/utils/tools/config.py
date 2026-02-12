@@ -1,8 +1,3 @@
-"""
-CONFIGURACIÓN - ANÁLISIS DE PORTAFOLIO (PM)
-Benchmarks, análisis de riesgo, CAPM y valoración.
-"""
-
 # ============================================================================
 # BENCHMARKS
 # ============================================================================
@@ -669,7 +664,7 @@ VALUATION_MULTIPLES_FALLBACKS = {
 
 # CONFIGURACIÓN DE ANÁLISIS DE SECTOR
 SECTOR_ANALYSIS_CONFIG = {
-    'max_peers': 5,
+    'max_peers': 10,
     'percentile_thresholds': {
         'top_performer': 80,
         'above_average': 60,
@@ -807,12 +802,12 @@ CONCLUSION_THRESHOLDS = {
     'fair': 50,
     'weak': 35,
     'labels': {
-        'excellent': 'EXCELENTE',
-        'good': 'BUENA',
-        'fair': 'REGULAR',
-        'weak': 'DÉBIL',
-        'critical': 'CRÍTICA',
-        'insufficient': 'DATOS INSUFICIENTES'
+        'excellent': 'EXCELLENT',
+        'good': 'GOOD',
+        'fair': 'FAIR',
+        'weak': 'WEAK',
+        'critical': 'CRITICAL',
+        'insufficient': 'INSUFFICIENT DATA'
     }
 }
 

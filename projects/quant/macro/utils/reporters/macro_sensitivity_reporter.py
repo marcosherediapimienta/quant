@@ -1,9 +1,7 @@
 from typing import Dict
 from ..analyzers.macro_sensitivity_analyzer import MacroSensitivityAnalyzer
 
-
 class MacroSensitivityReporter:
-
     def __init__(self, analyzer: MacroSensitivityAnalyzer):
         self.analyzer = analyzer
     

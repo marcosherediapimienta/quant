@@ -5,7 +5,6 @@ from .components.benchmark_loader import BenchmarkLoader
 from .components.helpers import extract_adj_close_prices  
 
 class DataManager:
-
     def __init__(self):
         self.data_loader = DataLoader()
         self.benchmark_loader = BenchmarkLoader(self.data_loader)

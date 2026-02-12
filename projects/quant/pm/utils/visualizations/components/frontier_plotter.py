@@ -6,7 +6,6 @@ from ...analysis.capm.components.cml_calculator import CMLResult
 from ...analysis.capm.components.sml_calculator import SMLResult
 
 class FrontierPlotter:
-
     def plot_efficient_frontier(
         self,
         frontier: FrontierResult,

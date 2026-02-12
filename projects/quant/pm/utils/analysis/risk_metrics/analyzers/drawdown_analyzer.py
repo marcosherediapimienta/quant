@@ -5,17 +5,7 @@ from ..components.drawdown import DrawdownCalculator
 from ....tools.config import ANNUAL_FACTOR
 
 class DrawdownAnalyzer:
-    """
-    Analyzer para analizar drawdowns y ratios basados en drawdown.
-    
-    Responsabilidad: Coordinar cálculo de drawdowns, Calmar y Sterling ratios.
-    """
-
     def __init__(self, annual_factor: float = None):
-        """
-        Args:
-            annual_factor: Factor de anualización. Por defecto usa config.ANNUAL_FACTOR
-        """
         self.annual_factor = annual_factor or ANNUAL_FACTOR
         self.dd_calc = DrawdownCalculator(self.annual_factor)
     
@@ -25,17 +15,7 @@ class DrawdownAnalyzer:
         weights: np.ndarray,
         risk_free_rate: float = None
     ) -> Dict:
-        """
-        Analiza drawdowns del portafolio.
-        
-        Args:
-            returns: DataFrame de retornos diarios
-            weights: Array de pesos del portafolio
-            risk_free_rate: Tasa libre de riesgo. Por defecto 0.0
-            
-        Returns:
-            Dict con max drawdown, duración, Calmar, Sterling y series temporales
-        """
+
         if risk_free_rate is None:
             risk_free_rate = 0.0
         
