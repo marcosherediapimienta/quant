@@ -125,19 +125,19 @@ class ImpliedYieldCurveCalculator:
         avg_diff = np.mean(list(forward_vs_spot.values())) if forward_vs_spot else 0
         
         if avg_diff > 0.5:
-            expectations = "Mercado espera SUBIDAS de tipos"
+            expectations = "Market expects RATE HIKES"
             signal = "HAWKISH"
         elif avg_diff > 0.1:
-            expectations = "Mercado espera SUBIDAS MODERADAS"
-            signal = "LIGERAMENTE HAWKISH"
+            expectations = "Market expects MODERATE HIKES"
+            signal = "SLIGHTLY HAWKISH"
         elif avg_diff > -0.1:
-            expectations = "Mercado espera ESTABILIDAD"
+            expectations = "Market expects STABILITY"
             signal = "NEUTRAL"
         elif avg_diff > -0.5:
-            expectations = "Mercado espera BAJADAS MODERADAS"
-            signal = "LIGERAMENTE DOVISH"
+            expectations = "Market expects MODERATE CUTS"
+            signal = "SLIGHTLY DOVISH"
         else:
-            expectations = "Mercado espera BAJADAS de tipos"
+            expectations = "Market expects RATE CUTS"
             signal = "DOVISH"
         
         return expectations, signal

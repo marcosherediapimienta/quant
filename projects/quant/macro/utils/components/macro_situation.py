@@ -128,17 +128,17 @@ class MacroSituationAnalyzer:
         steep_threshold = MACRO_SITUATION_THRESHOLDS['yield_curve']['steep']
         
         if spread_10_2 < inverted_threshold:
-            interpretation = "INVERTIDA - Señal de recesión"
-            risk_level = "Alto"
+            interpretation = "INVERTED — Recession signal"
+            risk_level = "High"
         elif spread_10_2 < flat_threshold:
-            interpretation = "PLANA - Posible desaceleración"
-            risk_level = "Moderado"
+            interpretation = "FLAT — Possible slowdown"
+            risk_level = "Moderate"
         elif spread_10_2 > steep_threshold:
-            interpretation = "EMPINADA - Expansión económica"
-            risk_level = "Bajo"
+            interpretation = "STEEP — Economic expansion"
+            risk_level = "Low"
         else:
-            interpretation = "NORMAL - Crecimiento estable"
-            risk_level = "Bajo"
+            interpretation = "NORMAL — Stable growth"
+            risk_level = "Low"
         
         return YieldCurveAnalysis(
             levels=rates,
@@ -224,15 +224,15 @@ class MacroSituationAnalyzer:
             vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
             
             if vix > vix_panic:
-                market_condition = "PÁNICO - Estrés extremo"
+                market_condition = "PANIC — Extreme stress"
             elif vix > vix_stress:
-                market_condition = "ESTRÉS - Tensión alta"
+                market_condition = "STRESS — High tension"
             elif vix > vix_tension:
-                market_condition = "TENSIÓN - Nerviosismo"
+                market_condition = "TENSION — Elevated anxiety"
             elif vix > vix_normal:
-                market_condition = "NORMAL - Volatilidad controlada"
+                market_condition = "NORMAL — Controlled volatility"
             else:
-                market_condition = "COMPLACENCIA - Volatilidad muy baja"
+                market_condition = "COMPLACENCY — Very low volatility"
 
         if 'HYG' in factors_data and 'LQD' in factors_data:
             if len(factors_data['HYG']) > 0 and len(factors_data['LQD']) > 0:
@@ -263,15 +263,15 @@ class MacroSituationAnalyzer:
             vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
             
             if vix > vix_panic:
-                fear_level = "PÁNICO"
+                fear_level = "PANIC"
             elif vix > vix_stress:
-                fear_level = "ALTO MIEDO"
+                fear_level = "EXTREME FEAR"
             elif vix > vix_tension:
-                fear_level = "NERVIOSISMO"
+                fear_level = "ANXIETY"
             elif vix > vix_normal:
-                fear_level = "MODERADO"
+                fear_level = "MODERATE"
             else:
-                fear_level = "COMPLACENCIA"
+                fear_level = "COMPLACENCY"
 
         dxy_trend_3m = None
         dxy_trend_1m = None
@@ -316,34 +316,34 @@ class MacroSituationAnalyzer:
         if dxy_trend_3m is not None:
             if dxy_trend_3m > strong_move:
                 if gold_trend_3m is not None and gold_trend_3m > strong_move:
-                    dollar_strength = "FUERTE (flight to safety)"
+                    dollar_strength = "STRONG (flight to safety)"
                 elif gold_trend_3m is not None and gold_trend_3m < -moderate_move:
-                    dollar_strength = "FUERTE (fortaleza económica/política monetaria)"
+                    dollar_strength = "STRONG (economic/monetary policy strength)"
                 else:
-                    dollar_strength = "FUERTE"
+                    dollar_strength = "STRONG"
             elif dxy_trend_3m > 0:
-                dollar_strength = "MODERADO"
+                dollar_strength = "MODERATE"
             elif dxy_trend_3m > -strong_move:
-                dollar_strength = "DÉBIL"
+                dollar_strength = "WEAK"
             else:
-                dollar_strength = "MUY DÉBIL"
+                dollar_strength = "VERY WEAK"
 
             if dxy_trend_1m is not None and dxy_trend_1w is not None:
                 if dxy_trend_3m > moderate_move and dxy_trend_1w < 0:
-                    dollar_strength += " (debilitándose recientemente)"
+                    dollar_strength += " (weakening recently)"
                 elif dxy_trend_3m > moderate_move and dxy_trend_1w < divergence_threshold:
-                    dollar_strength += " (desacelerando)"
+                    dollar_strength += " (decelerating)"
                 elif dxy_trend_3m < -moderate_move and dxy_trend_1w > 0:
-                    dollar_strength += " (fortaleciéndose recientemente)"
+                    dollar_strength += " (strengthening recently)"
                 elif dxy_trend_3m < -moderate_move and dxy_trend_1w > -divergence_threshold:
-                    dollar_strength += " (desacelerando caída)"
+                    dollar_strength += " (decline decelerating)"
                 elif dxy_trend_3m > moderate_move and dxy_trend_1m < dxy_trend_3m * momentum_ratio:
-                    dollar_strength += " (perdiendo momentum)"
+                    dollar_strength += " (losing momentum)"
             elif dxy_trend_1m is not None:
                 if dxy_trend_1m < -moderate_move and dxy_trend_3m > 0:
-                    dollar_strength += " (debilitándose recientemente)"
+                    dollar_strength += " (weakening recently)"
                 elif dxy_trend_1m > moderate_move and dxy_trend_3m < 0:
-                    dollar_strength += " (fortaleciéndose recientemente)"
+                    dollar_strength += " (strengthening recently)"
 
         safe_haven = None
         significant_gold = MACRO_SITUATION_THRESHOLDS['trends']['significant_gold']
@@ -358,17 +358,17 @@ class MacroSituationAnalyzer:
         
         if gold_trend_3m is not None:
             if gold_trend_3m > significant_gold:
-                safe_haven = "ALTA demanda de refugio"
+                safe_haven = "HIGH safe-haven demand"
             elif gold_trend_3m > strong_move:
-                safe_haven = "MODERADA demanda de refugio"
+                safe_haven = "MODERATE safe-haven demand"
             elif gold_trend_3m > 0:
-                safe_haven = "BAJA demanda de refugio"
+                safe_haven = "LOW safe-haven demand"
             elif gold_trend_1y is not None and gold_trend_1y > significant_gold:
-                safe_haven = "ENFRIÁNDOSE desde niveles altos"
+                safe_haven = "COOLING from high levels"
             elif gold_trend_1y is not None and gold_trend_1y > strong_move:
-                safe_haven = "CORRIGIENDO tras rally"
+                safe_haven = "CORRECTING after rally"
             else:
-                safe_haven = "SIN demanda de refugio"
+                safe_haven = "NO safe-haven demand"
         
         return RiskSentiment(
             vix=vix,

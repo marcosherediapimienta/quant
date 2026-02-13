@@ -71,7 +71,7 @@ class MacroSituationVisualizer:
 
         # ── title ──
         fig.suptitle(
-            'SITUACIÓN MACROECONÓMICA GLOBAL',
+            'GLOBAL MACROECONOMIC SITUATION',
             fontsize=22, fontweight='bold',
             color=self.COLORS['title'], y=0.97,
         )
@@ -83,14 +83,14 @@ class MacroSituationVisualizer:
 
         if overall:
             badge_color = (
-                self.COLORS['positive'] if 'BAJO' in str(overall).upper()
-                else self.COLORS['warning'] if 'MODERADO' in str(overall).upper()
+                self.COLORS['positive'] if 'LOW' in str(overall).upper()
+                else self.COLORS['warning'] if 'MODERATE' in str(overall).upper()
                 else self.COLORS['negative'] if overall
                 else self.COLORS['neutral']
             )
             fig.text(
                 0.5, 0.925,
-                f'  Riesgo: {overall}  │  Score: {score}  ',
+                f'  Risk: {overall}  │  Score: {score}  ',
                 fontsize=12, ha='center', va='center', fontweight='bold',
                 color=badge_color,
                 bbox=dict(
@@ -119,7 +119,7 @@ class MacroSituationVisualizer:
 
     # ─── Panel 1: Yield Curve ──────────────────────────────────────
     def _plot_yield_curve(self, ax, data):
-        self._style_panel(ax, 'Curva de Tipos de Interés (USA)', '▲')
+        self._style_panel(ax, 'US Yield Curve', '▲')
 
         yield_curve = data.get('yield_curve', {})
         levels = self._get_attr(yield_curve, 'levels', {})
@@ -176,7 +176,7 @@ class MacroSituationVisualizer:
                     ax.plot(
                         fwd_x, fwd_y, marker='D', linewidth=2, markersize=8,
                         color='#e74c3c', linestyle='--',
-                        label='Forward Implícito', zorder=4, alpha=0.9,
+                        label='Implied Forward', zorder=4, alpha=0.9,
                         markerfacecolor='white', markeredgewidth=2,
                         markeredgecolor='#e74c3c',
                     )
@@ -211,7 +211,7 @@ class MacroSituationVisualizer:
 
     # ─── Panel 2: Inflation (lollipop) ─────────────────────────────
     def _plot_inflation(self, ax, data):
-        self._style_panel(ax, 'Señales de Inflación (12 meses)', '■')
+        self._style_panel(ax, 'Inflation Signals (12 months)', '■')
 
         inflation = data.get('inflation', {})
         if not inflation:
@@ -403,7 +403,7 @@ class MacroSituationVisualizer:
         ax.set_yticks(y)
         ax.set_yticklabels(regions, fontsize=10, fontweight='bold',
                            color=self.COLORS['text'])
-        ax.set_xlabel('Cambio 1 Año (%)', fontsize=10,
+        ax.set_xlabel('1 Year Change (%)', fontsize=10,
                       color=self.COLORS['text_muted'])
         ax.grid(True, alpha=0.1, axis='x', color=self.COLORS['grid'],
                 linestyle='--')
@@ -436,9 +436,9 @@ class MacroSituationVisualizer:
                 fontweight='bold', color=self.COLORS['title'])
 
         cards = [
-            ('MIEDO', 'Nivel de Miedo',      str(fear),   self._color_for_fear(fear)),
-            ('USD',   'Fortaleza del Dólar',  str(dollar), self._color_for_dollar(dollar)),
-            ('HAVEN', 'Demanda de Refugio',   str(haven),  self._color_for_haven(haven)),
+            ('FEAR',  'Fear Level',           str(fear),   self._color_for_fear(fear)),
+            ('USD',   'Dollar Strength',      str(dollar), self._color_for_dollar(dollar)),
+            ('HAVEN', 'Safe-Haven Demand',    str(haven),  self._color_for_haven(haven)),
         ]
 
         card_w = 0.27
@@ -488,7 +488,7 @@ class MacroSituationVisualizer:
         if risk_factors:
             factors_text = ' │ '.join(risk_factors[:4])
             if len(risk_factors) > 4:
-                factors_text += f' (+{len(risk_factors) - 4} más)'
+                factors_text += f' (+{len(risk_factors) - 4} more)'
             ax.text(
                 0.5, 0.10, f'►  {factors_text}',
                 transform=ax.transAxes, ha='center', fontsize=8.5,
@@ -500,26 +500,26 @@ class MacroSituationVisualizer:
     # ─── color helpers ────────────────────────────────────────────
     def _color_for_fear(self, fear):
         s = str(fear).upper()
-        if 'BAJO' in s or 'COMPLACEN' in s:
+        if 'LOW' in s or 'COMPLACEN' in s:
             return self.COLORS['positive']
-        if 'ALTO' in s or 'PÁNICO' in s or 'EXTREMO' in s:
+        if 'HIGH' in s or 'PANIC' in s or 'EXTREME' in s:
             return self.COLORS['negative']
         return self.COLORS['warning']
 
     def _color_for_dollar(self, dollar):
         s = str(dollar).upper()
-        if 'FUERTE' in s:
+        if 'STRONG' in s:
             return self.COLORS['blue']
-        if 'DÉBIL' in s:
+        if 'WEAK' in s:
             return self.COLORS['negative']
         return self.COLORS['neutral']
 
     def _color_for_haven(self, haven):
         s = str(haven).upper()
-        if 'SIN' in s:
+        if 'NO ' in s:
             return self.COLORS['positive']
-        if 'ENFRIÁNDOSE' in s or 'CORRIGIENDO' in s:
+        if 'COOLING' in s or 'CORRECTING' in s:
             return self.COLORS['warning']
-        if 'ALTA' in s or 'EXTREMA' in s:
+        if 'HIGH' in s or 'EXTREME' in s:
             return self.COLORS['negative']
         return self.COLORS['neutral']

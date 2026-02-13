@@ -39,7 +39,7 @@ class YieldCurvePlotter:
 
         ax.plot(
             x, values, marker='o', linewidth=2.5, markersize=10,
-            color=self.COLORS['spot'], label='Curva Actual', zorder=5,
+            color=self.COLORS['spot'], label='Current Curve', zorder=5,
             markerfacecolor='white', markeredgewidth=2.5,
             markeredgecolor=self.COLORS['spot'],
         )
@@ -58,8 +58,8 @@ class YieldCurvePlotter:
         ax.set_xticks(x)
         ax.set_xticklabels(tenors, fontsize=11, fontweight='bold')
         ax.set_xlabel('Tenor', fontsize=10, color=self.COLORS['muted'])
-        ax.set_ylabel('Tasa de Interés (%)', fontsize=10, color=self.COLORS['muted'])
-        ax.set_title('Curva de Tipos de Interés (USA)', fontsize=14,
+        ax.set_ylabel('Interest Rate (%)', fontsize=10, color=self.COLORS['muted'])
+        ax.set_title('US Yield Curve', fontsize=14,
                      fontweight='bold', color=self.COLORS['text'])
         ax.grid(True, alpha=0.15, color=self.COLORS['grid'], linestyle='--')
         ax.legend(fontsize=9, framealpha=0.95, edgecolor=self.COLORS['border'])
@@ -130,7 +130,7 @@ class YieldCurvePlotter:
             ax.plot(
                 fwd_x, fwd_y, marker='D', linewidth=2, markersize=8,
                 color=self.COLORS['forward'], linestyle='--',
-                label='Forward Implícito', zorder=4, alpha=0.9,
+                label='Implied Forward', zorder=4, alpha=0.9,
                 markerfacecolor='white', markeredgewidth=2,
                 markeredgecolor=self.COLORS['forward'],
             )
@@ -158,7 +158,7 @@ class YieldCurvePlotter:
         ax.set_xticklabels(tenors, fontsize=11, fontweight='bold')
         ax.set_xlabel('Tenor', fontsize=10, color=self.COLORS['muted'])
         ax.set_ylabel('Yield (%)', fontsize=10, color=self.COLORS['muted'])
-        ax.set_title('Curva de Tipos: Spot vs Forward Implícito',
+        ax.set_title('Yield Curve: Spot vs Implied Forward',
                      fontsize=14, fontweight='bold', color=self.COLORS['text'])
         ax.grid(True, alpha=0.15, color=self.COLORS['grid'], linestyle='--')
         ax.legend(fontsize=10, framealpha=0.95, edgecolor=self.COLORS['border'])
