@@ -1,14 +1,17 @@
 import pandas as pd
 from typing import Dict
 from ..components.macro_situation import MacroSituationAnalyzer as MacroSituationCalculator
+from ..components.implied_yield_curve import ImpliedYieldCurveCalculator
 
 class MacroSituationAnalyzer:
     def __init__(self):
         self.calculator = MacroSituationCalculator()
+        self.implied_curve_calc = ImpliedYieldCurveCalculator()
     
     def analyze(self, factors_data: Dict[str, pd.Series]) -> Dict:
         analysis_result = {
             'yield_curve': self.calculator.analyze_yield_curve_usa(factors_data),
+            'implied_yield_curve': self.implied_curve_calc.analyze(factors_data),
             'inflation': self.calculator.analyze_inflation_signals(factors_data),
             'credit': self.calculator.analyze_credit_conditions(factors_data),
             'global_bonds': self.calculator.analyze_global_bonds(factors_data),
@@ -24,6 +27,7 @@ class MacroSituationAnalyzer:
         risk_factors = []
         risk_score = 0
         risk_score += self._analyze_yield_curve(analysis.get('yield_curve'), risk_factors)
+        risk_score += self._analyze_implied_curve(analysis.get('implied_yield_curve'), risk_factors)
         risk_score += self._analyze_inflation(analysis.get('inflation'), risk_factors)
         risk_score += self._analyze_credit(analysis.get('credit'), risk_factors)
         risk_score += self._analyze_bonds(analysis.get('global_bonds', {}), risk_factors)
@@ -61,6 +65,52 @@ class MacroSituationAnalyzer:
         
         return score
 
+    def _analyze_implied_curve(self, implied_curve, risk_factors: list) -> int:
+
+        if not implied_curve:
+            return 0
+        
+        score = 0
+
+        signal = getattr(implied_curve, 'rate_path_signal', '')
+        if signal == "HAWKISH":
+            risk_factors.append('Forward curve señala subidas de tipos')
+            score += 2
+        elif signal == "LIGERAMENTE HAWKISH":
+            risk_factors.append('Forward curve señala subidas moderadas')
+            score += 1
+
+        term_premium = getattr(implied_curve, 'term_premium', {})
+        if '10Y' in term_premium:
+            tp_10y = term_premium['10Y']
+            if tp_10y < -0.5:
+                risk_factors.append(f'Term premium 10Y muy negativo ({tp_10y:+.2f}pp)')
+                score += 2
+            elif tp_10y < -0.2:
+                risk_factors.append(f'Term premium 10Y negativo ({tp_10y:+.2f}pp)')
+                score += 1
+
+        fwd_vs_spot = getattr(implied_curve, 'forward_vs_spot', {})
+        if fwd_vs_spot:
+            diffs = [v for v in fwd_vs_spot.values() if v is not None]
+            if diffs:
+                avg_diff = sum(diffs) / len(diffs)
+                if avg_diff > 1.0:
+                    risk_factors.append(f'Forwards muy por encima de spot ({avg_diff:+.2f}pp)')
+                    score += 2
+                elif avg_diff > 0.5:
+                    risk_factors.append(f'Forwards elevados vs spot ({avg_diff:+.2f}pp)')
+                    score += 1
+
+        forwards = getattr(implied_curve, 'forward_rates', {})
+        spot = getattr(implied_curve, 'spot_rates', {})
+        if '2Y→5Y' in forwards and '2Y' in spot:
+            if forwards['2Y→5Y'] < spot['2Y']:
+                risk_factors.append('Curva forward invertida (2Y→5Y < spot 2Y)')
+                score += 2
+        
+        return score
+
     def _analyze_inflation(self, inflation, risk_factors: list) -> int:
 
         if not inflation:
@@ -76,7 +126,6 @@ class MacroSituationAnalyzer:
             risk_factors.append('Inflación moderada-alta')
             score += 1
         
-        # Analizar metales preciosos
         commodity_changes = getattr(inflation, 'commodity_changes', {})
         gold_change = commodity_changes.get('GOLD', 0)
         silver_change = commodity_changes.get('SILVER', 0)

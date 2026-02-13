@@ -11,6 +11,8 @@ class MacroSituationReporter:
         summary = self.analyzer.get_summary(analysis)
         self._print_executive_summary(summary)
         self._print_yield_curve(analysis['yield_curve'])
+        if 'implied_yield_curve' in analysis and analysis['implied_yield_curve']:
+            self._print_implied_yield_curve(analysis['implied_yield_curve'])
         self._print_inflation(analysis['inflation'])
         self._print_credit(analysis['credit'])
         self._print_global_bonds(analysis['global_bonds'])
@@ -100,6 +102,38 @@ class MacroSituationReporter:
         interpretation = getattr(curve, 'interpretation', curve.get('interpretation', 'N/A')) if hasattr(curve, 'get') else curve.interpretation
         print(f"\n  💡 {interpretation}")
     
+    def _print_implied_yield_curve(self, implied_analysis) -> None:
+        print("CURVA DE YIELD IMPLÍCITA (FORWARD RATES)")
+        
+        spot = getattr(implied_analysis, 'spot_rates', {})
+        forwards = getattr(implied_analysis, 'forward_rates', {})
+        fwd_vs_spot = getattr(implied_analysis, 'forward_vs_spot', {})
+        term_premium = getattr(implied_analysis, 'term_premium', {})
+
+        print("\n  📈 Curva Spot vs Forward Implícito:")
+        print(f"    {'Tramo':<14} {'Forward (%)':<14} {'vs Spot':<14} {'Señal'}")
+        print(f"    {'─'*56}")
+        
+        for tramo, fwd_rate in forwards.items():
+            diff = fwd_vs_spot.get(tramo, np.nan)
+            if not np.isnan(fwd_rate):
+                if not np.isnan(diff):
+                    symbol = "🔴↑" if diff > 0.3 else "🟢↓" if diff < -0.3 else "⚪→"
+                    print(f"    {tramo:<14} {fwd_rate:>6.2f}%       {diff:>+6.2f} pp     {symbol}")
+                else:
+                    print(f"    {tramo:<14} {fwd_rate:>6.2f}%")
+
+        if term_premium:
+            print(f"\n  💰 Term Premium Estimado:")
+            for tenor, tp in term_premium.items():
+                symbol = "🔴" if tp < -0.2 else "🟢" if tp > 0.5 else "⚪"
+                print(f"    {symbol} {tenor}: {tp:>+6.2f} pp")
+
+        expectations = getattr(implied_analysis, 'curve_expectations', 'N/A')
+        signal = getattr(implied_analysis, 'rate_path_signal', 'N/A')
+        print(f"\n  💡 Expectativas: {expectations}")
+        print(f"  🏦 Señal política monetaria: {signal}")
+
     def _print_inflation(self, inflation) -> None:
         print("SEÑALES DE INFLACIÓN (Commodities)")
         commodity_changes = getattr(inflation, 'commodity_changes', inflation.get('commodity_changes', {})) if hasattr(inflation, 'get') else inflation.commodity_changes

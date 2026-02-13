@@ -329,22 +329,32 @@ class MacroSituationAnalyzer:
                 dollar_strength = "MUY DÉBIL"
 
             if dxy_trend_1m is not None and dxy_trend_1w is not None:
-                if dxy_trend_3m > moderate_move and dxy_trend_1w < divergence_threshold:
+                if dxy_trend_3m > moderate_move and dxy_trend_1w < 0:
                     dollar_strength += " (debilitándose recientemente)"
-                elif dxy_trend_3m < -moderate_move and dxy_trend_1w > divergence_threshold:
-                    dollar_strength += " (fortaleciéndose recientemente)"
-                elif dxy_trend_3m > moderate_move and dxy_trend_1m < dxy_trend_3m * momentum_ratio:
+                elif dxy_trend_3m > moderate_move and dxy_trend_1w < divergence_threshold:
                     dollar_strength += " (desacelerando)"
+                elif dxy_trend_3m < -moderate_move and dxy_trend_1w > 0:
+                    dollar_strength += " (fortaleciéndose recientemente)"
+                elif dxy_trend_3m < -moderate_move and dxy_trend_1w > -divergence_threshold:
+                    dollar_strength += " (desacelerando caída)"
+                elif dxy_trend_3m > moderate_move and dxy_trend_1m < dxy_trend_3m * momentum_ratio:
+                    dollar_strength += " (perdiendo momentum)"
             elif dxy_trend_1m is not None:
                 if dxy_trend_1m < -moderate_move and dxy_trend_3m > 0:
                     dollar_strength += " (debilitándose recientemente)"
                 elif dxy_trend_1m > moderate_move and dxy_trend_3m < 0:
                     dollar_strength += " (fortaleciéndose recientemente)"
 
-        # Safe haven demand
         safe_haven = None
         significant_gold = MACRO_SITUATION_THRESHOLDS['trends']['significant_gold']
         strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
+
+        gold_trend_1y = None
+        if 'GOLD' in factors_data and len(factors_data['GOLD']) >= PERIOD_YEAR:
+            gold = factors_data['GOLD']
+            current_gold = gold.iloc[-1]
+            if gold.iloc[-PERIOD_YEAR] > 0:
+                gold_trend_1y = (current_gold / gold.iloc[-PERIOD_YEAR] - 1) * 100
         
         if gold_trend_3m is not None:
             if gold_trend_3m > significant_gold:
@@ -353,6 +363,10 @@ class MacroSituationAnalyzer:
                 safe_haven = "MODERADA demanda de refugio"
             elif gold_trend_3m > 0:
                 safe_haven = "BAJA demanda de refugio"
+            elif gold_trend_1y is not None and gold_trend_1y > significant_gold:
+                safe_haven = "ENFRIÁNDOSE desde niveles altos"
+            elif gold_trend_1y is not None and gold_trend_1y > strong_move:
+                safe_haven = "CORRIGIENDO tras rally"
             else:
                 safe_haven = "SIN demanda de refugio"
         
