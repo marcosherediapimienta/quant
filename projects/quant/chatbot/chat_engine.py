@@ -82,7 +82,7 @@ class ChatEngine:
                 content += doc['content']
 
                 if doc['metadata'].get('docstring'):
-                    content += f"\n\n# Documentación:\n{doc['metadata']['docstring']}"
+                    content += f"\n\n# Documentation:\n{doc['metadata']['docstring']}"
 
                 langchain_docs.append(Document(
                     page_content=content,
@@ -125,7 +125,7 @@ class ChatEngine:
 
         def format_docs(docs: List[Document]) -> str:
             if not docs:
-                return "No se encontró código fuente relevante para esta pregunta."
+                return "No relevant source code was found for this question."
             return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
         self.rag_chain = (
@@ -218,7 +218,7 @@ class ChatEngine:
 
         if matched_enhancements:
             combined = " | ".join(matched_enhancements[:3]) 
-            return f"{query}\n\n[Contexto de búsqueda: {combined}]"
+            return f"{query}\n\n[Search context: {combined}]"
 
         return query
 
