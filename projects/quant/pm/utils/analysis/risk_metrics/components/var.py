@@ -29,25 +29,39 @@ class VaRCalculator:
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         jb_results = self.moments_calc.calculate_jarque_bera(returns, weights, alpha)
+        ad_results = self.moments_calc.calculate_anderson_darling(returns, weights, alpha)
         skew = self.moments_calc.calculate_skewness(returns, weights)
         excess_kurt = self.moments_calc.calculate_kurtosis(returns, weights, excess=True)
+        
         is_normal_jb = jb_results['is_normal']
+        is_normal_ad = ad_results['is_normal']
         is_skew_ok = abs(skew) < 0.5 
         is_kurt_ok = abs(excess_kurt) < 1.0  
-        normality_score = sum([is_normal_jb, is_skew_ok, is_kurt_ok])
         
-        if normality_score >= 2:
+        # Scoring: 4 checks (JB, AD, Skewness, Kurtosis)
+        normality_score = sum([is_normal_jb, is_normal_ad, is_skew_ok, is_kurt_ok])
+        
+        if normality_score >= 3:
             conclusion = "NORMAL"
-            recommendation = "VaR paramétrico es apropiado"
+            recommendation = "Parametric VaR is appropriate."
             risk_level = "LOW"
-        elif normality_score == 1:
+        elif normality_score == 2:
             conclusion = "CUESTIONABLE"
-            recommendation = "VaR paramétrico puede subestimar riesgo. Usar VaR histórico también."
+            recommendation = "Parametric VaR may underestimate risk. Consider using Historical VaR as well."
             risk_level = "MEDIUM"
         else:
             conclusion = "NO NORMAL"
-            recommendation = "VaR paramétrico NO recomendado. Usar VaR histórico o Monte Carlo."
+            recommendation = "Parametric VaR NOT recommended. Use Historical VaR or Monte Carlo."
             risk_level = "HIGH"
+        
+        # If AD detects severe tail risk, escalate risk level
+        if ad_results['tail_risk'] == 'SEVERE' and risk_level != 'HIGH':
+            risk_level = "HIGH"
+            conclusion = "NO NORMAL"
+            recommendation = (
+                "Anderson-Darling detects extremely heavy tails. "
+                "Parametric VaR NOT recommended. Use Historical VaR or Monte Carlo."
+            )
         
         results = {
             'is_normal': conclusion == "NORMAL",
@@ -59,18 +73,31 @@ class VaRCalculator:
                 'p_value': jb_results['p_value'],
                 'is_normal': jb_results['is_normal']
             },
+            'anderson_darling': {
+                'statistic': ad_results['ad_statistic'],
+                'critical_value': ad_results['critical_value'],
+                'p_value': ad_results.get('p_value'),
+                'is_normal': ad_results['is_normal'],
+                'tail_risk': ad_results['tail_risk'],
+                'severity_ratio': ad_results['severity_ratio']
+            },
             'skewness': skew,
             'excess_kurtosis': excess_kurt,
             'is_skew_ok': is_skew_ok,
-            'is_kurt_ok': is_kurt_ok
+            'is_kurt_ok': is_kurt_ok,
+            'normality_score': normality_score,
+            'normality_checks': 4
         }
  
         if verbose and conclusion != "NORMAL":
-            print(f"\n⚠️ WARNING: Retornos {conclusion}")
+            print(f"\n⚠️ WARNING: Returns {conclusion}")
             print(f"   Jarque-Bera p-value: {jb_results['p_value']:.4f} {'✅' if is_normal_jb else '❌'}")
+            print(f"   Anderson-Darling: {ad_results['ad_statistic']:.4f} vs {ad_results['critical_value']:.4f} "
+                  f"(tail risk: {ad_results['tail_risk']}) {'✅' if is_normal_ad else '❌'}")
             print(f"   Skewness: {skew:.3f} {'✅' if is_skew_ok else '❌'}")
             print(f"   Excess Kurtosis: {excess_kurt:.3f} {'✅' if is_kurt_ok else '❌'}")
-            print(f"   Recomendación: {recommendation}\n")
+            print(f"   Score: {normality_score}/4")
+            print(f"   Recommendation: {recommendation}\n")
         
         return results
     
@@ -115,8 +142,8 @@ class VaRCalculator:
             )
             
             if normality_result['risk_level'] == 'HIGH':
-                print("⚠️ CRITICAL: VaR paramétrico puede ser muy impreciso")
-                print(f"   Considera usar calculate_historical() o calculate_cornish_fisher()\n")
+                print("⚠️ CRITICAL: Parametric VaR may be highly inaccurate")
+                print(f"   Consider using calculate_historical() or calculate_cornish_fisher()\n")
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         mu = portfolio_ret.mean()
@@ -251,7 +278,7 @@ class VaRCalculator:
         
         if method not in methods:
             raise ValueError(
-                f"Método '{method}' no válido. "
+                f"Method '{method}' not valid. "
                 f"Opciones: {list(methods.keys())}"
             )
         

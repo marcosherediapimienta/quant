@@ -68,14 +68,19 @@ class MacroRegressionCalculator:
         alpha_daily = float(fit.params[0])
 
         if alpha_daily <= -0.95:
-            print(f"⚠️ WARNING: Alpha diario extremo detectado: {alpha_daily:.4f}")
-            print(f"   Esto indica pérdida diaria ≥95%, probablemente error de datos.")
-            print(f"   Se retornará NaN. Revisar datos de entrada.")
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "Extreme daily alpha detected: %.4f — indicates ≥95%% daily loss, likely data error. Returning NaN.",
+                alpha_daily
+            )
             alpha_annual = np.nan
         elif alpha_daily > -0.99:
             alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
         else:
-            print(f"⚠️ Alpha diario muy negativo: {alpha_daily:.4f}, usando aproximación lineal")
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "Very negative daily alpha: %.4f — using linear approximation", alpha_daily
+            )
             alpha_annual = alpha_daily * self.annual_factor
         
         betas = {name: float(fit.params[i+1]) for i, name in enumerate(factor_names)}
@@ -210,7 +215,8 @@ class MacroRegressionCalculator:
         })
 
         if df_clean.isna().any().any():
-            print(f"⚠️  Advertencia: Se encontraron NaN, eliminando filas...")
+            import logging as _log
+            _log.getLogger(__name__).warning("NaN values found in risk decomposition, dropping rows...")
             df_clean = df_clean.dropna()
         
         if len(df_clean) == 0:
@@ -223,16 +229,14 @@ class MacroRegressionCalculator:
         cov_fitted_residual = float(np.cov(df_clean['fitted'].values, df_clean['residuals'].values)[0, 1])
         
         if abs(var_total - sum_vars) > 1e-4:
-            print(f"⚠️  Advertencia: Var(Y) = {var_total:.6f} vs Var(Ŷ)+Var(ε) = {sum_vars:.6f}")
-            print(f"   Diferencia: {abs(var_total - sum_vars):.6f} ({abs(var_total - sum_vars)/var_total*100:.2f}%)")
-            print(f"   Cov(Ŷ,ε) = {cov_fitted_residual:.6f} (debería ser ~0)")
-            print(f"   Datos usados: {len(df_clean)} observaciones")
-            print(f"   Media portfolio: {df_clean['portfolio'].mean():.6f}")
-            print(f"   Media fitted: {df_clean['fitted'].mean():.6f}")
-            print(f"   Media residuals: {df_clean['residuals'].mean():.6f}")
-            print(f"   Std portfolio: {df_clean['portfolio'].std():.6f}")
-            print(f"   Std fitted: {df_clean['fitted'].std():.6f}")
-            print(f"   Std residuals: {df_clean['residuals'].std():.6f}")
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "Variance decomposition mismatch: Var(Y)=%.6f, Var(Ŷ)+Var(ε)=%.6f, "
+                "diff=%.6f (%.2f%%), Cov(Ŷ,ε)=%.6f — n=%d",
+                var_total, sum_vars, abs(var_total - sum_vars),
+                abs(var_total - sum_vars) / var_total * 100 if var_total else 0,
+                cov_fitted_residual, len(df_clean)
+            )
         
         return {
             'total_variance': var_total,

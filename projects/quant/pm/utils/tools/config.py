@@ -576,6 +576,18 @@ TRADING_SIGNAL_RULES = {
         'default': {
             'confidence': 50
         }
+    },
+    'sanity_check': {
+        # Si scores dicen SELL pero upside > umbral → HOLD (señales mixtas)
+        'sell_override_to_hold': {
+            'upside_min': 0.10,                  # Upside > 10% contradice SELL
+            'confidence': 50
+        },
+        # Si scores dicen BUY pero upside < umbral → HOLD (señales mixtas)
+        'buy_override_to_hold': {
+            'upside_max': -0.10,                 # Upside < -10% contradice BUY
+            'confidence': 50
+        }
     }
 }
 

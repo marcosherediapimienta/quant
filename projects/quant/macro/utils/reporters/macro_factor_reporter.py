@@ -15,8 +15,8 @@ class MacroFactorReporter:
     
     def _print_regression_summary(self, results: Dict) -> None:
         print("RESUMEN DE REGRESIÓN")
-        print(f"  Alpha (diario):           {results['alpha']*100:>8.4f}%")
-        print(f"  Alpha (anual):            {results['alpha_annual']*100:>8.2f}%")
+        print(f"  Alpha de regresión (diario): {results['alpha']*100:>8.4f}%")
+        print(f"  Alpha de regresión (anual):  {results['alpha_annual']*100:>8.2f}%")
         print(f"  R²:                       {results['r_squared']:>8.3f}")
         print(f"  R² ajustado:              {results['adj_r_squared']:>8.3f}")
         print(f"  Observaciones:            {results['n_obs']:>8d}")

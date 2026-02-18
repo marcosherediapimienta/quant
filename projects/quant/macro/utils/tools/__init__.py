@@ -1,5 +1,6 @@
 from .config import (
     MACRO_FACTORS,
+    FRED_FACTORS,
     MACRO_FACTOR_CATEGORIES,
     MACRO_CORE_FACTORS,
     MACRO_GLOBAL_FACTORS,
@@ -26,6 +27,7 @@ from .config import (
 
 __all__ = [
     'MACRO_FACTORS',
+    'FRED_FACTORS',
     'MACRO_FACTOR_CATEGORIES',
     'MACRO_CORE_FACTORS',
     'MACRO_GLOBAL_FACTORS',
