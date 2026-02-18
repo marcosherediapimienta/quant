@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +15,9 @@ from ..components.date_utils import DateCalculator
 from ..components.returns_calculator import ReturnsCalculator
 from ..components.metrics_calculator import PortfolioMetricsCalculator
 from ....tools.config import PORTFOLIO_CONFIG
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class PortfolioConfig:
@@ -60,8 +64,11 @@ class PortfolioAnalyzer:
         start_date, end_date = self._resolve_dates(start_date, end_date)
 
         if len(candidate_tickers) > 50:
-            print(f"⚡ Fase 1: Análisis rápido de todas las {len(candidate_tickers)} empresas para identificar mejores candidatas...")
-            print(f"   ⏱️  Esto puede tomar varios minutos debido a rate limiting de Yahoo Finance...")
+            logger.info(
+                "Phase 1: quick analysis of %d companies to identify best candidates "
+                "(this may take several minutes due to Yahoo Finance rate limiting)...",
+                len(candidate_tickers)
+            )
             quick_results = self._analyze_companies_quick(candidate_tickers)
             valid_tickers = [
                 ticker for ticker, result in quick_results.items()
@@ -73,20 +80,21 @@ class PortfolioAnalyzer:
                 reverse=True
             )
             
-            print(f"   ✅ {len(valid_tickers)} empresas superan el min_score de {self.config.min_score}")
+            logger.info("Phase 1 complete — %d companies pass min_score=%.1f", len(valid_tickers), self.config.min_score)
 
             if len(valid_tickers) == 0:
                 success_count = sum(1 for r in quick_results.values() if r.get('success'))
                 fail_count = len(quick_results) - success_count
-                print(f"   ⚠️  Empresas exitosas: {success_count}/{len(quick_results)}")
-                print(f"   ⚠️  Empresas fallidas: {fail_count}/{len(quick_results)}")
+                logger.warning(
+                    "No companies passed the score threshold — successful: %d/%d, failed: %d/%d",
+                    success_count, len(quick_results), fail_count, len(quick_results)
+                )
                 
                 errors = [r.get('error', 'Unknown') for r in quick_results.values() if not r.get('success')]
                 from collections import Counter
                 error_counts = Counter(errors)
-                print(f"   ⚠️  Errores más comunes:")
                 for error, count in error_counts.most_common(5):
-                    print(f"      {error}: {count}")
+                    logger.warning("  Common error (%dx): %s", count, error)
                 
                 all_scores = [
                     (ticker, result.get('scores', {}).get('total', 0)) 
@@ -94,28 +102,26 @@ class PortfolioAnalyzer:
                     if result.get('success')
                 ]
                 all_scores.sort(key=lambda x: x[1], reverse=True)
-                print(f"   ⚠️  Top 10 scores disponibles:")
-                for ticker, score in all_scores[:10]:
-                    print(f"      {ticker}: {score:.2f}")
-                print(f"   ⚠️  Min score requerido: {self.config.min_score}")
+                logger.warning("Top available scores: %s", all_scores[:10])
+                logger.warning("Required min_score: %s", self.config.min_score)
 
             max_candidates = max(self.config.max_companies * 3, 50)
             top_candidates = valid_tickers[:max_candidates]
             
-            print(f"⚡ Fase 2: Análisis completo de {len(top_candidates)} mejores candidatas...")
+            logger.info("Phase 2: full analysis of %d top candidates...", len(top_candidates))
             analysis_results = self._analyze_companies(top_candidates)
         else:
             analysis_results = self._analyze_companies(candidate_tickers)
         
         if not analysis_results:
-            print(f"❌ Error: No se pudo analizar ninguna empresa")
+            logger.error("Could not analyze any company")
             return {'success': False, 'error': 'No se pudo analizar ninguna empresa'}
 
-        print(f"✅ Se analizaron {len(analysis_results)} empresas correctamente")
-        print(f"🎯 Seleccionando mejores empresas según criterios...")
-        print(f"   - Método: {self.config.selection_method}")
-        print(f"   - Min score: {self.config.min_score}")
-        print(f"   - Max companies: {self.config.max_companies}")
+        logger.info("%d companies analyzed successfully", len(analysis_results))
+        logger.info(
+            "Selecting companies — method: %s, min_score: %.1f, max: %d",
+            self.config.selection_method, self.config.min_score, self.config.max_companies
+        )
         
         selected_tickers = self.selector.select(
             analysis_results,
@@ -123,15 +129,16 @@ class PortfolioAnalyzer:
         )
         
         if not selected_tickers:
-            print(f"❌ Error: No hay empresas que cumplan criterios")
-            print(f"   Scores disponibles: {[(t, analysis_results[t].get('scores', {}).get('total', 0)) for t in list(analysis_results.keys())[:5]]}")
+            available = [(t, analysis_results[t].get('scores', {}).get('total', 0)) for t in list(analysis_results.keys())[:5]]
+            logger.error("No companies meet criteria. Sample scores: %s", available)
             return {'success': False, 'error': 'No hay empresas que cumplan criterios'}
-        print(f"✅ Seleccionadas {len(selected_tickers)} empresas: {', '.join(selected_tickers)}")
+
+        logger.info("Selected %d companies: %s", len(selected_tickers), ', '.join(selected_tickers))
 
         returns_data = None
         methods_requiring_returns = ('markowitz', 'risk_parity', 'score_risk_adjusted', 'black_litterman')
         if self.config.weight_method in methods_requiring_returns:
-            print(f"📥 Descargando datos históricos para {len(selected_tickers)} empresas...")
+            logger.info("Downloading historical data for %d companies...", len(selected_tickers))
             try:
                 hist_data = self.data_manager.download_assets(
                     selected_tickers, 
@@ -139,17 +146,16 @@ class PortfolioAnalyzer:
                     end_date,
                     progress=False  
                 )
-                print(f"📊 Calculando retornos históricos...")
+                logger.debug("Calculating historical returns...")
                 returns_data = self.returns_calc.calculate(hist_data)
                 if returns_data is None or returns_data.empty:
-                    print(f"⚠️  No se pudieron calcular retornos, usando pesos iguales")
+                    logger.warning("Could not calculate returns, falling back to equal weights")
                     returns_data = None
             except Exception as e:
-                print(f"⚠️  Error descargando datos históricos: {e}")
-                print(f"⚠️  Usando pesos iguales como fallback")
+                logger.warning("Error downloading historical data: %s — using equal weights", e)
                 returns_data = None
 
-        print(f"⚖️  Optimizando pesos del portfolio (método: {self.config.weight_method})...")
+        logger.info("Optimizing portfolio weights (method: %s)...", self.config.weight_method)
         weights = self.optimizer.optimize(
             selected_tickers,
             method=self.config.weight_method,
@@ -157,15 +163,14 @@ class PortfolioAnalyzer:
             analysis_results=analysis_results
         )
 
-        print(f"📈 Calculando métricas del portfolio...")
+        logger.info("Calculating portfolio metrics...")
         metrics = self.metrics_calc.calculate(
             selected_tickers,
             weights,
             analysis_results
         )
         
-        print(f"✅ Portfolio construido exitosamente con {len(selected_tickers)} empresas")
-        print(f"📦 Preparando respuesta...")
+        logger.info("Portfolio built successfully with %d companies", len(selected_tickers))
         selected_analysis = {t: analysis_results[t] for t in selected_tickers}
         
         return {
@@ -263,9 +268,9 @@ class PortfolioAnalyzer:
                     try:
                         result = self.company_analyzer.analyze_quick(ticker)
                         return (ticker, result)
-                    except:
+                    except Exception:
                         pass
-                print(f"⚠️  {ticker}: {error_msg}")
+                logger.warning("Quick analysis failed for %s: %s", ticker, error_msg)
                 return (ticker, {'success': False, 'error': error_msg})
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -284,7 +289,7 @@ class PortfolioAnalyzer:
                     successful += 1
 
                 if completed % 50 == 0 or completed == total:
-                    print(f"📊 Análisis rápido: {completed}/{total} empresas ({successful} exitosas)...")
+                    logger.info("Quick analysis: %d/%d companies (%d successful)...", completed, total, successful)
         
         return results
     
@@ -314,10 +319,10 @@ class PortfolioAnalyzer:
                     try:
                         result = self.company_analyzer.analyze(ticker)
                         return (ticker, result)
-                    except:
+                    except Exception:
                         pass
 
-                print(f"⚠️  {ticker}: {error_msg}")
+                logger.warning("Full analysis failed for %s: %s", ticker, error_msg)
                 return (ticker, {'success': False, 'error': error_msg})
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -333,6 +338,6 @@ class PortfolioAnalyzer:
                     results[ticker] = result
 
                 if completed % 10 == 0 or completed == total:
-                    print(f"📊 Progreso: {completed}/{total} empresas analizadas...")
+                    logger.info("Analysis progress: %d/%d companies", completed, total)
                     
         return results

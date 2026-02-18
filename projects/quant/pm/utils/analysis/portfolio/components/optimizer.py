@@ -357,7 +357,8 @@ class WeightOptimizer:
             # Condition number check — fall back to Markowitz if ill-conditioned
             cond = np.linalg.cond(tau_cov)
             if cond > 1e12:
-                print(f"⚠️  BL: matriz τΣ mal condicionada (cond={cond:.1e}), usando Markowitz")
+                import logging as _logging
+                _logging.getLogger(__name__).warning("BL: ill-conditioned τΣ matrix (cond=%.1e), falling back to Markowitz", cond)
                 return self._markowitz_weights(tickers, returns)
 
             # Solve linear systems instead of explicit inversions

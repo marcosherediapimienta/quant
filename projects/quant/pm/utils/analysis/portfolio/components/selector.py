@@ -1,7 +1,10 @@
+import logging
 import pandas as pd
 from typing import List, Dict
 from ...valuation.metrics.score_extractor import ScoreExtractor
 from ....tools.config import PORTFOLIO_CONFIG
+
+logger = logging.getLogger(__name__)
 
 class CompanySelector:
     def __init__(
@@ -37,27 +40,27 @@ class CompanySelector:
         if not method:
             method = PORTFOLIO_CONFIG['selection']['default_method']
         
-        print(f"   📊 Convirtiendo {len(analysis_results)} resultados a DataFrame...")
+        logger.debug("CompanySelector — converting %d results to DataFrame", len(analysis_results))
         df = self._to_dataframe(analysis_results)
-        print(f"   📊 DataFrame tiene {len(df)} filas")
+        logger.debug("CompanySelector — DataFrame has %d rows", len(df))
 
         df = self._deduplicate_by_company(df)
-        print(f"   📊 DataFrame tras deduplicación: {len(df)} filas")
+        logger.debug("CompanySelector — after deduplication: %d rows", len(df))
 
-        print(f"   🔍 Filtrando por min_score >= {self.min_score}...")
+        logger.debug("CompanySelector — filtering by min_score >= %s", self.min_score)
         df = df[df['total'] >= self.min_score].copy()
-        print(f"   ✅ {len(df)} empresas superan el min_score")
+        logger.debug("CompanySelector — %d companies pass min_score", len(df))
         
         if df.empty:
-            print(f"   ❌ No hay empresas con score >= {self.min_score}")
+            logger.warning("CompanySelector — no companies with score >= %s", self.min_score)
             return []
         
-        print(f"   📈 Aplicando método de scoring: {method}")
+        logger.debug("CompanySelector — applying scoring method: %s", method)
         df = self._score_by_method(df, method)
         
-        print(f"   🎲 Aplicando diversificación (max_per_sector: {self.max_per_sector})...")
+        logger.debug("CompanySelector — applying diversification (max_per_sector=%d)", self.max_per_sector)
         selected = self._apply_diversification(df)
-        print(f"   ✅ Seleccionadas {len(selected)} empresas tras diversificación")
+        logger.debug("CompanySelector — %d companies selected after diversification", len(selected))
         
         return selected[:self.max_companies]
     
@@ -95,7 +98,7 @@ class CompanySelector:
         
         removed = len(df) - len(deduped)
         if removed > 0:
-            print(f"   🔗 Deduplicados {removed} ticker(s) de la misma empresa (se conserva el de mayor score)")
+            logger.info("CompanySelector — deduplicated %d ticker(s) from the same company (keeping highest score)", removed)
         
         return deduped
     

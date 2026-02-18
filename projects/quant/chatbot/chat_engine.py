@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, List, Dict
 
 from langchain_groq import ChatGroq
@@ -28,6 +29,9 @@ except ImportError:
         QUERY_ENHANCEMENT_PROMPTS
     )
 
+logger = logging.getLogger(__name__)
+
+
 class ChatEngine:
     def __init__(
         self,
@@ -56,18 +60,18 @@ class ChatEngine:
         else:
             self._setup_simple_chain()
 
-        print(f"✓ ChatEngine inicializado (modelo: {model}, RAG: {self.enable_rag and self.vectorstore is not None})")
+        logger.info("ChatEngine initialized (model: %s, RAG: %s)", model, self.enable_rag and self.vectorstore is not None)
 
     def _setup_rag(self, project_root: str):
 
         try:
-            print("Indexando código fuente...")
+            logger.info("Indexing source code...")
 
             indexer = CodeIndexer(project_root)
             documents = indexer.index_project(extensions=['.py'])
 
             if not documents:
-                print("⚠ No se encontraron documentos para indexar. Usando modo sin RAG.")
+                logger.warning("No documents found for indexing. Falling back to no-RAG mode.")
                 self._setup_simple_chain()
                 return
 
@@ -96,7 +100,7 @@ class ChatEngine:
             )
             split_docs = text_splitter.split_documents(langchain_docs)
 
-            print(f"Creando embeddings para {len(split_docs)} chunks...")
+            logger.info("Creating embeddings for %d chunks...", len(split_docs))
 
             embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
@@ -110,11 +114,10 @@ class ChatEngine:
             )
             self._build_rag_chain()
 
-            print("✓ Sistema RAG configurado correctamente")
+            logger.info("RAG system configured successfully")
 
         except Exception as e:
-            print(f"⚠ Error configurando RAG: {e}")
-            print("Usando modo sin RAG como fallback.")
+            logger.exception("Error configuring RAG, falling back to simple chain")
             self._setup_simple_chain()
 
     def _build_rag_chain(self):
@@ -197,7 +200,7 @@ class ChatEngine:
 
         except Exception as e:
             error_msg = f"Error generando respuesta: {str(e)}"
-            print(f"⚠ {error_msg}")
+            logger.exception("Error generating chatbot response")
             return {
                 'response': "Lo siento, hubo un error procesando tu pregunta. Por favor intenta de nuevo.",
                 'sources': [],
@@ -247,7 +250,7 @@ class ChatEngine:
 
     def clear_memory(self):
         self.conversation_memory.clear()
-        print("✓ Memoria de conversación limpiada")
+        logger.debug("Conversation memory cleared")
 
     def get_history(self, last_n: Optional[int] = None) -> List[Dict]:
         return self.conversation_memory.get_messages(last_n)
@@ -256,9 +259,9 @@ class ChatEngine:
 
         if self.vectorstore:
             self.vectorstore.save_local(path)
-            print(f"✓ Vectorstore guardado en {path}")
+            logger.info("Vectorstore saved to %s", path)
         else:
-            print("⚠ No hay vectorstore para guardar")
+            logger.warning("No vectorstore to save")
 
     def load_vectorstore(self, path: str):
 
@@ -276,7 +279,7 @@ class ChatEngine:
             self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
             self._build_rag_chain()
 
-            print(f"✓ Vectorstore cargado desde {path} y chain RAG reconstruida")
+            logger.info("Vectorstore loaded from %s and RAG chain rebuilt", path)
         except Exception as e:
-            print(f"⚠ Error cargando vectorstore: {e}")
+            logger.exception("Error loading vectorstore from %s", path)
             self._setup_simple_chain()
