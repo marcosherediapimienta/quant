@@ -40,7 +40,7 @@ class CodeIndexer:
 
         for ext in extensions:
             for file_path in self.project_root.rglob(f'*{ext}'):
-                # Verificar si está en directorio excluido
+                # Check if it's in an excluded directory
                 path_parts = set(file_path.parts)
                 if path_parts & excluded_dirs:
                     continue
@@ -54,7 +54,7 @@ class CodeIndexer:
                 except Exception as e:
                     print(f"⚠ Error indexando {file_path}: {e}")
 
-        print(f"✓ Indexados {len(self.documents)} segmentos de código")
+        print(f"✓ Indexed {len(self.documents)} code segments")
         return self.documents
 
     def _index_file(self, file_path: Path):
@@ -194,7 +194,7 @@ class CodeIndexer:
             text += doc['content']
 
             if doc['metadata'].get('docstring'):
-                text += f"\n\n# Documentación:\n{doc['metadata']['docstring']}"
+                text += f"\n\n# Documentation:\n{doc['metadata']['docstring']}"
 
             texts.append(text)
 

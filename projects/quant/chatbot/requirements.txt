@@ -1,4 +1,4 @@
-# Dependencias para el módulo chatbot
+# Dependencies for the chatbot module
 
 # LLM y LangChain (versiones compatibles)
 langchain>=1.2.0
