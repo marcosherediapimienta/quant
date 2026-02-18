@@ -1,13 +1,3 @@
-"""
-Módulo de chatbot con RAG para análisis financiero cuantitativo.
-
-Proporciona un asistente conversacional que puede:
-- Responder preguntas sobre finanzas cuantitativas
-- Explicar cómo se calculan métricas en Gala Analytics
-- Buscar en el código fuente para dar respuestas precisas (RAG con FAISS)
-- Mantener contexto de conversación con memoria por sesión
-"""
-
 from .chat_engine import ChatEngine
 from .memory.conversation_memory import ConversationMemory
 from .code_indexer import CodeIndexer

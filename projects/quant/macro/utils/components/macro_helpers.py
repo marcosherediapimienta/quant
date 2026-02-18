@@ -30,7 +30,6 @@ class MacroDataDownloader:
         tickers = []
         ticker_to_name = {}
 
-        # Separar factores FRED de Yahoo
         fred_names = []
         for name in factor_names:
             if name in self.fred_factors:
@@ -42,7 +41,6 @@ class MacroDataDownloader:
             else:
                 print(f"[Macro] Factor '{name}' no encontrado")
 
-        # Descargar factores de FRED (con fallback a interpolación)
         for name in fred_names:
             series_id = self.fred_factors[name]
             series = self._download_fred_series(series_id, start_date, end_date)
@@ -53,11 +51,9 @@ class MacroDataDownloader:
             else:
                 print(f"[Macro] FRED falló para {name} ({series_id}), "
                       f"se añadirá al batch Yahoo como fallback")
-                # Fallback: añadir al batch de Yahoo con el mejor ticker disponible
                 tickers.append('^IRX')
                 ticker_to_name['^IRX'] = name
 
-        # Descargar factores de Yahoo
         if not tickers:
             return results
 

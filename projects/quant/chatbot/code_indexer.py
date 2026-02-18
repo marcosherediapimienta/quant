@@ -1,43 +1,20 @@
-"""
-Indexa el código fuente del proyecto para RAG (Retrieval Augmented Generation).
-Usa el módulo `ast` de Python para un parsing robusto y preciso.
-"""
 import ast
-import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
-
-# Directorios excluidos por defecto
 DEFAULT_EXCLUDE_DIRS = [
     '__pycache__', '.git', 'venv', 'env', '.pytest_cache',
     'node_modules', 'dist', 'build', '.tox', 'htmlcov',
     '.mypy_cache', '.ruff_cache', 'eggs', '.eggs'
 ]
 
-# Archivos excluidos por defecto
 DEFAULT_EXCLUDE_FILES = [
     'setup.py', 'setup.cfg', 'conftest.py', 'manage.py',
     'wsgi.py', 'asgi.py', 'migrations'
 ]
 
-
 class CodeIndexer:
-    """
-    Indexa archivos de código Python para búsqueda semántica usando AST.
-
-    Ventajas sobre regex:
-    - Maneja correctamente clases con herencia
-    - No duplica funciones anidadas en clases
-    - Soporta decoradores, type hints, docstrings con comillas simples
-    - Robusto ante código malformado (captura SyntaxError)
-    """
-
     def __init__(self, project_root: str):
-        """
-        Args:
-            project_root: Ruta raíz del proyecto a indexar
-        """
         self.project_root = Path(project_root)
         self.documents: List[Dict] = []
 
@@ -47,17 +24,7 @@ class CodeIndexer:
         exclude_dirs: List[str] = None,
         exclude_files: List[str] = None
     ) -> List[Dict]:
-        """
-        Indexa archivos del proyecto usando AST.
 
-        Args:
-            extensions: Extensiones de archivo a indexar (default: ['.py'])
-            exclude_dirs: Directorios adicionales a excluir
-            exclude_files: Archivos/patrones adicionales a excluir
-
-        Returns:
-            Lista de documentos indexados
-        """
         if extensions is None:
             extensions = ['.py']
 
@@ -91,15 +58,6 @@ class CodeIndexer:
         return self.documents
 
     def _index_file(self, file_path: Path):
-        """
-        Indexa un archivo individual usando AST.
-
-        Estrategia:
-        - Top-level classes: clase completa con sus métodos
-        - Top-level functions: función completa
-        - Module docstring: descripción del módulo
-        """
-        # Leer con fallback de encoding
         content = None
         for encoding in ('utf-8', 'latin-1', 'cp1252'):
             try:
@@ -113,7 +71,6 @@ class CodeIndexer:
             print(f"⚠ No se pudo leer {file_path} (encoding desconocido)")
             return
 
-        # Parsear con AST
         try:
             tree = ast.parse(content)
         except SyntaxError as e:
@@ -122,9 +79,8 @@ class CodeIndexer:
 
         lines = content.splitlines()
         rel_path = str(file_path.relative_to(self.project_root))
-
-        # Indexar docstring del módulo
         module_doc = ast.get_docstring(tree)
+
         if module_doc:
             self.documents.append({
                 'content': module_doc,
@@ -134,7 +90,6 @@ class CodeIndexer:
                 'metadata': {'docstring': module_doc, 'line_start': 1}
             })
 
-        # Iterar solo top-level nodes (no funciones anidadas dentro de clases)
         for node in ast.iter_child_nodes(tree):
 
             if isinstance(node, ast.ClassDef):
@@ -144,17 +99,10 @@ class CodeIndexer:
                 self._index_function(node, lines, rel_path)
 
     def _index_class(self, node: ast.ClassDef, lines: List[str], rel_path: str):
-        """
-        Indexa una clase completa (incluyendo sus métodos más importantes).
-        """
         docstring = ast.get_docstring(node) or ''
-
-        # Extraer cuerpo de la clase (primeras 60 líneas para no exceder chunk size)
         start = node.lineno - 1
         end = min(node.end_lineno, start + 60)
         body = '\n'.join(lines[start:end])
-
-        # Reconstruir signature con herencia
         bases = [ast.unparse(b) for b in node.bases] if node.bases else []
         signature = f"class {node.name}"
         if bases:
@@ -174,10 +122,10 @@ class CodeIndexer:
             }
         })
 
-        # Indexar también los métodos públicos de la clase individualmente
         for child in ast.iter_child_nodes(node):
+
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                # Solo métodos públicos (no _privados, excepto __init__ y __call__)
+
                 if not child.name.startswith('_') or child.name in ('__init__', '__call__', '__str__'):
                     self._index_method(child, lines, rel_path, class_name=node.name)
 
@@ -188,17 +136,11 @@ class CodeIndexer:
         rel_path: str,
         class_name: Optional[str] = None
     ):
-        """
-        Indexa una función top-level.
-        """
-        docstring = ast.get_docstring(node) or ''
 
-        # Extraer cuerpo (primeras 40 líneas)
+        docstring = ast.get_docstring(node) or ''
         start = node.lineno - 1
         end = min(node.end_lineno, start + 40)
         body = '\n'.join(lines[start:end])
-
-        # Nombre completo (ej: ClassName.method_name)
         full_name = f"{class_name}.{node.name}" if class_name else node.name
 
         self.documents.append({
@@ -221,13 +163,9 @@ class CodeIndexer:
         rel_path: str,
         class_name: str
     ):
-        """
-        Indexa un método de clase individualmente para mejor búsqueda.
-        """
+
         docstring = ast.get_docstring(node) or ''
 
-        # Solo indexar métodos con docstring o con nombre significativo
-        # (evitar métodos triviales sin documentación)
         if not docstring and len(node.name) < 4:
             return
 
@@ -249,7 +187,6 @@ class CodeIndexer:
         })
 
     def get_documents_text(self) -> List[str]:
-        """Obtiene lista de textos para embeddings"""
         texts = []
         for doc in self.documents:
             text = f"# {doc['type'].upper()}: {doc['name']}\n"
@@ -264,13 +201,7 @@ class CodeIndexer:
         return texts
 
     def search_by_keyword(self, keyword: str, limit: int = 5) -> List[Dict]:
-        """
-        Búsqueda simple por palabra clave (fallback si no hay embeddings).
 
-        Args:
-            keyword: Término a buscar
-            limit: Número máximo de resultados
-        """
         keyword_lower = keyword.lower()
         results = []
 
@@ -280,7 +211,6 @@ class CodeIndexer:
             content_lower = doc['content'].lower()
             docstring_lower = doc['metadata'].get('docstring', '').lower()
 
-            # Ponderación por ubicación del keyword
             if keyword_lower in name_lower:
                 score += 10
             if keyword_lower in docstring_lower:
@@ -291,12 +221,10 @@ class CodeIndexer:
             if score > 0:
                 results.append({'doc': doc, 'score': score})
 
-        # Ordenar por score y devolver top resultados
         results.sort(key=lambda x: x['score'], reverse=True)
         return [r['doc'] for r in results[:limit]]
 
     def get_stats(self) -> Dict:
-        """Retorna estadísticas de la indexación"""
         stats = {'total': len(self.documents), 'by_type': {}}
         for doc in self.documents:
             doc_type = doc['type']
