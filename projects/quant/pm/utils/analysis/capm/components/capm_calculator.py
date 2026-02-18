@@ -8,6 +8,8 @@ class CAPMResult:
     beta: float
     correlation: float
     jensen_alpha: float
+    r_squared: float = np.nan     # % variance of asset explained by market
+    treynor_ratio: float = np.nan # (annualised excess return) / beta
 
 class CAPMCalculator:
     def __init__(self, annual_factor: float = ANNUAL_FACTOR):
@@ -28,19 +30,37 @@ class CAPMCalculator:
         X = np.c_[np.ones_like(x), x]
 
         try:
-            params = np.linalg.lstsq(X, y, rcond=None)[0]
+            params, residuals, rank, sv = np.linalg.lstsq(X, y, rcond=None)
             alpha_daily = float(params[0])
             beta = float(params[1])
         except Exception:
             return CAPMResult(np.nan, np.nan, np.nan, np.nan)
 
+        # R² = 1 - SS_res / SS_tot
         try:
-            corr = float(np.corrcoef(x, y)[0, 1])
+            y_hat = X @ params
+            ss_res = float(np.sum((y - y_hat) ** 2))
+            ss_tot = float(np.sum((y - y.mean()) ** 2))
+            r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+            r_squared = float(np.clip(r_squared, 0.0, 1.0))
+        except Exception:
+            r_squared = np.nan
+
+        try:
+            corr = float(np.corrcoef(asset_returns, market_returns)[0, 1])
         except Exception:
             corr = np.nan
 
         jensen_alpha = self._annualize_alpha(alpha_daily)
-        return CAPMResult(alpha_daily, beta, corr, jensen_alpha)
+
+        # Treynor ratio: annualised excess return / beta (measures return per unit of systematic risk)
+        try:
+            annualised_excess = float(y.mean() * self.annual_factor)
+            treynor = annualised_excess / beta if (not np.isnan(beta) and abs(beta) > 1e-10) else np.nan
+        except Exception:
+            treynor = np.nan
+
+        return CAPMResult(alpha_daily, beta, corr, jensen_alpha, r_squared, treynor)
     
     def _annualize_alpha(self, alpha_daily: float) -> float:
 

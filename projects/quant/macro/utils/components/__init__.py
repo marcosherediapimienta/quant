@@ -11,6 +11,7 @@ from .macro_situation import (
     RiskSentiment
 )
 from .factor_collinearity import FactorCollinearityAnalyzer
+from .implied_yield_curve import ImpliedYieldCurveCalculator, ForwardRateAnalysis
 
 __all__ = [
     'MacroDataLoader',
@@ -25,4 +26,6 @@ __all__ = [
     'InflationSignals',
     'CreditConditions',
     'RiskSentiment',
+    'ImpliedYieldCurveCalculator',
+    'ForwardRateAnalysis',
 ]

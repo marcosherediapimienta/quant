@@ -37,7 +37,14 @@ class MacroTransformCalculator:
         return np.log(series_clean).diff()
     
     def to_business_daily(self, series: pd.Series) -> pd.Series:
-        return series.asfreq('B').ffill()
+        if len(series) == 0:
+            return series
+        try:
+            return series.asfreq('B').ffill()
+        except (ValueError, AttributeError):
+            # Fallback para series sin freq inferible (ej: datos de FRED)
+            bdays = pd.bdate_range(start=series.index.min(), end=series.index.max())
+            return series.reindex(bdays).ffill()
     
     def scale_yield(self, series: pd.Series) -> pd.Series:
         return series / self.yield_scale

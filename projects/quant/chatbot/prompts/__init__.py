@@ -1,5 +1,3 @@
-"""Prompts especializados para el chatbot"""
-
 from .finance_prompts import (
     SYSTEM_PROMPT,
     SYSTEM_PROMPT_BASE,

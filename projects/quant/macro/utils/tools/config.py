@@ -5,7 +5,7 @@ MACRO_FACTORS = {
     
     # Tipos de interés USA
     'RATE_3M': '^IRX',
-    'RATE_2Y': '^IRX',
+    # RATE_2Y → se descarga de FRED (ver FRED_FACTORS)
     'RATE_5Y': '^FVX',
     'RATE_10Y': '^TNX',
     'RATE_30Y': '^TYX',
@@ -64,6 +64,15 @@ MACRO_FACTORS = {
     'HANG_SENG': '^HSI',
     'SHANGHAI': '000001.SS',
     'MSCI_EM': 'EEM',
+}
+
+# ============================================================================
+# FACTORES DE FRED (CSV público, sin API key)
+# Yahoo Finance no tiene ticker para algunos yields (ej: 2Y).
+# Se descargan directamente de https://fred.stlouisfed.org
+# ============================================================================
+FRED_FACTORS = {
+    'RATE_2Y': 'DGS2',    # 2-Year Treasury Constant Maturity Rate (%)
 }
 
 # ============================================================================
@@ -135,7 +144,8 @@ FACTORS_TO_USE = [
 # ============================================================================
 MACRO_TRANSFORMS = {
     # Factores que requieren división por 10 (Yahoo escala yields)
-    'yield_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y', 'RATE_2Y', 'RATE_5Y'],
+    # RATE_2Y viene de FRED ya en %, NO necesita /10
+    'yield_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y', 'RATE_5Y'],
     
     # Factores que usan diferencias (no retornos)
     'diff_factors': ['RATE_3M', 'RATE_10Y', 'RATE_30Y', 'RATE_2Y', 'RATE_5Y', 'VIX'],
