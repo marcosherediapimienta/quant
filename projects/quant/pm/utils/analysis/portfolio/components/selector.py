@@ -40,7 +40,10 @@ class CompanySelector:
         print(f"   📊 Convirtiendo {len(analysis_results)} resultados a DataFrame...")
         df = self._to_dataframe(analysis_results)
         print(f"   📊 DataFrame tiene {len(df)} filas")
-        
+
+        df = self._deduplicate_by_company(df)
+        print(f"   📊 DataFrame tras deduplicación: {len(df)} filas")
+
         print(f"   🔍 Filtrando por min_score >= {self.min_score}...")
         df = df[df['total'] >= self.min_score].copy()
         print(f"   ✅ {len(df)} empresas superan el min_score")
@@ -67,6 +70,7 @@ class CompanySelector:
             scores = analysis.get('scores', {})
             rows.append({
                 'ticker': ticker,
+                'company_name': analysis.get('company_name', ticker),
                 'sector': analysis.get('sector', self.default_sector),
                 'total': scores.get('total', 0),
                 'profitability': self.score_extractor.extract_profitability(analysis),
@@ -76,6 +80,24 @@ class CompanySelector:
             })
         
         return pd.DataFrame(rows)
+
+    def _deduplicate_by_company(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Remove duplicate share classes of the same company (e.g. GOOGL and GOOG).
+        For each unique company_name, keep only the ticker with the highest total score.
+        """
+        if df.empty or 'company_name' not in df.columns:
+            return df
+        
+        # Within each company keep the highest-scoring ticker
+        idx_best = df.groupby('company_name')['total'].idxmax()
+        deduped = df.loc[idx_best].reset_index(drop=True)
+        
+        removed = len(df) - len(deduped)
+        if removed > 0:
+            print(f"   🔗 Deduplicados {removed} ticker(s) de la misma empresa (se conserva el de mayor score)")
+        
+        return deduped
     
     def _score_by_method(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
 

@@ -7,10 +7,13 @@ from ....tools.config import ANNUAL_FACTOR, SIGNIFICANCE_LEVEL, MIN_OBSERVATIONS
 class AlphaTestResult:
     alpha_daily: float
     beta: float
-    t_statistic: float
-    p_value: float
-    is_significant: bool
+    t_statistic: float       # t-stat for alpha (H0: alpha = 0)
+    p_value: float           # p-value for alpha
+    is_significant: bool     # alpha significant at chosen level
     jensen_alpha: float
+    r_squared: float = np.nan          # R² of the regression
+    beta_t_statistic: float = np.nan   # t-stat for beta
+    beta_p_value: float = np.nan       # p-value for beta
 
 class AlphaSignificanceTest:
     def __init__(
@@ -50,11 +53,15 @@ class AlphaSignificanceTest:
             beta = float(robust.params[1])
             t_stat = float(robust.tvalues[0])
             p_value = float(robust.pvalues[0])
+            beta_t_stat = float(robust.tvalues[1])
+            beta_p_value = float(robust.pvalues[1])
             jensen_alpha = (1 + alpha_daily) ** self.annual_factor - 1
             is_significant = p_value < self.significance_level
-            
+            r_squared = float(np.clip(res.rsquared, 0.0, 1.0))
+
             return AlphaTestResult(
-                alpha_daily, beta, t_stat, p_value, is_significant, jensen_alpha
+                alpha_daily, beta, t_stat, p_value, is_significant, jensen_alpha,
+                r_squared, beta_t_stat, beta_p_value
             )
             
         except Exception:

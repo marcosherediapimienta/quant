@@ -129,7 +129,7 @@ class PortfolioAnalyzer:
         print(f"✅ Seleccionadas {len(selected_tickers)} empresas: {', '.join(selected_tickers)}")
 
         returns_data = None
-        methods_requiring_returns = ('markowitz', 'score_risk_adjusted', 'black_litterman')
+        methods_requiring_returns = ('markowitz', 'risk_parity', 'score_risk_adjusted', 'black_litterman')
         if self.config.weight_method in methods_requiring_returns:
             print(f"📥 Descargando datos históricos para {len(selected_tickers)} empresas...")
             try:
