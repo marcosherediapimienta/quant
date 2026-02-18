@@ -169,6 +169,33 @@ class SignalDeterminer:
 
         return min(max_conf, max(base, confidence))
     
+    def validate_with_upside(
+        self,
+        signal: str,
+        confidence: float,
+        upside: float
+    ) -> Tuple[str, float]:
+        """
+        Sanity check: evita contradicciones entre señal y upside potential.
+        - SELL con upside alto → HOLD (señales mixtas)
+        - BUY con upside negativo → HOLD (señales mixtas)
+        """
+        sanity = self.rules.get('sanity_check')
+        if not sanity:
+            return signal, confidence
+
+        if signal == "SELL":
+            threshold = sanity['sell_override_to_hold']['upside_min']
+            if upside > threshold:
+                return "HOLD", sanity['sell_override_to_hold']['confidence']
+
+        if signal == "BUY":
+            threshold = sanity['buy_override_to_hold']['upside_max']
+            if upside < threshold:
+                return "HOLD", sanity['buy_override_to_hold']['confidence']
+
+        return signal, confidence
+
     def _calculate_hold_confidence(
         self,
         valuation_score: float,

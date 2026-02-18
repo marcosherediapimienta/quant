@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.stats import jarque_bera
+from scipy.stats import jarque_bera, anderson
 from typing import Dict
 from .helpers import calculate_portfolio_returns
 from ....tools.config import SIGNIFICANCE_LEVEL
@@ -52,6 +52,73 @@ class DistributionMoments:
             'is_normal': bool(p_value > alpha)  
         }
     
+    def calculate_anderson_darling(
+        self,
+        returns: pd.DataFrame,
+        weights: np.ndarray,
+        significance_level: float = None
+    ) -> Dict[str, float]:
+        """
+        Anderson-Darling normality test.
+        More sensitive to tails than Jarque-Bera → ideal for financial risk.
+        
+        Uses method='interpolate' (scipy >= 1.17) to get p-value directly.
+        Falls back to legacy API if not available.
+        """
+        significance_level = significance_level if significance_level else SIGNIFICANCE_LEVEL
+        
+        portfolio_ret = calculate_portfolio_returns(returns, weights)
+        
+        try:
+            # scipy >= 1.17: usar method='interpolate' para p-value directo
+            result = anderson(portfolio_ret, dist='norm', method='interpolate')
+            ad_statistic = float(result.statistic)
+            p_value = float(result.pvalue)
+            is_normal = p_value > significance_level
+            
+            # Approximate critical value from standard AD tables (5%)
+            # Standard table: [0.576, 0.656, 0.787, 0.918, 1.092] for [15%, 10%, 5%, 2.5%, 1%]
+            critical_value = 0.787  # 5% standard level
+            
+        except TypeError:
+            # scipy < 1.17: API legacy con critical_values
+            result = anderson(portfolio_ret, dist='norm')
+            ad_statistic = float(result.statistic)
+            p_value = None
+            critical_values = result.critical_values
+            sig_levels = result.significance_level
+            
+            target_pct = significance_level * 100
+            idx = min(range(len(sig_levels)), key=lambda i: abs(sig_levels[i] - target_pct))
+            critical_value = float(critical_values[idx])
+            is_normal = ad_statistic < critical_value
+        
+        # Severity: how many times it exceeds the critical value
+        severity_ratio = ad_statistic / critical_value if critical_value > 0 else float('inf')
+        
+        if severity_ratio < 1.0:
+            tail_risk = "LOW"
+        elif severity_ratio < 2.0:
+            tail_risk = "MODERATE"
+        elif severity_ratio < 5.0:
+            tail_risk = "HIGH"
+        else:
+            tail_risk = "SEVERE"
+        
+        result_dict = {
+            'ad_statistic': ad_statistic,
+            'critical_value': float(critical_value),
+            'significance_level': significance_level,
+            'is_normal': is_normal,
+            'severity_ratio': float(severity_ratio),
+            'tail_risk': tail_risk,
+        }
+        
+        if p_value is not None:
+            result_dict['p_value'] = p_value
+        
+        return result_dict
+    
     def calculate_all(
         self,
         returns: pd.DataFrame,
@@ -70,6 +137,8 @@ class DistributionMoments:
         p95 = float(portfolio_ret.quantile(0.95))
         p99 = float(portfolio_ret.quantile(0.99))
         
+        ad_results = self.calculate_anderson_darling(returns, weights)
+        
         return {
             'mean': mean,
             'median': median,
@@ -79,6 +148,10 @@ class DistributionMoments:
             'jb_statistic': jb_results['jb_statistic'],
             'jb_p_value': jb_results['p_value'],
             'is_normal': jb_results['is_normal'],
+            'ad_statistic': ad_results['ad_statistic'],
+            'ad_critical_value': ad_results['critical_value'],
+            'ad_is_normal': ad_results['is_normal'],
+            'ad_tail_risk': ad_results['tail_risk'],
             'percentile_1': p1,
             'percentile_5': p5,
             'percentile_95': p95,

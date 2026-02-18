@@ -5,7 +5,6 @@ import warnings
 warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 
 class MacroDataLoader:
-
     def __init__(self, factors: Dict[str, str] = None):
         self.factors = factors if factors is not None else {}
     

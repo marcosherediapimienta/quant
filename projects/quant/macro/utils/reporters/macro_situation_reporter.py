@@ -7,41 +7,43 @@ class MacroSituationReporter:
         self.analyzer = analyzer if analyzer is not None else MacroSituationAnalyzer()
     
     def print_situation(self, analysis: Dict) -> None:
-        print("SITUACIÓN MACROECONÓMICA GLOBAL".center(80))
+        print("GLOBAL MACROECONOMIC SITUATION".center(80))
         summary = self.analyzer.get_summary(analysis)
         self._print_executive_summary(summary)
         self._print_yield_curve(analysis['yield_curve'])
+        if 'implied_yield_curve' in analysis and analysis['implied_yield_curve']:
+            self._print_implied_yield_curve(analysis['implied_yield_curve'])
         self._print_inflation(analysis['inflation'])
         self._print_credit(analysis['credit'])
         self._print_global_bonds(analysis['global_bonds'])
         self._print_risk_sentiment(analysis['risk_sentiment'])
     
     def _print_executive_summary(self, summary: Dict) -> None:
-        print("RESUMEN EJECUTIVO")
+        print("EXECUTIVE SUMMARY")
         risk_level = summary.get('overall_risk', 'N/A')
 
-        if risk_level == "ALTO":
-            risk_display = "🔴 ALTO"
-        elif risk_level == "MODERADO":
-            risk_display = "🟡 MODERADO"
+        if risk_level == "HIGH":
+            risk_display = "🔴 HIGH"
+        elif risk_level == "MODERATE":
+            risk_display = "🟡 MODERATE"
         else:
-            risk_display = "🟢 BAJO"
+            risk_display = "🟢 LOW"
         
-        print(f"\n  Nivel de riesgo global: {risk_display}")
+        print(f"\n  Global risk level: {risk_display}")
         risk_factors = summary.get('risk_factors', [])
 
         if risk_factors:
-            print(f"\n  Factores de riesgo detectados:")
+            print(f"\n  Risk factors detected:")
             for factor in risk_factors:
                 print(f"    • {factor}")
         else:
-            print(f"\n  ✅ No se detectan factores de riesgo significativos")
+            print(f"\n  ✅ No significant risk factors detected")
     
     def _print_yield_curve(self, curve) -> None:
-        print("CURVA DE TIPOS DE INTERÉS (USA)")
+        print("US YIELD CURVE")
         levels = getattr(curve, 'levels', curve.get('levels', {})) if hasattr(curve, 'get') else curve.levels
         if levels:
-            print("\n  Niveles actuales:")
+            print("\n  Current levels:")
             for tenor, rate in sorted(levels.items()):
                 print(f"    {tenor:>4}: {rate:>6.2f}%")
 
@@ -54,8 +56,8 @@ class MacroSituationReporter:
 
         rate_changes = getattr(curve, 'rate_changes', curve.get('rate_changes', {})) if hasattr(curve, 'get') else curve.rate_changes
         if rate_changes:
-            print("\n  Cambios en tasas:")
-            print(f"    {'Tenor':<6} {'1 Mes':<12} {'3 Meses':<12} {'1 Año':<12}")
+            print("\n  Rate changes:")
+            print(f"    {'Tenor':<6} {'1 Month':<12} {'3 Months':<12} {'1 Year':<12}")
             for tenor in sorted(rate_changes.keys()):
                 changes = rate_changes[tenor]
                 change_1m = changes.get('1m', np.nan)
@@ -70,42 +72,74 @@ class MacroSituationReporter:
 
         divergence = getattr(curve, 'divergence_analysis', curve.get('divergence_analysis', {})) if hasattr(curve, 'get') else curve.divergence_analysis
         if divergence:
-            print("\n  📊 Divergencia Corto vs Largo Plazo:")
+            print("\n  📊 Short vs Long Rate Divergence:")
             if '3m' in divergence:
                 d3m = divergence['3m']
-                print(f"    3 meses:")
-                print(f"      Corto (2Y): {d3m['short']:>+6.2f} pp")
-                print(f"      Largo (10Y): {d3m['long']:>+6.2f} pp")
-                print(f"      Divergencia: {d3m['divergence']:>+6.2f} pp", end="")
+                print(f"    3 months:")
+                print(f"      Short (2Y): {d3m['short']:>+6.2f} pp")
+                print(f"      Long (10Y): {d3m['long']:>+6.2f} pp")
+                print(f"      Divergence: {d3m['divergence']:>+6.2f} pp", end="")
                 if d3m['divergence'] > 0.5:
-                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                    print(" 🔴 (Long rising faster — inflation expectations)")
                 elif d3m['divergence'] < -0.5:
-                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                    print(" 🟢 (Short rising faster — restrictive policy)")
                 else:
-                    print(" ⚪ (Movimientos alineados)")
+                    print(" ⚪ (Aligned movements)")
             
             if '1y' in divergence:
                 d1y = divergence['1y']
-                print(f"    1 año:")
-                print(f"      Corto (2Y): {d1y['short']:>+6.2f} pp")
-                print(f"      Largo (10Y): {d1y['long']:>+6.2f} pp")
-                print(f"      Divergencia: {d1y['divergence']:>+6.2f} pp", end="")
+                print(f"    1 year:")
+                print(f"      Short (2Y): {d1y['short']:>+6.2f} pp")
+                print(f"      Long (10Y): {d1y['long']:>+6.2f} pp")
+                print(f"      Divergence: {d1y['divergence']:>+6.2f} pp", end="")
                 if d1y['divergence'] > 0.5:
-                    print(" 🔴 (Largo sube más que corto - expectativas inflacionarias)")
+                    print(" 🔴 (Long rising faster — inflation expectations)")
                 elif d1y['divergence'] < -0.5:
-                    print(" 🟢 (Corto sube más que largo - política restrictiva)")
+                    print(" 🟢 (Short rising faster — restrictive policy)")
                 else:
-                    print(" ⚪ (Movimientos alineados)")
+                    print(" ⚪ (Aligned movements)")
 
         interpretation = getattr(curve, 'interpretation', curve.get('interpretation', 'N/A')) if hasattr(curve, 'get') else curve.interpretation
         print(f"\n  💡 {interpretation}")
     
+    def _print_implied_yield_curve(self, implied_analysis) -> None:
+        print("IMPLIED YIELD CURVE (FORWARD RATES)")
+        
+        spot = getattr(implied_analysis, 'spot_rates', {})
+        forwards = getattr(implied_analysis, 'forward_rates', {})
+        fwd_vs_spot = getattr(implied_analysis, 'forward_vs_spot', {})
+        term_premium = getattr(implied_analysis, 'term_premium', {})
+
+        print("\n  📈 Spot vs Implied Forward Curve:")
+        print(f"    {'Segment':<14} {'Forward (%)':<14} {'vs Spot':<14} {'Signal'}")
+        print(f"    {'─'*56}")
+        
+        for segment, fwd_rate in forwards.items():
+            diff = fwd_vs_spot.get(segment, np.nan)
+            if not np.isnan(fwd_rate):
+                if not np.isnan(diff):
+                    symbol = "🔴↑" if diff > 0.3 else "🟢↓" if diff < -0.3 else "⚪→"
+                    print(f"    {segment:<14} {fwd_rate:>6.2f}%       {diff:>+6.2f} pp     {symbol}")
+                else:
+                    print(f"    {segment:<14} {fwd_rate:>6.2f}%")
+
+        if term_premium:
+            print(f"\n  💰 Estimated Term Premium:")
+            for tenor, tp in term_premium.items():
+                symbol = "🔴" if tp < -0.2 else "🟢" if tp > 0.5 else "⚪"
+                print(f"    {symbol} {tenor}: {tp:>+6.2f} pp")
+
+        expectations = getattr(implied_analysis, 'curve_expectations', 'N/A')
+        signal = getattr(implied_analysis, 'rate_path_signal', 'N/A')
+        print(f"\n  💡 Expectations: {expectations}")
+        print(f"  🏦 Monetary policy signal: {signal}")
+
     def _print_inflation(self, inflation) -> None:
-        print("SEÑALES DE INFLACIÓN (Commodities)")
+        print("INFLATION SIGNALS (Commodities)")
         commodity_changes = getattr(inflation, 'commodity_changes', inflation.get('commodity_changes', {})) if hasattr(inflation, 'get') else inflation.commodity_changes
         commodity_names = getattr(inflation, 'commodity_names', inflation.get('commodity_names', {})) if hasattr(inflation, 'get') else inflation.commodity_names
         
-        print("\n  Cambio últimos 12 meses:")
+        print("\n  12-month change:")
         for key, name in commodity_names.items():
             if key in commodity_changes:
                 change = commodity_changes[key]
@@ -117,14 +151,14 @@ class MacroSituationReporter:
         
         print(f"\n  💡 {pressure}")
         if not np.isnan(avg_change):
-            print(f"     Cambio promedio: {avg_change:>+.2f}%")
+            print(f"     Average change: {avg_change:>+.2f}%")
     
     def _print_credit(self, credit) -> None:
-        print("CONDICIONES DE CRÉDITO Y VOLATILIDAD")
+        print("CREDIT CONDITIONS & VOLATILITY")
         vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
         if vix is not None:
             vix_symbol = "🔴" if vix > 30 else "🟡" if vix > 20 else "🟢"
-            print(f"\n  {vix_symbol} VIX (volatilidad):      {vix:>7.2f}")
+            print(f"\n  {vix_symbol} VIX (volatility):      {vix:>7.2f}")
 
         condition = getattr(credit, 'market_condition', credit.get('market_condition', 'N/A')) if hasattr(credit, 'get') else credit.market_condition
         print(f"\n  💡 {condition}")
@@ -132,18 +166,18 @@ class MacroSituationReporter:
         hyg = getattr(credit, 'hyg_level', credit.get('hyg_level')) if hasattr(credit, 'get') else credit.hyg_level
         lqd = getattr(credit, 'lqd_level', credit.get('lqd_level')) if hasattr(credit, 'get') else credit.lqd_level
         if hyg is not None and lqd is not None:
-            print(f"\n  Niveles ETFs crédito:")
+            print(f"\n  Credit ETF levels:")
             print(f"    HYG (High Yield):        ${hyg:>7.2f}")
             print(f"    LQD (Investment Grade):  ${lqd:>7.2f}")
     
     def _print_global_bonds(self, bonds: Dict) -> None:
-        print("BONOS SOBERANOS GLOBALES")
+        print("GLOBAL SOVEREIGN BONDS")
 
         if not bonds:
-            print("\n  ⚠️  Sin datos de bonos globales")
+            print("\n  ⚠️  No global bond data available")
             return
         
-        print("{'Región':<15} {'Nivel':<12} {'1 Mes':<12} {'1 Año':<12}")
+        print(f"  {'Region':<15} {'Level':<12} {'1 Month':<12} {'1 Year':<12}")
 
         for region, data in sorted(bonds.items()):
             level = data.get('level', np.nan)
@@ -168,11 +202,11 @@ class MacroSituationReporter:
             print(f"  {region:<15} {level_str:<12} {change_1m_str:<12} {change_1y_str:<12}")
     
     def _print_risk_sentiment(self, sentiment) -> None:
-        print("SENTIMIENTO DE RIESGO")
+        print("RISK SENTIMENT")
         fear = getattr(sentiment, 'fear_level', sentiment.get('fear_level')) if hasattr(sentiment, 'get') else sentiment.fear_level
 
         if fear:
-            print(f"\n  Nivel de miedo:           {fear}")
+            print(f"\n  Fear level:               {fear}")
 
         dollar = getattr(sentiment, 'dollar_strength', sentiment.get('dollar_strength')) if hasattr(sentiment, 'get') else sentiment.dollar_strength
 
@@ -183,14 +217,14 @@ class MacroSituationReporter:
             dxy_3m = getattr(sentiment, 'dxy_trend_3m', sentiment.get('dxy_trend_3m')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_3m
             
             if dxy_1w is not None:
-                trends.append(f"1 sem: {dxy_1w:+.2f}%")
+                trends.append(f"1W: {dxy_1w:+.2f}%")
             if dxy_1m is not None:
-                trends.append(f"1 mes: {dxy_1m:+.2f}%")
+                trends.append(f"1M: {dxy_1m:+.2f}%")
             if dxy_3m is not None:
-                trends.append(f"3 mes: {dxy_3m:+.2f}%")
+                trends.append(f"3M: {dxy_3m:+.2f}%")
             
             trend_str = f"({', '.join(trends)})" if trends else ""
-            print(f"  Fortaleza del dólar:      {dollar} {trend_str}")
+            print(f"  Dollar strength:          {dollar} {trend_str}")
 
         safe_haven = getattr(sentiment, 'safe_haven', sentiment.get('safe_haven')) if hasattr(sentiment, 'get') else sentiment.safe_haven
         if safe_haven:
@@ -200,27 +234,27 @@ class MacroSituationReporter:
             gold_3m = getattr(sentiment, 'gold_trend_3m', sentiment.get('gold_trend_3m')) if hasattr(sentiment, 'get') else sentiment.gold_trend_3m
             
             if gold_1w is not None:
-                trends.append(f"1 sem: {gold_1w:+.2f}%")
+                trends.append(f"1W: {gold_1w:+.2f}%")
             if gold_1m is not None:
-                trends.append(f"1 mes: {gold_1m:+.2f}%")
+                trends.append(f"1M: {gold_1m:+.2f}%")
             if gold_3m is not None:
-                trends.append(f"3 mes: {gold_3m:+.2f}%")
+                trends.append(f"3M: {gold_3m:+.2f}%")
             
             trend_str = f"({', '.join(trends)})" if trends else ""
-            print(f"  Demanda de refugio:       {safe_haven} {trend_str}")
+            print(f"  Safe-haven demand:        {safe_haven} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
-        print("SNAPSHOT MACRO".center(60))
+        print("MACRO SNAPSHOT".center(60))
         curve = analysis['yield_curve']
         spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
         if '10Y-2Y' in spreads:
             spread = spreads['10Y-2Y']
             symbol = "🔴" if spread < 0 else "🟢"
-            print(f"\n  {symbol} Curva 10Y-2Y: {spread:+.2f} pp")
+            print(f"\n  {symbol} Curve 10Y-2Y: {spread:+.2f} pp")
 
         inflation = analysis['inflation']
         pressure = getattr(inflation, 'inflation_pressure', inflation.get('inflation_pressure', 'N/A')) if hasattr(inflation, 'get') else inflation.inflation_pressure
-        print(f"Inflación: {pressure}")
+        print(f"  Inflation: {pressure}")
         
         credit = analysis['credit']
         vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
@@ -230,6 +264,6 @@ class MacroSituationReporter:
 
         summary = self.analyzer.get_summary(analysis)
         risk = summary.get('overall_risk', 'N/A')
-        print(f"\n  ⚠️  Riesgo global: {risk}")
+        print(f"\n  ⚠️  Global risk: {risk}")
         
         print("="*60)

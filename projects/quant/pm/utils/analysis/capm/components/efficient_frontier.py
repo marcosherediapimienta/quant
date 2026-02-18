@@ -5,6 +5,28 @@ from dataclasses import dataclass
 from typing import List, Optional
 from ....tools.config import FRONTIER_POINTS, OPTIMIZATION_METHOD, ANNUAL_FACTOR
 
+try:
+    from sklearn.covariance import LedoitWolf
+    _HAS_SKLEARN = True
+except ImportError:
+    _HAS_SKLEARN = False
+
+
+def _shrink_cov(returns_matrix: np.ndarray, annual_factor: int) -> np.ndarray:
+    """Ledoit-Wolf shrinkage estimator for the annualised covariance matrix."""
+    n = returns_matrix.shape[1]
+    if _HAS_SKLEARN and returns_matrix.shape[0] > n:
+        lw = LedoitWolf()
+        lw.fit(returns_matrix)
+        cov = lw.covariance_ * annual_factor
+    else:
+        cov = np.cov(returns_matrix.T) * annual_factor
+        mu = np.trace(cov) / n
+        shrinkage = min(0.1, n / max(returns_matrix.shape[0], 1))
+        cov = (1 - shrinkage) * cov + shrinkage * mu * np.eye(n)
+    cov += np.eye(n) * 1e-8
+    return cov
+
 @dataclass
 class FrontierResult:
     returns: np.ndarray
@@ -44,11 +66,13 @@ class EfficientFrontierCalculator:
             )
         
         mean_ret = returns_clean.mean() * self.annual_factor
-        cov_matrix = returns_clean.cov() * self.annual_factor
-
         if mean_ret.isna().any():
             mean_ret = mean_ret.fillna(0)
-        
+
+        # Ledoit-Wolf shrinkage for a more stable covariance estimate
+        cov_array = _shrink_cov(returns_clean.values, self.annual_factor)
+        cov_matrix = pd.DataFrame(cov_array, index=returns_clean.columns, columns=returns_clean.columns)
+
         n = len(assets)
         bounds = tuple((-1, 1) if allow_short else (0, 1) for _ in range(n))
         
@@ -190,7 +214,8 @@ class EfficientFrontierCalculator:
             return np.nan, np.nan, np.array([])
         
         mean_ret = returns.mean() * self.annual_factor
-        cov_matrix = returns.cov() * self.annual_factor
+        cov_array = _shrink_cov(returns.values, self.annual_factor)
+        cov_matrix = pd.DataFrame(cov_array, index=returns.columns, columns=returns.columns)
         n = len(returns.columns)
         
         bounds = tuple((-1, 1) if allow_short else (0, 1) for _ in range(n))
