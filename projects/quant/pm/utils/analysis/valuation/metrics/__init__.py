@@ -3,7 +3,7 @@ from .financial_health import FinancialHealthMetrics, FinancialHealthThresholds
 from .growth import GrowthMetrics, GrowthThresholds
 from .efficiency import EfficiencyMetrics, EfficiencyThresholds
 from .valuation_multiples import ValuationMultiples, ValuationThresholds
-from .helpers import nan_if_missing, safe_div, score_metric, classify_metric
+from .helpers import nan_if_missing, safe_div, score_metric, classify_metric, MetricSpec, WeightedScorer
 from .score_extractor import ScoreExtractor
 from .fundamental_aggregator import FundamentalAggregator
 from .score_aggregator import ScoreAggregator
@@ -26,6 +26,8 @@ __all__ = [
     'safe_div',
     'score_metric',
     'classify_metric',
+    'MetricSpec',
+    'WeightedScorer',
     'ScoreExtractor',
     'FundamentalAggregator',
     'ScoreAggregator',

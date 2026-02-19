@@ -51,7 +51,7 @@ class BetaCalculator:
         ddof: int = 1
     ) -> pd.Series:
 
-        window = window if window else ROLLING_WINDOW
+        window = window if window is not None else ROLLING_WINDOW
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
 

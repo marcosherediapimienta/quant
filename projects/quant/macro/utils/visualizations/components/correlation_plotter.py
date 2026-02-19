@@ -31,17 +31,17 @@ class CorrelationPlotter:
             vmax=vmax,
             square=True,
             linewidths=0.5,
-            cbar_kws={'label': 'Correlación'},
+            cbar_kws={'label': 'Correlation'},
             ax=ax
         )
         
-        ax.set_title('Matriz de Correlación: Portfolio vs Factores Macro', 
+        ax.set_title('Correlation Matrix: Portfolio vs Macro Factors', 
                     fontsize=14, fontweight='bold')
         
         if is_own_figure:
             try:
                 plt.tight_layout()
-            except:
+            except Exception:
                 pass
         
         return ax
@@ -75,8 +75,8 @@ class CorrelationPlotter:
         
         bars = ax.barh(factors, correlations, color=colors, alpha=0.7, edgecolor='black')
         ax.axvline(0, color='black', linestyle='-', linewidth=1)
-        ax.set_xlabel('Correlación', fontsize=11, fontweight='bold')
-        ax.set_title(f'Top {top_n} Correlaciones con Lags', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Correlation', fontsize=11, fontweight='bold')
+        ax.set_title(f'Top {top_n} Correlations with Lags', fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='x')
         
         for i, (bar, corr, lag) in enumerate(zip(bars, correlations, lags)):
@@ -88,7 +88,7 @@ class CorrelationPlotter:
         if is_own_figure:
             try:
                 plt.tight_layout()
-            except:
+            except Exception:
                 pass
         
         return ax

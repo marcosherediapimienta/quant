@@ -6,14 +6,14 @@ class MacroCorrelationReporter:
         self.analyzer = analyzer
 
     def print_analysis(self, results: Dict) -> None:
-        print("ANÁLISIS DE CORRELACIONES MACRO".center(70))
+        print("MACRO CORRELATION ANALYSIS".center(70))
         self._print_best_correlations(results)
         self._print_lagged_factors(results)
     
     def _print_best_correlations(self, results: Dict) -> None:
         best_lags = results['best_lagged_correlations']
 
-        print("MEJORES CORRELACIONES (con lag óptimo)")
+        print("BEST CORRELATIONS (with optimal lag)")
         print(f"{'Factor':<20} {'Corr':>8} {'Lag':>6} {'t-stat':>10} {'p-value':>10}")
 
         for _, row in best_lags.head(10).iterrows():
@@ -24,14 +24,14 @@ class MacroCorrelationReporter:
         best_lags = results['best_lagged_correlations']
         leading = best_lags[best_lags['lag'] < 0].head(5)
         if not leading.empty:
-            print("\nFACTORES LEADING (predicen portafolio)")
+            print("\nLEADING FACTORS (predict portfolio)")
             for _, row in leading.iterrows():
-                print(f"  • {row['factor']}: {row['lag']} días adelantado "
+                print(f"  • {row['factor']}: {row['lag']} days ahead "
                       f"(corr={row['corr']:.3f})")
 
         lagging = best_lags[best_lags['lag'] > 0].head(5)
         if not lagging.empty:
-            print("FACTORES LAGGING (siguen al portafolio)")
+            print("LAGGING FACTORS (follow portfolio)")
             for _, row in lagging.iterrows():
-                print(f"  • {row['factor']}: {row['lag']} días retrasado "
+                print(f"  • {row['factor']}: {row['lag']} days behind "
                       f"(corr={row['corr']:.3f})")

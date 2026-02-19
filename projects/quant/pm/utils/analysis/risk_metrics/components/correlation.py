@@ -27,7 +27,7 @@ class CorrelationCalculator:
         window: int = None  
     ) -> pd.DataFrame:
 
-        window = window if window else ROLLING_WINDOW 
+        window = window if window is not None else ROLLING_WINDOW
         
         n_assets = returns.shape[1]
         
@@ -55,7 +55,7 @@ class CorrelationCalculator:
         window: int = None 
     ) -> float:
 
-        window = window if window else ROLLING_WINDOW  
+        window = window if window is not None else ROLLING_WINDOW 
         
         corr_rolling = self.calculate_rolling(returns, window)
         

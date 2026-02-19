@@ -278,6 +278,59 @@ MACRO_SITUATION_THRESHOLDS = {
     },
 }
 
+# Risk scoring thresholds for MacroSituationAnalyzer summary
+RISK_SCORING = {
+    'yield_curve': {
+        'high_risk_score': 3,
+        'moderate_risk_score': 1,
+        'divergence_elevated': 1.0,
+        'divergence_moderate': 0.5,
+        'divergence_elevated_score': 2,
+        'divergence_moderate_score': 1,
+    },
+    'implied_curve': {
+        'hawkish_score': 2,
+        'slightly_hawkish_score': 1,
+        'term_premium_deep_negative': -0.5,
+        'term_premium_negative': -0.2,
+        'term_premium_deep_score': 2,
+        'term_premium_negative_score': 1,
+        'fwd_vs_spot_high': 1.0,
+        'fwd_vs_spot_moderate': 0.5,
+        'fwd_vs_spot_high_score': 2,
+        'fwd_vs_spot_moderate_score': 1,
+        'inverted_fwd_score': 2,
+    },
+    'inflation': {
+        'high_threshold': 15,
+        'moderate_threshold': 10,
+        'high_score': 3,
+        'moderate_score': 1,
+        'metals_threshold': 20,
+        'metals_score': 2,
+    },
+    'credit': {
+        'vix_high': 25,
+        'vix_elevated': 20,
+        'vix_default': 15,
+        'vix_high_score': 3,
+        'vix_elevated_score': 1,
+    },
+    'bonds': {
+        'severe_threshold': -10,
+        'pressure_threshold': -5,
+        'severe_score': 2,
+        'pressure_score': 1,
+    },
+    'sentiment': {
+        'weakening_score': 1,
+    },
+    'overall': {
+        'high': 5,
+        'moderate': 2,
+    },
+}
+
 # Lags para análisis de correlación
 CORRELATION_LAGS_DEFAULT = [0, 1, 5, 21, 63, 126]  # 0d, 1d, 1w, 1m, 3m, 6m
 

@@ -21,7 +21,7 @@ class RollingPlotter:
         ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_xlabel('Fecha', fontsize=12)
+        ax.set_xlabel('Date', fontsize=12)
         ax.grid(True, alpha=0.3)
         ax.legend([ylabel])
         
@@ -44,7 +44,7 @@ class RollingPlotter:
         ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_xlabel('Fecha', fontsize=12)
+        ax.set_xlabel('Date', fontsize=12)
         ax.grid(True, alpha=0.3)
         ax.legend()
         

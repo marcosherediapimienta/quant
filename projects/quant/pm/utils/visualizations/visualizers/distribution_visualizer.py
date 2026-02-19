@@ -23,12 +23,12 @@ class DistributionVisualizer:
 
         self.dist_plotter.plot_histogram(
             portfolio_ret,
-            title='Distribución de Retornos del Portfolio',
+            title='Portfolio Returns Distribution',
             ax=axes[0]
         )
         
         stats_text = (
-            f"Media: {dist_results['mean']*100:.2f}%\n"
+            f"Mean: {dist_results['mean']*100:.2f}%\n"
             f"Std: {dist_results['std']*100:.2f}%\n"
             f"Skewness: {dist_results['skewness']:.3f}\n"
             f"Kurtosis: {dist_results['excess_kurtosis']:.3f}\n"
@@ -43,7 +43,7 @@ class DistributionVisualizer:
 
         self.dist_plotter.plot_qq(
             portfolio_ret,
-            title='Q-Q Plot (Test de Normalidad)',
+            title='Q-Q Plot (Normality Test)',
             ax=axes[1]
         )
         

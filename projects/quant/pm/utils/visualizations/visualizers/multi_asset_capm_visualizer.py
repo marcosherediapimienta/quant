@@ -21,7 +21,7 @@ class MultiAssetCAPMVisualizer:
         
         if results_df.empty:
             fig, ax = plt.subplots(figsize=figsize)
-            ax.text(0.5, 0.5, 'No hay datos suficientes', 
+            ax.text(0.5, 0.5, 'Insufficient data', 
                    ha='center', va='center', transform=ax.transAxes)
             return fig
         
@@ -31,7 +31,7 @@ class MultiAssetCAPMVisualizer:
         ax1 = fig.add_subplot(gs[0, :])
         self.plotter.plot_alpha_beta_comparison(
             results_df,
-            title="Alpha vs Beta - Comparación Multi-Activo",
+            title="Alpha vs Beta - Multi-Asset Comparison",
             ax=ax1
         )
 
@@ -41,23 +41,23 @@ class MultiAssetCAPMVisualizer:
         ax2.barh(range(len(top_n)), top_n['alpha_annual'] * 100, color=colors)
         ax2.set_yticks(range(len(top_n)))
         ax2.set_yticklabels(top_n.index)
-        ax2.set_xlabel('Alpha Anual (%)', fontsize=11)
+        ax2.set_xlabel('Annual Alpha (%)', fontsize=11)
         ax2.set_title(f'Top {TOP_ASSETS_DISPLAY} Alphas', fontsize=12, fontweight='bold')
         ax2.axvline(x=0, color='k', linestyle='-', linewidth=1)
         ax2.grid(True, alpha=0.3, axis='x')
         
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.hist(results_df['beta'], bins=15, alpha=0.7, edgecolor='black')
-        ax3.axvline(x=1, color='r', linestyle='--', linewidth=2, label='β=1 (Mercado)')
+        ax3.axvline(x=1, color='r', linestyle='--', linewidth=2, label='β=1 (Market)')
         ax3.axvline(x=results_df['beta'].mean(), color='g', linestyle='--', 
-                   linewidth=2, label=f'Media: {results_df["beta"].mean():.2f}')
+                   linewidth=2, label=f'Mean: {results_df["beta"].mean():.2f}')
         ax3.set_xlabel('Beta', fontsize=11)
-        ax3.set_ylabel('Frecuencia', fontsize=11)
-        ax3.set_title('Distribución de Betas', fontsize=12, fontweight='bold')
+        ax3.set_ylabel('Frequency', fontsize=11)
+        ax3.set_title('Beta Distribution', fontsize=12, fontweight='bold')
         ax3.legend()
         ax3.grid(True, alpha=0.3)
         
-        plt.suptitle("Análisis CAPM Multi-Activo", 
+        plt.suptitle("Multi-Asset CAPM Analysis", 
                     fontsize=16, fontweight='bold', y=0.98)
         
         return fig

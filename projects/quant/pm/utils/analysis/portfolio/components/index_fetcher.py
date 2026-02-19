@@ -1,7 +1,7 @@
-# projects/quant/pm/utils/analysis/portfolio/components/index_fetcher.py
 import pandas as pd
 from typing import List, Dict
 import yfinance as yf
+
 import warnings
 warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 
@@ -11,15 +11,15 @@ class IndexFetcher:
     def __init__(
         self,
         urls: Dict[str, str] = None,
-        user_agent: str = '',
+        user_agent: str = None,
         etf_mapping: Dict[str, str] = None,
-        validation_thresholds: Dict[str, int] = None
+        validation_thresholds: Dict[str, int] = None,
     ):
-        self.urls = urls if urls else INDEX_CONFIG['urls']
-        self.user_agent = user_agent if user_agent else INDEX_CONFIG['user_agent']
-        self.etf_mapping = etf_mapping if etf_mapping else INDEX_CONFIG['etf_mapping']
+        self.urls = urls if urls is not None else INDEX_CONFIG['urls']
+        self.user_agent = user_agent if user_agent is not None else INDEX_CONFIG['user_agent']
+        self.etf_mapping = etf_mapping if etf_mapping is not None else INDEX_CONFIG['etf_mapping']
         self.supported_indices = INDEX_CONFIG['supported_indices']
-        self.validation = validation_thresholds if validation_thresholds else INDEX_CONFIG['validation']
+        self.validation = validation_thresholds if validation_thresholds is not None else INDEX_CONFIG['validation']
         self.fallback = INDEX_CONFIG['fallback']
     
     def get_index_components(self, index_name: str) -> List[str]:
@@ -44,7 +44,7 @@ class IndexFetcher:
         self,
         url: str,
         min_tickers: int = 0,
-        max_tickers: int = 9999
+        max_tickers: int = None,
     ) -> List[str]:
 
         try:
@@ -58,12 +58,12 @@ class IndexFetcher:
                         tickers = [str(t).strip().replace('.', '-') 
                                    for t in tickers if pd.notna(t)]
 
-                        if min_tickers <= len(tickers) <= max_tickers:
+                        if len(tickers) >= min_tickers and (max_tickers is None or len(tickers) <= max_tickers):
                             return tickers
             
             return []
         except Exception as e:
-            print(f"⚠️  Error obteniendo datos: {e}")
+            print(f" Error obteniendo datos: {e}")
             return []
     
     def _get_sp500(self) -> List[str]:
@@ -73,7 +73,7 @@ class IndexFetcher:
         )
         
         if tickers:
-            print(f"✅ Obtenidos {len(tickers)} componentes del S&P 500")
+            print(f" Obtenidos {len(tickers)} componentes del S&P 500")
             return tickers
 
         print("    Usando lista fallback (top 100)...")
@@ -86,10 +86,10 @@ class IndexFetcher:
         )
         
         if tickers:
-            print(f"✅ Obtenidos {len(tickers)} componentes del NASDAQ-100")
+            print(f" Obtenidos {len(tickers)} componentes del NASDAQ-100")
             return tickers
         
-        print("⚠️  No se pudieron obtener componentes del NASDAQ-100")
+        print(" No se pudieron obtener componentes del NASDAQ-100")
         return []
     
     def _get_dow30(self) -> List[str]:
@@ -100,15 +100,15 @@ class IndexFetcher:
         )
         
         if tickers:
-            print(f"✅ Obtenidos {len(tickers)} componentes del Dow 30")
+            print(f" Obtenidos {len(tickers)} componentes del Dow 30")
             return tickers
         
-        print("⚠️  No se pudieron obtener componentes del Dow 30")
+        print(" No se pudieron obtener componentes del Dow 30")
         return []
     
     def _get_russell1000(self) -> List[str]:
-        print("⚠️  Russell 1000 completo no disponible públicamente")
-        print("    Usando aproximación: S&P 500 + mid-caps principales")
+        print(" Russell 1000 completo no disponible públicamente")
+        print(" Usando aproximación: S&P 500 + mid-caps principales")
         
         sp500 = self._get_sp500()
         additional = self.fallback['russell_additional'].copy()
@@ -130,7 +130,7 @@ class IndexFetcher:
                     tickers = holdings['Symbol'].tolist()
                     if max_holdings > 0:
                         tickers = tickers[:max_holdings]
-                    print(f"✅ Obtenidos {len(tickers)} holdings de {etf_ticker}")
+                    print(f" Obtenidos {len(tickers)} holdings de {etf_ticker}")
                     return tickers
 
             if etf_ticker.upper() in self.etf_mapping:
@@ -141,7 +141,7 @@ class IndexFetcher:
             return []
             
         except Exception as e:
-            print(f"⚠️  Error obteniendo holdings de {etf_ticker}: {e}")
+            print(f" Error obteniendo holdings de {etf_ticker}: {e}")
             return []
     
     def get_available_indices(self) -> List[str]:

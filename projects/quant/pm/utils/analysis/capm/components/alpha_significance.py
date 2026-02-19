@@ -7,13 +7,13 @@ from ....tools.config import ANNUAL_FACTOR, SIGNIFICANCE_LEVEL, MIN_OBSERVATIONS
 class AlphaTestResult:
     alpha_daily: float
     beta: float
-    t_statistic: float       # t-stat for alpha (H0: alpha = 0)
-    p_value: float           # p-value for alpha
-    is_significant: bool     # alpha significant at chosen level
+    t_statistic: float     
+    p_value: float           
+    is_significant: bool    
     jensen_alpha: float
-    r_squared: float = np.nan          # R² of the regression
-    beta_t_statistic: float = np.nan   # t-stat for beta
-    beta_p_value: float = np.nan       # p-value for beta
+    r_squared: float = np.nan         
+    beta_t_statistic: float = np.nan  
+    beta_p_value: float = np.nan      
 
 class AlphaSignificanceTest:
     def __init__(
@@ -68,4 +68,4 @@ class AlphaSignificanceTest:
             return AlphaTestResult(np.nan, np.nan, np.nan, np.nan, False, np.nan)
     
     def _calculate_default_maxlags(self, n: int) -> int:
-        return max(1, int(np.sqrt(n)))
+        return max(1, int(4 * (n / 100) ** (2 / 9)))

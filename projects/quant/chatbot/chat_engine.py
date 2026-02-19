@@ -19,6 +19,12 @@ try:
         WELCOME_MESSAGE,
         QUERY_ENHANCEMENT_PROMPTS
     )
+    from .tools.config import (
+        EMBEDDING_MODEL, EMBEDDING_DEVICE, CHUNK_SIZE, CHUNK_OVERLAP,
+        RETRIEVER_K, MAX_QUERY_ENHANCEMENTS, SOURCE_PREVIEW_LENGTH,
+        HISTORY_WINDOW, DEFAULT_MODEL, DEFAULT_TEMPERATURE,
+        MAX_CONVERSATION_MESSAGES,
+    )
 except ImportError:
     from code_indexer import CodeIndexer
     from memory.conversation_memory import ConversationMemory
@@ -28,17 +34,22 @@ except ImportError:
         WELCOME_MESSAGE,
         QUERY_ENHANCEMENT_PROMPTS
     )
+    from tools.config import (
+        EMBEDDING_MODEL, EMBEDDING_DEVICE, CHUNK_SIZE, CHUNK_OVERLAP,
+        RETRIEVER_K, MAX_QUERY_ENHANCEMENTS, SOURCE_PREVIEW_LENGTH,
+        HISTORY_WINDOW, DEFAULT_MODEL, DEFAULT_TEMPERATURE,
+        MAX_CONVERSATION_MESSAGES,
+    )
 
 logger = logging.getLogger(__name__)
-
 
 class ChatEngine:
     def __init__(
         self,
         api_key: str,
         project_root: Optional[str] = None,
-        model: str = "llama-3.3-70b-versatile",
-        temperature: float = 0.4,
+        model: str = DEFAULT_MODEL,
+        temperature: float = DEFAULT_TEMPERATURE,
         enable_rag: bool = True
     ):
         self.api_key = api_key
@@ -50,7 +61,7 @@ class ChatEngine:
             model=model,
             temperature=temperature
         )
-        self.conversation_memory = ConversationMemory(max_messages=20)
+        self.conversation_memory = ConversationMemory(max_messages=MAX_CONVERSATION_MESSAGES)
         self.vectorstore = None
         self.retriever = None
         self.chain = None
@@ -61,6 +72,14 @@ class ChatEngine:
             self._setup_simple_chain()
 
         logger.info("ChatEngine initialized (model: %s, RAG: %s)", model, self.enable_rag and self.vectorstore is not None)
+
+    @staticmethod
+    def _create_embeddings() -> HuggingFaceEmbeddings:
+        return HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={'device': EMBEDDING_DEVICE},
+            encode_kwargs={'normalize_embeddings': True}
+        )
 
     def _setup_rag(self, project_root: str):
 
@@ -78,7 +97,7 @@ class ChatEngine:
             langchain_docs = []
             for doc in documents:
                 content = f"# {doc['type'].upper()}: {doc['name']}\n"
-                content += f"# Archivo: {doc['file']}\n\n"
+                content += f"# File: {doc['file']}\n\n"
                 content += doc['content']
 
                 if doc['metadata'].get('docstring'):
@@ -94,23 +113,19 @@ class ChatEngine:
                 ))
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP,
                 length_function=len
             )
             split_docs = text_splitter.split_documents(langchain_docs)
 
             logger.info("Creating embeddings for %d chunks...", len(split_docs))
 
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
-            )
+            embeddings = self._create_embeddings()
 
             self.vectorstore = FAISS.from_documents(split_docs, embeddings)
             self.retriever = self.vectorstore.as_retriever(
-                search_kwargs={"k": 5} 
+                search_kwargs={"k": RETRIEVER_K}
             )
             self._build_rag_chain()
 
@@ -136,7 +151,7 @@ class ChatEngine:
                     | format_docs
                 ),
                 "question": RunnableLambda(lambda x: x["question"]),
-                "history": RunnableLambda(lambda x: x.get("history", "Sin historial previo"))
+                "history": RunnableLambda(lambda x: x.get("history", "No previous history"))
             }
             | prompt
             | self.llm
@@ -148,7 +163,7 @@ class ChatEngine:
     def _setup_simple_chain(self):
         simple_prompt = ChatPromptTemplate.from_messages([
             ("system", SYSTEM_PROMPT_BASE),
-            ("human", "Historial reciente:\n{history}\n\nPregunta: {question}")
+            ("human", "Recent history:\n{history}\n\nQuestion: {question}")
         ])
 
         self.chain = (
@@ -160,16 +175,16 @@ class ChatEngine:
     def respond(
         self,
         message: str,
-        context: Optional[Dict] = None
+        context: Optional[Dict] = None    
     ) -> Dict[str, any]:
 
         self.conversation_memory.add_message('user', message)
 
         enhanced_query = self._enhance_query(message)
 
-        history_context = self.conversation_memory.get_context_string(last_n=10)
+        history_context = self.conversation_memory.get_context_string(last_n=HISTORY_WINDOW)
         if not history_context:
-            history_context = "Sin historial previo."
+            history_context = "No previous history."
 
         chain_input = {
             "question": enhanced_query,
@@ -188,7 +203,7 @@ class ChatEngine:
                 sources = []
 
             self.conversation_memory.add_message('assistant', response_text, {
-                'sources': sources if sources else []
+                'sources': sources
             })
 
             return {
@@ -199,10 +214,10 @@ class ChatEngine:
             }
 
         except Exception as e:
-            error_msg = f"Error generando respuesta: {str(e)}"
+            error_msg = f"Error generating response: {str(e)}"
             logger.exception("Error generating chatbot response")
             return {
-                'response': "Lo siento, hubo un error procesando tu pregunta. Por favor intenta de nuevo.",
+                'response': "Sorry, there was an error processing your question. Please try again.",
                 'sources': [],
                 'error': error_msg
             }
@@ -217,7 +232,7 @@ class ChatEngine:
                 matched_enhancements.append(enhancement)
 
         if matched_enhancements:
-            combined = " | ".join(matched_enhancements[:3]) 
+            combined = " | ".join(matched_enhancements[:MAX_QUERY_ENHANCEMENTS])
             return f"{query}\n\n[Search context: {combined}]"
 
         return query
@@ -240,7 +255,7 @@ class ChatEngine:
                 'file': file_path,
                 'type': doc_type,
                 'name': name,
-                'preview': doc.page_content[:200] + '...' if len(doc.page_content) > 200 else doc.page_content
+                'preview': doc.page_content[:SOURCE_PREVIEW_LENGTH] + '...' if len(doc.page_content) > SOURCE_PREVIEW_LENGTH else doc.page_content
             })
 
         return sources
@@ -266,17 +281,13 @@ class ChatEngine:
     def load_vectorstore(self, path: str):
 
         try:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
-            )
+            embeddings = self._create_embeddings()
             self.vectorstore = FAISS.load_local(
                 path,
                 embeddings,
                 allow_dangerous_deserialization=True
             )
-            self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+            self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": RETRIEVER_K})
             self._build_rag_chain()
 
             logger.info("Vectorstore loaded from %s and RAG chain rebuilt", path)

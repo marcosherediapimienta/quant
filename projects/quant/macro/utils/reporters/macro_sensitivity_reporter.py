@@ -6,47 +6,45 @@ class MacroSensitivityReporter:
         self.analyzer = analyzer
     
     def print_analysis(self, results: Dict) -> None:
-        print("ANÁLISIS DE SENSIBILIDADES MACRO".center(70))
+        print("MACRO SENSITIVITY ANALYSIS".center(70))
         self._print_exposures(results)
         self._print_dominant_factor(results)
     
     def _print_exposures(self, results: Dict) -> None:
-        print("EXPOSICIONES POR MAGNITUD")
+        print("EXPOSURES BY MAGNITUDE")
 
-        high_exp = results['high_exposure']
-        if high_exp:
-            print("ALTA EXPOSICIÓN (|β| > 0.5)")
-            for factor, beta in high_exp.items(): 
-                direction = "↑" if beta > 0 else "↓"
-                print(f"  {direction} {factor}: β = {beta:>7.3f}")
+        _SECTIONS = (
+            ('high_exposure',     "HIGH EXPOSURE (|β| > 0.5)",          None),
+            ('moderate_exposure', "MODERATE EXPOSURE (0.2 ≤ |β| ≤ 0.5)", None),
+            ('low_exposure',      "LOW EXPOSURE (|β| < 0.2)",           5),
+        )
 
-        mod_exp = results['moderate_exposure']
-        if mod_exp:
-            print("EXPOSICIÓN MODERADA (0.2 ≤ |β| ≤ 0.5)")
-            for factor, beta in mod_exp.items():  
-                direction = "↑" if beta > 0 else "↓"
-                print(f"  {direction} {factor}: β = {beta:>7.3f}")
-
-        low_exp = results['low_exposure']
-        if low_exp:
-            print("BAJA EXPOSICIÓN (|β| < 0.2)")
-
-            for i, (factor, beta) in enumerate(low_exp.items()):  
-                if i >= 5:
+        for key, header, limit in _SECTIONS:
+            items = results[key]
+            if not items:
+                continue
+            print(header)
+            for i, (factor, beta) in enumerate(items.items()):
+                if limit is not None and i >= limit:
                     break
-                print(f"    {factor}: β = {beta:>7.3f}")
+                direction = "↑" if beta > 0 else "↓"
+                print(f"  {direction} {factor}: β = {beta:>7.3f}")
     
     def _print_dominant_factor(self, results: Dict) -> None:
         dominant = results['dominant_factor']
         
-        if dominant:
-            factor, beta = dominant
-            print("FACTOR DOMINANTE")
-            print(f"  {factor}: β = {beta:.3f}")
+        if not dominant:
+            return
 
-            if abs(beta) > 1.0:
-                print(f"  Interpretación: Exposición muy alta")
-            elif abs(beta) > 0.5:
-                print(f"  Interpretación: Exposición significativa")
-            else:
-                print(f"  Interpretación: Exposición moderada")
+        factor, beta = dominant
+        print("DOMINANT FACTOR")
+        print(f"  {factor}: β = {beta:.3f}")
+
+        abs_beta = abs(beta)
+        if abs_beta > 1.0:
+            interp = "Very high exposure"
+        elif abs_beta > 0.5:
+            interp = "Significant exposure"
+        else:
+            interp = "Moderate exposure"
+        print(f"  Interpretation: {interp}")

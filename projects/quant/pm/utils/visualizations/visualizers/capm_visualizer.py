@@ -14,7 +14,7 @@ class CAPMVisualizer:
         asset_returns: np.ndarray,
         market_returns: np.ndarray,
         risk_free_rate: float,
-        asset_name: str = "Activo",
+        asset_name: str = "Asset",
         figsize: tuple = (14, 10)
     ) -> plt.Figure:
 
@@ -31,29 +31,29 @@ class CAPMVisualizer:
             results['alpha_daily'],
             results['beta'],
             rf_daily,
-            title=f"Regresión CAPM: {asset_name}",
+            title=f"CAPM Regression: {asset_name}",
             ax=ax1
         )
 
         ax2 = fig.add_subplot(gs[1, 0])
         ax2.axis('off')
         stats_text = f"""
-        PARÁMETROS DEL MODELO
+        MODEL PARAMETERS
         
         Beta:              {results['beta']:.3f}
-        Correlación:       {results['correlation']:.3f}
+        Correlation:       {results['correlation']:.3f}
         R²:                {results['r_squared']:.3f}
         
         ALPHA (Jensen)
         
-        Alpha Diario:      {results['alpha_daily']*100:.4f}%
-        Alpha Anual:       {results['alpha_annual']*100:.2f}%
+        Daily Alpha:       {results['alpha_daily']*100:.4f}%
+        Annual Alpha:      {results['alpha_annual']*100:.2f}%
         
-        SIGNIFICANCIA
+        SIGNIFICANCE
         
         t-statistic:       {results['t_statistic']:.3f}
         p-value:           {results['p_value']:.4f}
-        Significativo:      {'[SI]' if results['is_significant'] else '[NO]'}
+        Significant:       {'[YES]' if results['is_significant'] else '[NO]'}
         """
         ax2.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
                 verticalalignment='center', transform=ax2.transAxes)
@@ -66,12 +66,12 @@ class CAPMVisualizer:
         
         ax3.hist(residuals, bins=30, alpha=0.7, edgecolor='black')
         ax3.axvline(x=0, color='r', linestyle='--', linewidth=2)
-        ax3.set_xlabel('Residuos', fontsize=11)
-        ax3.set_ylabel('Frecuencia', fontsize=11)
-        ax3.set_title('Distribución de Residuos', fontsize=12, fontweight='bold')
+        ax3.set_xlabel('Residuals', fontsize=11)
+        ax3.set_ylabel('Frequency', fontsize=11)
+        ax3.set_title('Residuals Distribution', fontsize=12, fontweight='bold')
         ax3.grid(True, alpha=0.3)
         
-        plt.suptitle(f"Análisis CAPM Completo: {asset_name}", 
+        plt.suptitle(f"Complete CAPM Analysis: {asset_name}", 
                     fontsize=16, fontweight='bold', y=0.98)
         
         return fig

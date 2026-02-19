@@ -2,7 +2,7 @@ import pandas as pd
 from typing import Dict
 from ..components.macro_regression import MacroRegressionCalculator, RegressionResult
 from ..components.macro_correlation import MacroCorrelationCalculator
-from ..tools.config import REGRESSION_MIN_OBS
+from ..tools.config import REGRESSION_MIN_OBS, MAX_LAG
 
 class MacroFactorAnalyzer:
     def __init__(self, annual_factor: int = 252):
@@ -19,7 +19,7 @@ class MacroFactorAnalyzer:
 
         if len(portfolio_returns) < REGRESSION_MIN_OBS:
             raise ValueError(
-                f"Observaciones insuficientes: {len(portfolio_returns)}"
+                f"Insufficient observations: {len(portfolio_returns)}"
             )
 
         self.regression_calc.use_hac = use_hac
@@ -58,7 +58,7 @@ class MacroFactorAnalyzer:
         self,
         portfolio_returns: pd.Series,
         macro_factors: pd.DataFrame,
-        max_lag: int = 126
+        max_lag: int = MAX_LAG
     ) -> Dict:
 
         self.correlation_calc.max_lag = max_lag

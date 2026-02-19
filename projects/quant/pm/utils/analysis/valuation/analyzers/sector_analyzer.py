@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import yfinance as yf
+
 import warnings
 warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
 
@@ -20,10 +20,10 @@ class PercentileInterpretation:
     
     def __post_init__(self):
         cfg = SECTOR_ANALYSIS_CONFIG
-        self.top_performer = self.top_performer or cfg['percentile_thresholds']['top_performer']
-        self.above_average = self.above_average or cfg['percentile_thresholds']['above_average']
-        self.average = self.average or cfg['percentile_thresholds']['average']
-        self.below_average = self.below_average or cfg['percentile_thresholds']['below_average']
+        thresholds = cfg['percentile_thresholds']
+        for field in ('top_performer', 'above_average', 'average', 'below_average'):
+            if getattr(self, field) is None:
+                setattr(self, field, thresholds[field])
         self.labels = self.labels or cfg['percentile_labels'].copy()
 
 class SectorAnalyzer:
@@ -105,19 +105,19 @@ class SectorAnalyzer:
             'success': True
         }
     
+    @staticmethod
     def _calculate_relative_position(
-        self, 
         company: Dict, 
         peers: Dict[str, Dict]
     ) -> Dict:
 
         if not peers:
-            return {'note': 'Sin peers para comparar'}
+            return {'note': 'No peers available for comparison'}
         
         valid_peers = {t: r for t, r in peers.items() if r.get('success')}
         
         if not valid_peers:
-            return {'note': 'Ningún peer analizado exitosamente'}
+            return {'note': 'No peers were analyzed successfully'}
         
         categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation', 'total']
         position = {}
@@ -154,12 +154,12 @@ class SectorAnalyzer:
         valid_peers = {t: r for t, r in peers.items() if r.get('success')}
         
         if not valid_peers:
-            return {'note': 'Sin peers para calcular percentil'}
+            return {'note': 'No peers available for percentile calculation'}
         
         company_score = company.get('scores', {}).get('total')
         
         if pd.isna(company_score):
-            return {'note': 'Score de empresa no disponible'}
+            return {'note': 'Company score not available'}
         
         all_scores = [company_score]
         all_scores.extend([
@@ -169,7 +169,7 @@ class SectorAnalyzer:
         ])
         
         if len(all_scores) < 2:
-            return {'note': 'Datos insuficientes para percentil'}
+            return {'note': 'Insufficient data for percentile'}
 
         below_count = sum(1 for s in all_scores if s < company_score)
         percentile = (below_count / len(all_scores)) * 100
@@ -184,16 +184,18 @@ class SectorAnalyzer:
         cfg = self.percentile_config
         labels = cfg.labels
         
-        if percentile >= cfg.top_performer:
-            return labels.get('top', 'Top performer')
-        elif percentile >= cfg.above_average:
-            return labels.get('above', 'Por encima del promedio')
-        elif percentile >= cfg.average:
-            return labels.get('average', 'En el promedio')
-        elif percentile >= cfg.below_average:
-            return labels.get('below', 'Por debajo del promedio')
+        levels = [
+            (cfg.top_performer, 'top', 'Top performer'),
+            (cfg.above_average, 'above', 'Above average'),
+            (cfg.average, 'average', 'At average'),
+            (cfg.below_average, 'below', 'Below average'),
+        ]
         
-        return labels.get('bottom', 'Rezagado')
+        for threshold, key, fallback in levels:
+            if percentile >= threshold:
+                return labels.get(key, fallback)
+        
+        return labels.get('bottom', 'Sector laggard')
     
     def _create_comparison_df(
         self, 

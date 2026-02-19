@@ -1,5 +1,7 @@
 from typing import Tuple
-from ....tools.config import TRADING_SIGNAL_RULES
+from ....tools.config import TRADING_SIGNAL_RULES, SIGNAL_EVALUATION_ORDER, DEFAULT_NA_SCORE
+
+_SIGNAL_MAP = {'buy': 'BUY', 'sell': 'SELL', 'hold': 'HOLD'}
 
 class SignalDeterminer:
     def __init__(self, rules: dict = None):
@@ -11,163 +13,53 @@ class SignalDeterminer:
         fundamental_score: float
     ) -> Tuple[str, float]:
 
-        buy_strong = self.rules['buy']['strong']
-        if (valuation_score >= buy_strong['valuation_min'] and 
-            fundamental_score >= buy_strong['fundamental_min']):
-            confidence = self._calculate_confidence(
-                base=buy_strong['confidence_base'],
-                max_conf=buy_strong['confidence_max'],
-                valuation_score=valuation_score,
-                fundamental_score=fundamental_score,
-                val_min=buy_strong['valuation_min'],
-                fund_min=buy_strong['fundamental_min'],
-                val_weight=buy_strong['valuation_weight'],
-                fund_weight=buy_strong['fundamental_weight']
-            )
-            return "BUY", confidence
+        scores = {'valuation': valuation_score, 'fundamental': fundamental_score}
 
-        buy_mod = self.rules['buy']['moderate']
-        if (valuation_score >= buy_mod['valuation_min'] and 
-            fundamental_score >= buy_mod['fundamental_min']):
-            confidence = self._calculate_confidence(
-                base=buy_mod['confidence_base'],
-                max_conf=buy_mod['confidence_max'],
-                valuation_score=valuation_score,
-                fundamental_score=fundamental_score,
-                val_min=buy_mod['valuation_min'],
-                fund_min=buy_mod['fundamental_min'],
-                val_weight=buy_mod['valuation_weight'],
-                fund_weight=buy_mod['fundamental_weight']
-            )
-            return "BUY", confidence
+        for signal_type, rule_name in SIGNAL_EVALUATION_ORDER:
+            rule = self.rules[signal_type].get(rule_name)
+            if rule is None or not self._matches_rule(rule, scores):
+                continue
 
-        buy_value = self.rules['buy']['value']
-        if (valuation_score >= buy_value['valuation_min'] and 
-            fundamental_score >= buy_value['fundamental_min']):
-            confidence = self._calculate_confidence(
-                base=buy_value['confidence_base'],
-                max_conf=buy_value['confidence_max'],
-                valuation_score=valuation_score,
-                val_min=buy_value['valuation_min'],
-                val_weight=buy_value['valuation_weight']
-            )
-            return "BUY", confidence
+            if signal_type == 'hold':
+                confidence = self._calculate_hold_confidence(
+                    valuation_score, fundamental_score,
+                    rule.get('valuation_max', DEFAULT_NA_SCORE),
+                    rule.get('fundamental_min', DEFAULT_NA_SCORE)
+                )
+            else:
+                confidence = self._calculate_confidence(rule, scores, is_sell=(signal_type == 'sell'))
 
-        buy_quality = self.rules['buy']['quality']
-        if (valuation_score >= buy_quality['valuation_min'] and 
-            fundamental_score >= buy_quality['fundamental_min']):
-            confidence = self._calculate_confidence(
-                base=buy_quality['confidence_base'],
-                max_conf=buy_quality['confidence_max'],
-                fundamental_score=fundamental_score,
-                fund_min=buy_quality['fundamental_min'],
-                fund_weight=buy_quality['fundamental_weight']
-            )
-            return "BUY", confidence
+            return _SIGNAL_MAP[signal_type], confidence
 
-        sell_strong = self.rules['sell']['strong']
-        if (valuation_score <= sell_strong['valuation_max'] and 
-            fundamental_score <= sell_strong['fundamental_max']):
-            confidence = self._calculate_confidence(
-                base=sell_strong['confidence_base'],
-                max_conf=sell_strong['confidence_max'],
-                valuation_score=valuation_score,
-                fundamental_score=fundamental_score,
-                val_max=sell_strong['valuation_max'],
-                fund_max=sell_strong['fundamental_max'],
-                val_weight=sell_strong['valuation_weight'],
-                fund_weight=sell_strong['fundamental_weight'],
-                is_sell=True
-            )
-            return "SELL", confidence
+        return "HOLD", self._calculate_hold_confidence(valuation_score, fundamental_score, DEFAULT_NA_SCORE, DEFAULT_NA_SCORE)
 
-        sell_mod = self.rules['sell']['moderate']
-        if (valuation_score <= sell_mod['valuation_max'] and 
-            fundamental_score <= sell_mod['fundamental_max']):
-            confidence = self._calculate_confidence(
-                base=sell_mod['confidence_base'],
-                max_conf=sell_mod['confidence_max'],
-                valuation_score=valuation_score,
-                fundamental_score=fundamental_score,
-                val_max=sell_mod['valuation_max'],
-                fund_max=sell_mod['fundamental_max'],
-                val_weight=sell_mod['valuation_weight'],
-                fund_weight=sell_mod['fundamental_weight'],
-                is_sell=True
-            )
-            return "SELL", confidence
-
-        sell_overval = self.rules['sell']['overvalued']
-        if valuation_score <= sell_overval['valuation_max']:
-            confidence = self._calculate_confidence(
-                base=sell_overval['confidence_base'],
-                max_conf=sell_overval['confidence_max'],
-                valuation_score=valuation_score,
-                val_max=sell_overval['valuation_max'],
-                val_weight=sell_overval['valuation_weight'],
-                is_sell=True
-            )
-            return "SELL", confidence
-
-        hold_qual = self.rules['hold']['mixed_quality_price']
-
-        if (valuation_score <= hold_qual['valuation_max'] and 
-            fundamental_score >= hold_qual['fundamental_min']):
-            confidence = self._calculate_hold_confidence(
-                valuation_score, fundamental_score,
-                hold_qual['valuation_max'], hold_qual['fundamental_min']
-            )
-            return "HOLD", confidence
-
-        hold_mod = self.rules['hold']['mixed_moderate']
-
-        if (valuation_score <= hold_mod['valuation_max'] and 
-            fundamental_score >= hold_mod['fundamental_min']):
-            confidence = self._calculate_hold_confidence(
-                valuation_score, fundamental_score,
-                hold_mod['valuation_max'], hold_mod['fundamental_min']
-            )
-            return "HOLD", confidence
-
-        default_conf = self._calculate_hold_confidence(
-            valuation_score, fundamental_score, 50, 50
+    @staticmethod
+    def _matches_rule(rule: dict, scores: dict) -> bool:
+        return all(
+            score >= rule.get(f'{name}_min', float('-inf')) and
+            score <= rule.get(f'{name}_max', float('inf'))
+            for name, score in scores.items()
         )
-        return "HOLD", default_conf
-    
-    def _calculate_confidence(
-        self,
-        base: float,
-        max_conf: float,
-        valuation_score: float = None,
-        fundamental_score: float = None,
-        val_min: float = None,
-        val_max: float = None,
-        fund_min: float = None,
-        fund_max: float = None,
-        val_weight: float = 0,
-        fund_weight: float = 0,
-        is_sell: bool = False
-    ) -> float:
 
+    @staticmethod
+    def _calculate_confidence(rule: dict, scores: dict, is_sell: bool) -> float:
+        base = rule['confidence_base']
         confidence = base
 
-        if valuation_score is not None and val_weight > 0:
-            if is_sell and val_max is not None:
-                excess = val_max - valuation_score
-                confidence += excess * val_weight
-            elif not is_sell and val_min is not None:
-                excess = valuation_score - val_min
-                confidence += excess * val_weight
+        dimensions = (
+            (scores['valuation'], rule.get('valuation_min'), rule.get('valuation_max'), rule.get('valuation_weight', 0)),
+            (scores['fundamental'], rule.get('fundamental_min'), rule.get('fundamental_max'), rule.get('fundamental_weight', 0)),
+        )
 
-        if fundamental_score is not None and fund_weight > 0:
-            if is_sell and fund_max is not None:
-                excess = fund_max - fundamental_score
-                confidence += excess * fund_weight
-            elif not is_sell and fund_min is not None:
-                excess = fundamental_score - fund_min
-                confidence += excess * fund_weight
+        for score, lo, hi, weight in dimensions:
+            if weight <= 0:
+                continue
+            ref = hi if is_sell else lo
+            if ref is not None:
+                excess = (ref - score) if is_sell else (score - ref)
+                confidence += excess * weight
 
-        return min(max_conf, max(base, confidence))
+        return min(rule['confidence_max'], max(base, confidence))
     
     def validate_with_upside(
         self,
@@ -175,24 +67,20 @@ class SignalDeterminer:
         confidence: float,
         upside: float
     ) -> Tuple[str, float]:
-        """
-        Sanity check: evita contradicciones entre señal y upside potential.
-        - SELL con upside alto → HOLD (señales mixtas)
-        - BUY con upside negativo → HOLD (señales mixtas)
-        """
+
         sanity = self.rules.get('sanity_check')
         if not sanity:
             return signal, confidence
 
-        if signal == "SELL":
-            threshold = sanity['sell_override_to_hold']['upside_min']
-            if upside > threshold:
-                return "HOLD", sanity['sell_override_to_hold']['confidence']
+        key = f'{signal.lower()}_override_to_hold'
+        override = sanity.get(key)
+        if override is None:
+            return signal, confidence
 
-        if signal == "BUY":
-            threshold = sanity['buy_override_to_hold']['upside_max']
-            if upside < threshold:
-                return "HOLD", sanity['buy_override_to_hold']['confidence']
+        if signal == "SELL" and upside > override['upside_min']:
+            return "HOLD", override['confidence']
+        if signal == "BUY" and upside < override['upside_max']:
+            return "HOLD", override['confidence']
 
         return signal, confidence
 
@@ -204,25 +92,35 @@ class SignalDeterminer:
         fund_min: float
     ) -> float:
 
-        base_confidence = 50.0
-        val_distance = abs(valuation_score - val_max) if val_max else 0
-        fund_distance = abs(fundamental_score - fund_min) if fund_min else 0
-        
-        if val_distance < 5 or fund_distance < 5:
-            return max(40.0, base_confidence - 10)
+        cfg = self.rules['hold_confidence']
 
-        if fundamental_score >= 70 and valuation_score <= 45:
-            if fundamental_score >= 80:
-                return 60.0
-            return 55.0
+        val_distance = abs(valuation_score - val_max)
+        fund_distance = abs(fundamental_score - fund_min)
         
-        if 45 <= valuation_score <= 55 and 60 <= fundamental_score <= 75:
-            return 55.0
+        if val_distance < cfg['proximity_threshold'] or fund_distance < cfg['proximity_threshold']:
+            return max(cfg['proximity_min'], cfg['base'] - cfg['proximity_penalty'])
+
+        for tier in cfg['tiers']:
+            if self._matches_tier(tier, valuation_score, fundamental_score):
+                return tier['confidence']
 
         avg_score = (valuation_score + fundamental_score) / 2
-        if avg_score >= 65:
-            return 55.0
-        elif avg_score >= 55:
-            return 52.0
-        else:
-            return 48.0
+        for tier in cfg['avg_tiers']:
+            if avg_score >= tier['min_avg']:
+                return tier['confidence']
+
+        return cfg['default_confidence']
+
+    @staticmethod
+    def _matches_tier(tier: dict, valuation_score: float, fundamental_score: float) -> bool:
+        scores = {'val': valuation_score, 'fund': fundamental_score}
+        for prefix, score in scores.items():
+            if f'{prefix}_min' in tier and score < tier[f'{prefix}_min']:
+                return False
+            if f'{prefix}_max' in tier and score > tier[f'{prefix}_max']:
+                return False
+            if f'{prefix}_range' in tier:
+                lo, hi = tier[f'{prefix}_range']
+                if not (lo <= score <= hi):
+                    return False
+        return True

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, score_metric, classify_metric
+from .helpers import nan_if_missing, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import VALUATION_THRESHOLDS, SCORING_WEIGHTS, PROFITABILITY_SCORING_RANGES, ALERT_THRESHOLDS
 
 @dataclass
@@ -15,13 +15,26 @@ class ProfitabilityThresholds:
     net_margin: Dict[str, float] = None
     
     def __post_init__(self):
-        profitability_thresholds = VALUATION_THRESHOLDS['profitability']
-        self.roic = self.roic or profitability_thresholds['roic']
-        self.roe = self.roe or profitability_thresholds['roe']
-        self.roa = self.roa or profitability_thresholds['roa']
-        self.gross_margin = self.gross_margin or profitability_thresholds['gross_margin']
-        self.operating_margin = self.operating_margin or profitability_thresholds['operating_margin']
-        self.net_margin = self.net_margin or profitability_thresholds['net_margin']
+        profitability = VALUATION_THRESHOLDS['profitability']
+        for field in ('roic', 'roe', 'roa', 'gross_margin', 'operating_margin', 'net_margin'):
+            if getattr(self, field) is None:
+                setattr(self, field, profitability[field])
+
+_DATA_KEYS = {
+    'roic': ('returnOnCapital', 'roic'),
+    'roe': ('returnOnEquity',),
+    'roa': ('returnOnAssets',),
+    'gross_margin': ('grossMargins',),
+    'operating_margin': ('operatingMargins',),
+    'net_margin': ('profitMargins',),
+}
+
+_SCORING_SPECS = [
+    MetricSpec(key='roic', range_key='roic', weight_key='roic'),
+    MetricSpec(key='roe', range_key='roe', weight_key='roe'),
+    MetricSpec(key='operating_margin', range_key='operating_margin', weight_key='operating_margin'),
+    MetricSpec(key='net_margin', range_key='net_margin', weight_key='net_margin'),
+]
 
 class ProfitabilityMetrics:
     def __init__(self, thresholds: ProfitabilityThresholds = None):
@@ -30,94 +43,44 @@ class ProfitabilityMetrics:
         self.ranges = PROFITABILITY_SCORING_RANGES
     
     def calculate(self, data: Dict) -> Dict:
-        roic = nan_if_missing(data.get('returnOnCapital'))
-
-        if pd.isna(roic):
-            roic = nan_if_missing(data.get('roic')) 
-
-        roe = nan_if_missing(data.get('returnOnEquity'))  
-        roa = nan_if_missing(data.get('returnOnAssets'))   
-        gross_margin = nan_if_missing(data.get('grossMargins'))
-        operating_margin = nan_if_missing(data.get('operatingMargins'))
-        net_margin = nan_if_missing(data.get('profitMargins'))
-        
-        metrics = {
-            'roic': roic,
-            'roe': roe,
-            'roa': roa,
-            'gross_margin': gross_margin,
-            'operating_margin': operating_margin,
-            'net_margin': net_margin
-        }
+        metrics = self._extract_metrics(data)
         
         classifications = {
-            'roic_class': classify_metric(roic, self.thresholds.roic),
-            'roe_class': classify_metric(roe, self.thresholds.roe),
-            'roa_class': classify_metric(roa, self.thresholds.roa),
-            'gross_margin_class': classify_metric(gross_margin, self.thresholds.gross_margin),
-            'operating_margin_class': classify_metric(operating_margin, self.thresholds.operating_margin),
-            'net_margin_class': classify_metric(net_margin, self.thresholds.net_margin)
+            f'{name}_class': classify_metric(metrics[name], getattr(self.thresholds, name))
+            for name in _DATA_KEYS
         }
 
-        scores = []
-        weights_used = []
-        
-        if pd.notna(roic):
-            scores.append(score_metric(
-                roic, 
-                self.ranges['roic']['min'], 
-                self.ranges['roic']['max']
-            ) * self.weights['roic'])
-            weights_used.append(self.weights['roic'])
-        
-        if pd.notna(roe):
-            scores.append(score_metric(
-                roe, 
-                self.ranges['roe']['min'], 
-                self.ranges['roe']['max']
-            ) * self.weights['roe'])
-            weights_used.append(self.weights['roe'])
-        
-        if pd.notna(operating_margin):
-            scores.append(score_metric(
-                operating_margin, 
-                self.ranges['operating_margin']['min'], 
-                self.ranges['operating_margin']['max']
-            ) * self.weights['operating_margin'])
-            weights_used.append(self.weights['operating_margin'])
-        
-        if pd.notna(net_margin):
-            scores.append(score_metric(
-                net_margin, 
-                self.ranges['net_margin']['min'], 
-                self.ranges['net_margin']['max']
-            ) * self.weights['net_margin'])
-            weights_used.append(self.weights['net_margin'])
-        
-        total_weight = sum(weights_used)
-        profitability_score = sum(scores) / total_weight if total_weight > 0 else np.nan
+        score = WeightedScorer.calculate(metrics, _SCORING_SPECS, self.weights, self.ranges)
         
         return {
             'metrics': metrics,
             'classifications': classifications,
-            'score': profitability_score,
+            'score': score,
             'alerts': self._generate_alerts(metrics)
         }
+
+    @staticmethod
+    def _extract_metrics(data: Dict) -> Dict:
+        metrics = {}
+        for metric_name, source_keys in _DATA_KEYS.items():
+            value = np.nan
+            for key in source_keys:
+                value = nan_if_missing(data.get(key))
+                if pd.notna(value):
+                    break
+            metrics[metric_name] = value
+        return metrics
     
+    _ALERT_SPECS = (
+        ('roic', 'roic_low', "Low ROIC: company does not generate sufficient returns on invested capital"),
+        ('roe', 'roe_negative', "Negative ROE: company is losing money"),
+        ('operating_margin', 'operating_margin_low', "Very low operating margin: operational efficiency issues"),
+        ('net_margin', 'net_margin_negative', "Negative net margin: company is not profitable"),
+    )
+
     def _generate_alerts(self, metrics: Dict) -> List[str]:
-        alerts = []
-        alert_cfg = ALERT_THRESHOLDS['profitability']
-        
-        if pd.notna(metrics['roic']) and metrics['roic'] < alert_cfg['roic_low']:
-            alerts.append("Low ROIC: company does not generate sufficient returns on invested capital")
-        
-        if pd.notna(metrics['roe']) and metrics['roe'] < ALERT_THRESHOLDS['financial_health'].get('roe_negative', 0):
-            alerts.append("Negative ROE: company is losing money")
-        
-        if pd.notna(metrics['operating_margin']) and metrics['operating_margin'] < alert_cfg['operating_margin_low']:
-            alerts.append("Very low operating margin: operational efficiency issues")
-        
-        if pd.notna(metrics['net_margin']) and metrics['net_margin'] < ALERT_THRESHOLDS['financial_health'].get('net_margin_negative', 0):
-            alerts.append("Negative net margin: company is not profitable")
-        
-        return alerts
+        cfg = ALERT_THRESHOLDS['profitability']
+        return [
+            msg for key, threshold_key, msg in self._ALERT_SPECS
+            if pd.notna(metrics[key]) and metrics[key] < cfg[threshold_key]
+        ]

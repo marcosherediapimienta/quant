@@ -129,7 +129,7 @@ class MacroSituationVisualizer:
         tenors = [t for t in tenor_order if t in levels]
 
         if not tenors:
-            ax.text(0.5, 0.5, 'Sin datos', ha='center', va='center',
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center',
                     transform=ax.transAxes, fontsize=12,
                     color=self.COLORS['text_muted'])
             return
@@ -269,14 +269,14 @@ class MacroSituationVisualizer:
         ax.set_xticks([])
         ax.set_yticks([])
 
-        ax.text(0, 1.38, 'Volatilidad del Mercado (VIX)',
+        ax.text(0, 1.38, 'Market Volatility (VIX)',
                 ha='center', fontsize=13, fontweight='bold',
                 color=self.COLORS['title'])
 
         credit = data.get('credit', {})
         vix = self._get_attr(credit, 'vix_level')
         if vix is None:
-            ax.text(0, 0, 'Sin datos', ha='center', fontsize=12,
+            ax.text(0, 0, 'No data', ha='center', fontsize=12,
                     color=self.COLORS['text_muted'])
             return
 
@@ -348,15 +348,15 @@ class MacroSituationVisualizer:
         # value + label
         vc = _vix_color(vix)
         if vix < 15:
-            vl = 'BAJA VOLATILIDAD'
+            vl = 'LOW VOLATILITY'
         elif vix < 20:
-            vl = 'VOL. MODERADA'
+            vl = 'MODERATE VOL.'
         elif vix < 30:
-            vl = 'VOL. ELEVADA'
+            vl = 'ELEVATED VOL.'
         elif vix < 40:
-            vl = 'VOL. ALTA'
+            vl = 'HIGH VOL.'
         else:
-            vl = 'VOL. EXTREMA'
+            vl = 'EXTREME VOL.'
 
         ax.text(0, -0.22, f'{vix:.1f}', ha='center', fontsize=34,
                 fontweight='bold', color=vc)
@@ -367,7 +367,7 @@ class MacroSituationVisualizer:
 
     # ─── Panel 4: Global Bonds (lollipop) ─────────────────────────
     def _plot_global_bonds(self, ax, data):
-        self._style_panel(ax, 'Bonos Soberanos Globales', '◆')
+        self._style_panel(ax, 'Global Sovereign Bonds', '◆')
 
         bonds = data.get('global_bonds', {})
         if not bonds:
@@ -431,7 +431,7 @@ class MacroSituationVisualizer:
             else getattr(summary, 'risk_factors', [])
         )
 
-        ax.text(0.5, 0.96, 'SENTIMIENTO DE RIESGO',
+        ax.text(0.5, 0.96, 'RISK SENTIMENT',
                 transform=ax.transAxes, ha='center', fontsize=14,
                 fontweight='bold', color=self.COLORS['title'])
 

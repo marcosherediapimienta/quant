@@ -1,9 +1,12 @@
 from typing import Dict, List
 import io
+import logging
 import urllib.request
 import pandas as pd
 from .macro_data_loader import MacroDataLoader
 from ..tools.config import MACRO_FACTORS, MACRO_CORE_FACTORS, FRED_FACTORS
+
+logger = logging.getLogger(__name__)
 
 class MacroDataDownloader:  
     def __init__(
@@ -39,7 +42,7 @@ class MacroDataDownloader:
                 tickers.append(ticker)
                 ticker_to_name[ticker] = name
             else:
-                print(f"[Macro] Factor '{name}' no encontrado")
+                logger.warning(f"[Macro] Factor '{name}' not found")
 
         for name in fred_names:
             series_id = self.fred_factors[name]
@@ -47,10 +50,10 @@ class MacroDataDownloader:
             if len(series) > 0:
                 series.name = name
                 results[name] = series
-                print(f"[Macro] FRED {series_id} → {name}: {len(series)} obs")
+                logger.info(f"[Macro] FRED {series_id} -> {name}: {len(series)} obs")
             else:
-                print(f"[Macro] FRED falló para {name} ({series_id}), "
-                      f"se añadirá al batch Yahoo como fallback")
+                logger.warning(f"[Macro] FRED failed for {name} ({series_id}), "
+                               f"adding to Yahoo batch as fallback")
                 tickers.append('^IRX')
                 ticker_to_name['^IRX'] = name
 
@@ -79,10 +82,10 @@ class MacroDataDownloader:
                         series.name = name
                         results[name] = series
                     else:
-                        print(f"[Macro] Sin datos: {name}")
+                        logger.warning(f"[Macro] No data: {name}")
                         
         except Exception as e:
-            print(f"[Macro] Error: {e}")
+            logger.error(f"[Macro] Error: {e}")
         
         return results
     
@@ -93,7 +96,7 @@ class MacroDataDownloader:
         progress: bool = False
     ) -> Dict[str, pd.Series]:
 
-        print(f"[Macro] Descargando todos los factores ({len(self.factors_map)})")
+        logger.info(f"[Macro] Downloading all factors ({len(self.factors_map)})")
         return self.download_factors(
             list(self.factors_map.keys()),
             start_date,
@@ -108,7 +111,7 @@ class MacroDataDownloader:
         progress: bool = False
     ) -> Dict[str, pd.Series]:
 
-        print(f"[Macro] Descargando factores core ({len(self.core_factors)})")
+        logger.info(f"[Macro] Downloading core factors ({len(self.core_factors)})")
         return self.download_factors(
             self.core_factors,
             start_date,
@@ -140,7 +143,7 @@ class MacroDataDownloader:
             except Exception:
                 pass
 
-        print(f"[Macro] Usando {fallback_ticker} como fallback para {factor_name}")
+        logger.info(f"[Macro] Using {fallback_ticker} as fallback for {factor_name}")
         try:
             series = self.loader.download_single(fallback_ticker, start_date, end_date, progress)
             if normalize and len(series) > 0:
@@ -148,7 +151,7 @@ class MacroDataDownloader:
             series.name = factor_name
             return series
         except Exception as e:
-            print(f"[Macro] Error con fallback: {e}")
+            logger.error(f"[Macro] Fallback error: {e}")
             return pd.Series(dtype=float, name=factor_name)
     
     def _extract_close_prices(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -175,7 +178,7 @@ class MacroDataDownloader:
         start_date: str,
         end_date: str,
     ) -> pd.Series:
-        """Descarga una serie de FRED vía CSV público (sin API key)."""
+        """Download a FRED series via public CSV (no API key)."""
         url = (
             f"https://fred.stlouisfed.org/graph/fredgraph.csv"
             f"?id={series_id}&cosd={start_date}&coed={end_date}"
@@ -195,5 +198,5 @@ class MacroDataDownloader:
             series.index.name = None
             return series
         except Exception as e:
-            print(f"[Macro] Error descargando FRED {series_id}: {e}")
+            logger.error(f"[Macro] Error downloading FRED {series_id}: {e}")
             return pd.Series(dtype=float)

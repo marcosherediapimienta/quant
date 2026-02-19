@@ -10,7 +10,7 @@ class DrawdownPlotter:
         self,
         cumulative_returns: pd.Series,
         drawdown_series: pd.Series,
-        title: str = "Análisis de Drawdown",
+        title: str = "Drawdown Analysis",
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
 
@@ -18,15 +18,15 @@ class DrawdownPlotter:
             fig, ax = plt.subplots(figsize=self.figsize)
 
         ax.plot(cumulative_returns.index, cumulative_returns.values, 
-                linewidth=1.5, label='Retornos Acumulados', color='steelblue')
+                linewidth=1.5, label='Cumulative Returns', color='steelblue')
 
         ax.fill_between(drawdown_series.index, 0, drawdown_series.values,
                         alpha=0.3, color='red', label='Drawdown')
         
         ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
         ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.set_ylabel('Retorno Acumulado / Drawdown', fontsize=12)
-        ax.set_xlabel('Fecha', fontsize=12)
+        ax.set_ylabel('Cumulative Return / Drawdown', fontsize=12)
+        ax.set_xlabel('Date', fontsize=12)
         ax.legend()
         ax.grid(True, alpha=0.3)
         

@@ -5,7 +5,7 @@ from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
 
 class SortinoCalculator:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     def calculate(
         self,
@@ -43,7 +43,7 @@ class SortinoCalculator:
         ddof: int = 0
     ) -> pd.Series:
 
-        window = window if window else ROLLING_WINDOW
+        window = window if window is not None else ROLLING_WINDOW
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         daily_mar = mar / self.annual_factor
