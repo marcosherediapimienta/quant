@@ -11,7 +11,7 @@ class DistributionPlotter:
     def plot_histogram(
         self,
         returns: pd.Series,
-        title: str = "Distribución de Retornos",
+        title: str = "Returns Distribution",
         bins: int = 50,
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
@@ -20,16 +20,16 @@ class DistributionPlotter:
             fig, ax = plt.subplots(figsize=self.figsize)
 
         ax.hist(returns, bins=bins, density=True, alpha=0.7, 
-                color='steelblue', edgecolor='black', label='Retornos')
+                color='steelblue', edgecolor='black', label='Returns')
 
         mu, sigma = returns.mean(), returns.std()
         x = np.linspace(returns.min(), returns.max(), 100)
         normal = stats.norm.pdf(x, mu, sigma)
-        ax.plot(x, normal, 'r-', linewidth=2, label='Normal teórica')
+        ax.plot(x, normal, 'r-', linewidth=2, label='Theoretical Normal')
         
         ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.set_xlabel('Retorno', fontsize=12)
-        ax.set_ylabel('Densidad', fontsize=12)
+        ax.set_xlabel('Return', fontsize=12)
+        ax.set_ylabel('Density', fontsize=12)
         ax.legend()
         ax.grid(True, alpha=0.3)
         
