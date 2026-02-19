@@ -12,7 +12,7 @@ from ....tools.config import (
 
 class ESCalculator:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     def calculate_historical(
         self,
@@ -22,7 +22,7 @@ class ESCalculator:
         var_value: float = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         alpha = 1.0 - confidence_level
@@ -53,7 +53,7 @@ class ESCalculator:
         confidence_level: float = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         alpha = 1.0 - confidence_level
@@ -80,8 +80,8 @@ class ESCalculator:
         var_value: float = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
-        n_simulations = n_simulations if n_simulations else MONTE_CARLO_SIMULATIONS
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
+        n_simulations = n_simulations if n_simulations is not None else MONTE_CARLO_SIMULATIONS
         seed = seed if seed is not None else MONTE_CARLO_SEED
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
@@ -114,27 +114,31 @@ class ESCalculator:
         **kwargs
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
-        
-        if method == 'historical':
-            return self.calculate_historical(
-                returns, weights, confidence_level, 
-                var_value=kwargs.get('var_value')
-            )
-        elif method == 'parametric':
-            return self.calculate_parametric(returns, weights, confidence_level)
-        elif method == 'monte_carlo':
-            return self.calculate_monte_carlo(
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
+
+        strategies = {
+            'historical': lambda: self.calculate_historical(
+                returns, weights, confidence_level,
+                var_value=kwargs.get('var_value'),
+            ),
+            'parametric': lambda: self.calculate_parametric(
+                returns, weights, confidence_level,
+            ),
+            'monte_carlo': lambda: self.calculate_monte_carlo(
                 returns, weights, confidence_level,
                 n_simulations=kwargs.get('n_simulations'),
                 seed=kwargs.get('seed'),
-                var_value=kwargs.get('var_value')
-            )
-        else:
+                var_value=kwargs.get('var_value'),
+            ),
+        }
+
+        if method not in strategies:
             raise ValueError(
                 f"Método '{method}' no válido. "
-                f"Opciones: 'historical', 'parametric', 'monte_carlo'"
+                f"Opciones: {list(strategies.keys())}"
             )
+
+        return strategies[method]()
     
     def calculate_all_methods(
         self,
@@ -145,8 +149,8 @@ class ESCalculator:
         seed: int = None
     ) -> Dict[str, Dict[str, float]]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
-        n_simulations = n_simulations if n_simulations else MONTE_CARLO_SIMULATIONS
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
+        n_simulations = n_simulations if n_simulations is not None else MONTE_CARLO_SIMULATIONS
         seed = seed if seed is not None else MONTE_CARLO_SEED
         
         return {

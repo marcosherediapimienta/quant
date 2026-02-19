@@ -4,11 +4,11 @@ from typing import List, Tuple
 from ....tools.config import ANNUAL_FACTOR
 
 def daily_risk_free_rate(annual_rate: float, annual_factor: float = None) -> float:
-    annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+    annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     return (1 + annual_rate) ** (1 / annual_factor) - 1
 
 def annualize_return(daily_returns: np.ndarray, annual_factor: float = None) -> float:
-    annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+    annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     if len(daily_returns) == 0:
         return np.nan
@@ -23,7 +23,7 @@ def annualize_return(daily_returns: np.ndarray, annual_factor: float = None) -> 
     return float(annual_return)
 
 def annualize_volatility(daily_returns: np.ndarray, annual_factor: float = None, ddof: int = 0) -> float:
-    annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+    annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     if len(daily_returns) == 0:
         return np.nan
@@ -38,7 +38,7 @@ def normalize_weights(
     total = weights.sum()
     
     if not np.isclose(total, 1.0) and warn:
-        print(f"⚠️  Pesos normalizados: {total:.4f} → 1.0")
+        print(f" Pesos normalizados: {total:.4f} → 1.0")
     
     return weights / total if total != 0 else weights
 

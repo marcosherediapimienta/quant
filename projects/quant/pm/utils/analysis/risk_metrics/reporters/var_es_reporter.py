@@ -1,120 +1,53 @@
 import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import Dict, Tuple
 from ..analyzers.var_es_analyzer import VarEsAnalyzer
 from ....tools.config import (
-    DEFAULT_CONFIDENCE_LEVEL,
+    RISK_ANALYSIS,
     MONTE_CARLO_SIMULATIONS,
     MONTE_CARLO_SEED,
-    VAR_RISK_LEVELS
+    VAR_RISK_LEVELS,
 )
 
 class VarEsReporter:
     def __init__(self, var_es_analyzer: VarEsAnalyzer):
         self.analyzer = var_es_analyzer
-    
+
     def generate_report(
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
         confidence_level: float = None,
         n_simulations: int = None,
-        seed: int = None
+        seed: int = None,
     ) -> None:
-
-        if confidence_level is None:
-            confidence_level = DEFAULT_CONFIDENCE_LEVEL
-        
-        if n_simulations is None:
-            n_simulations = MONTE_CARLO_SIMULATIONS
-        
-        if seed is None:
-            seed = MONTE_CARLO_SEED
+        confidence_level = confidence_level if confidence_level is not None else RISK_ANALYSIS['default_confidence_level']
+        n_simulations = n_simulations if n_simulations is not None else MONTE_CARLO_SIMULATIONS
+        seed = seed if seed is not None else MONTE_CARLO_SEED
 
         results = self.analyzer.calculate_multi_level(
             returns=returns,
             weights=weights,
             confidence_levels=(confidence_level,),
-            methods=['historical', 'parametric', 'monte_carlo'],
             n_simulations=n_simulations,
-            seed=seed
+            seed=seed,
         )
 
         comparison = self._results_to_dataframe(results[confidence_level])
-        self.print_comparison(comparison, confidence_level)
-    
-    def _results_to_dataframe(self, method_results: Dict) -> pd.DataFrame:
-        data = []
-        for method, values in method_results.items():
-            data.append({
-                'Método': method.capitalize(),
-                'VaR_daily_%': values['var_daily_pct'],
-                'VaR_annual_%': values['var_annual_pct'],
-                'ES_daily_%': values['es_daily_pct'],
-                'ES_annual_%': values['es_annual_pct']
-            })
-        
-        return pd.DataFrame(data).set_index('Método')
-    
-    def print_comparison(
-        self,
-        comparison: pd.DataFrame,
-        confidence_level: float = None
-    ) -> None:
-
-        if confidence_level is None:
-            confidence_level = DEFAULT_CONFIDENCE_LEVEL
-
-        print(f"ANÁLISIS VaR y ES (Nivel de confianza: {confidence_level*100:.0f}%)".center(70))
-
-        print("COMPARACIÓN DE MÉTODOS")
-        print(f"{'Método':<15} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
-        
-        for method, row in comparison.iterrows():
-            print(f"{method:<15} "
-                  f"{row['VaR_daily_%']:>7.2f}%      "
-                  f"{row['VaR_annual_%']:>7.2f}%      "
-                  f"{row['ES_daily_%']:>7.2f}%      "
-                  f"{row['ES_annual_%']:>7.2f}%")
-
-        avg_var_daily = comparison['VaR_daily_%'].mean()
-        avg_es_daily = comparison['ES_daily_%'].mean()
-        
-        print("INTERPRETACIÓN")
-        print(f"VaR promedio diario:     {avg_var_daily:.2f}%")
-        print(f"ES promedio diario:      {avg_es_daily:.2f}%")
-        print(f"Pérdida máxima esperada: {avg_es_daily:.2f}% en un día adverso")
- 
-        abs_var = abs(avg_var_daily)
-        if abs_var < VAR_RISK_LEVELS['low']:
-            risk_level = "Bajo"
-        elif abs_var < VAR_RISK_LEVELS['moderate']:
-            risk_level = "Moderado"
-        elif abs_var < VAR_RISK_LEVELS['high']:
-            risk_level = "Alto"
-        else:
-            risk_level = "Muy Alto"
-        
-        print(f"  Nivel de riesgo:         {risk_level}")
+        self._print_comparison(comparison, confidence_level)
 
     def generate_multi_level_report(
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
-        confidence_levels: tuple = None,
+        confidence_levels: Tuple[float, ...] = None,
         method: str = 'historical',
         n_simulations: int = None,
-        seed: int = None
+        seed: int = None,
     ) -> None:
-
-        if confidence_levels is None:
-            confidence_levels = (0.90, DEFAULT_CONFIDENCE_LEVEL, 0.99)
-        
-        if n_simulations is None:
-            n_simulations = MONTE_CARLO_SIMULATIONS
-        
-        if seed is None:
-            seed = MONTE_CARLO_SEED
+        confidence_levels = confidence_levels if confidence_levels is not None else RISK_ANALYSIS['multi_level_confidence']
+        n_simulations = n_simulations if n_simulations is not None else MONTE_CARLO_SIMULATIONS
+        seed = seed if seed is not None else MONTE_CARLO_SEED
 
         results = self.analyzer.calculate_multi_level(
             returns=returns,
@@ -122,16 +55,57 @@ class VarEsReporter:
             confidence_levels=confidence_levels,
             methods=[method],
             n_simulations=n_simulations,
-            seed=seed
+            seed=seed,
         )
-        
+
+        self._print_multi_level(results, confidence_levels, method)
+
+    def _results_to_dataframe(self, method_results: Dict) -> pd.DataFrame:
+        data = [
+            {
+                'Método': method.capitalize(),
+                'VaR_daily_%': values['var_daily_pct'],
+                'VaR_annual_%': values['var_annual_pct'],
+                'ES_daily_%': values['es_daily_pct'],
+                'ES_annual_%': values['es_annual_pct'],
+            }
+            for method, values in method_results.items()
+        ]
+        return pd.DataFrame(data).set_index('Método')
+
+    @staticmethod
+    def _classify_risk(abs_var_daily: float) -> str:
+        if abs_var_daily < VAR_RISK_LEVELS['low']:
+            return "Bajo"
+        if abs_var_daily < VAR_RISK_LEVELS['moderate']:
+            return "Moderado"
+        if abs_var_daily < VAR_RISK_LEVELS['high']:
+            return "Alto"
+        return "Muy Alto"
+
+    def _print_comparison(self, comparison: pd.DataFrame, confidence_level: float) -> None:
+        header = f"ANÁLISIS VaR y ES (Nivel de confianza: {confidence_level * 100:.0f}%)"
+        print(header.center(70))
+
+        row_fmt = "{:<15} {:>7.2f}%      {:>7.2f}%      {:>7.2f}%      {:>7.2f}%"
+        print(f"{'Método':<15} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
+        for method, row in comparison.iterrows():
+            print(row_fmt.format(method, row['VaR_daily_%'], row['VaR_annual_%'], row['ES_daily_%'], row['ES_annual_%']))
+
+        avg_var = comparison['VaR_daily_%'].mean()
+        avg_es = comparison['ES_daily_%'].mean()
+
+        print("INTERPRETACIÓN")
+        print(f"  VaR promedio diario:     {avg_var:.2f}%")
+        print(f"  ES promedio diario:      {avg_es:.2f}%")
+        print(f"  Pérdida máxima esperada: {avg_es:.2f}% en un día adverso")
+        print(f"  Nivel de riesgo:         {self._classify_risk(abs(avg_var))}")
+
+    def _print_multi_level(self, results: Dict, confidence_levels: Tuple[float, ...], method: str) -> None:
         print(f"VaR y ES - Método: {method.capitalize()}".center(70))
         print(f"{'Confianza':<12} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
 
+        row_fmt = "{:>5.0f}%       {:>7.2f}%      {:>7.2f}%      {:>7.2f}%      {:>7.2f}%"
         for cl in confidence_levels:
-            values = results[cl][method]
-            print(f"{cl*100:>5.0f}%       "
-                  f"{values['var_daily_pct']:>7.2f}%      "
-                  f"{values['var_annual_pct']:>7.2f}%      "
-                  f"{values['es_daily_pct']:>7.2f}%      "
-                  f"{values['es_annual_pct']:>7.2f}%")
+            v = results[cl][method]
+            print(row_fmt.format(cl * 100, v['var_daily_pct'], v['var_annual_pct'], v['es_daily_pct'], v['es_annual_pct']))

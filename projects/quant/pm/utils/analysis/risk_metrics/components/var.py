@@ -9,12 +9,16 @@ from ....tools.config import (
     DEFAULT_CONFIDENCE_LEVEL,
     MONTE_CARLO_SIMULATIONS,
     MONTE_CARLO_SEED,
-    SIGNIFICANCE_LEVEL
+    SIGNIFICANCE_LEVEL,
+    NUMERICAL_DEFAULTS,
+    NORMALITY_THRESHOLDS,
 )
+
+_NORM = NORMALITY_THRESHOLDS
 
 class VaRCalculator:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
         self.moments_calc = DistributionMoments()
     
     def validate_normality(
@@ -25,7 +29,7 @@ class VaRCalculator:
         verbose: bool = True
     ) -> Dict[str, any]:
 
-        alpha = alpha if alpha else SIGNIFICANCE_LEVEL
+        alpha = alpha if alpha is not None else SIGNIFICANCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         jb_results = self.moments_calc.calculate_jarque_bera(returns, weights, alpha)
@@ -35,17 +39,16 @@ class VaRCalculator:
         
         is_normal_jb = jb_results['is_normal']
         is_normal_ad = ad_results['is_normal']
-        is_skew_ok = abs(skew) < 0.5 
-        is_kurt_ok = abs(excess_kurt) < 1.0  
-        
-        # Scoring: 4 checks (JB, AD, Skewness, Kurtosis)
+        is_skew_ok = abs(skew) < _NORM['skewness_limit']
+        is_kurt_ok = abs(excess_kurt) < _NORM['kurtosis_limit']
+
         normality_score = sum([is_normal_jb, is_normal_ad, is_skew_ok, is_kurt_ok])
-        
-        if normality_score >= 3:
+
+        if normality_score >= _NORM['score_normal']:
             conclusion = "NORMAL"
             recommendation = "Parametric VaR is appropriate."
             risk_level = "LOW"
-        elif normality_score == 2:
+        elif normality_score >= _NORM['score_questionable']:
             conclusion = "CUESTIONABLE"
             recommendation = "Parametric VaR may underestimate risk. Consider using Historical VaR as well."
             risk_level = "MEDIUM"
@@ -53,8 +56,7 @@ class VaRCalculator:
             conclusion = "NO NORMAL"
             recommendation = "Parametric VaR NOT recommended. Use Historical VaR or Monte Carlo."
             risk_level = "HIGH"
-        
-        # If AD detects severe tail risk, escalate risk level
+
         if ad_results['tail_risk'] == 'SEVERE' and risk_level != 'HIGH':
             risk_level = "HIGH"
             conclusion = "NO NORMAL"
@@ -90,12 +92,13 @@ class VaRCalculator:
         }
  
         if verbose and conclusion != "NORMAL":
-            print(f"\n⚠️ WARNING: Returns {conclusion}")
-            print(f"   Jarque-Bera p-value: {jb_results['p_value']:.4f} {'✅' if is_normal_jb else '❌'}")
+            ok, fail = "OK", "FAIL"
+            print(f"\n WARNING: Returns {conclusion}")
+            print(f"   Jarque-Bera p-value: {jb_results['p_value']:.4f} [{ok if is_normal_jb else fail}]")
             print(f"   Anderson-Darling: {ad_results['ad_statistic']:.4f} vs {ad_results['critical_value']:.4f} "
-                  f"(tail risk: {ad_results['tail_risk']}) {'✅' if is_normal_ad else '❌'}")
-            print(f"   Skewness: {skew:.3f} {'✅' if is_skew_ok else '❌'}")
-            print(f"   Excess Kurtosis: {excess_kurt:.3f} {'✅' if is_kurt_ok else '❌'}")
+                  f"(tail risk: {ad_results['tail_risk']}) [{ok if is_normal_ad else fail}]")
+            print(f"   Skewness: {skew:.3f} [{ok if is_skew_ok else fail}]")
+            print(f"   Excess Kurtosis: {excess_kurt:.3f} [{ok if is_kurt_ok else fail}]")
             print(f"   Score: {normality_score}/4")
             print(f"   Recommendation: {recommendation}\n")
         
@@ -108,7 +111,7 @@ class VaRCalculator:
         confidence_level: float = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         alpha = 1.0 - confidence_level
@@ -133,7 +136,7 @@ class VaRCalculator:
         validate_normality: bool = True
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
 
         normality_result = None
         if validate_normality:
@@ -142,8 +145,8 @@ class VaRCalculator:
             )
             
             if normality_result['risk_level'] == 'HIGH':
-                print("⚠️ CRITICAL: Parametric VaR may be highly inaccurate")
-                print(f"   Consider using calculate_historical() or calculate_cornish_fisher()\n")
+                print(" CRITICAL: Parametric VaR may be highly inaccurate")
+                print(f" Consider using calculate_historical() or calculate_cornish_fisher()\n")
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         mu = portfolio_ret.mean()
@@ -178,7 +181,7 @@ class VaRCalculator:
         confidence_level: float = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         mu = portfolio_ret.mean()
@@ -221,8 +224,8 @@ class VaRCalculator:
         seed: int = None
     ) -> Dict[str, float]:
 
-        confidence_level = confidence_level if confidence_level else DEFAULT_CONFIDENCE_LEVEL
-        n_simulations = n_simulations if n_simulations else MONTE_CARLO_SIMULATIONS
+        confidence_level = confidence_level if confidence_level is not None else DEFAULT_CONFIDENCE_LEVEL
+        n_simulations = n_simulations if n_simulations is not None else MONTE_CARLO_SIMULATIONS
         seed = seed if seed is not None else MONTE_CARLO_SEED
 
         if seed is not None:
@@ -236,7 +239,7 @@ class VaRCalculator:
             L = np.linalg.cholesky(cov_matrix)
         except np.linalg.LinAlgError:
             eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-            eigenvalues = np.maximum(eigenvalues, 1e-10) 
+            eigenvalues = np.maximum(eigenvalues, NUMERICAL_DEFAULTS['eigenvalue_floor'])
             L = eigenvectors @ np.diag(np.sqrt(eigenvalues))
 
         z = np.random.standard_normal((n_assets, n_simulations))

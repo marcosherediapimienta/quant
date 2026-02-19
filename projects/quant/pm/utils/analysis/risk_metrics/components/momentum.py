@@ -3,7 +3,9 @@ import pandas as pd
 from scipy.stats import jarque_bera, anderson
 from typing import Dict
 from .helpers import calculate_portfolio_returns
-from ....tools.config import SIGNIFICANCE_LEVEL
+from ....tools.config import SIGNIFICANCE_LEVEL, ANDERSON_DARLING
+
+_AD = ANDERSON_DARLING
 
 class DistributionMoments:
     def __init__(self):
@@ -42,7 +44,7 @@ class DistributionMoments:
         alpha: float = None
     ) -> Dict[str, float]:
 
-        alpha = alpha if alpha else SIGNIFICANCE_LEVEL
+        alpha = alpha if alpha is not None else SIGNIFICANCE_LEVEL
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         jb_stat, p_value = jarque_bera(portfolio_ret)
         
@@ -58,30 +60,19 @@ class DistributionMoments:
         weights: np.ndarray,
         significance_level: float = None
     ) -> Dict[str, float]:
-        """
-        Anderson-Darling normality test.
-        More sensitive to tails than Jarque-Bera → ideal for financial risk.
-        
-        Uses method='interpolate' (scipy >= 1.17) to get p-value directly.
-        Falls back to legacy API if not available.
-        """
-        significance_level = significance_level if significance_level else SIGNIFICANCE_LEVEL
+
+        significance_level = significance_level if significance_level is not None else SIGNIFICANCE_LEVEL
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         
         try:
-            # scipy >= 1.17: usar method='interpolate' para p-value directo
             result = anderson(portfolio_ret, dist='norm', method='interpolate')
             ad_statistic = float(result.statistic)
             p_value = float(result.pvalue)
             is_normal = p_value > significance_level
-            
-            # Approximate critical value from standard AD tables (5%)
-            # Standard table: [0.576, 0.656, 0.787, 0.918, 1.092] for [15%, 10%, 5%, 2.5%, 1%]
-            critical_value = 0.787  # 5% standard level
-            
+            critical_value = _AD['critical_value_5pct']
+
         except TypeError:
-            # scipy < 1.17: API legacy con critical_values
             result = anderson(portfolio_ret, dist='norm')
             ad_statistic = float(result.statistic)
             p_value = None
@@ -92,15 +83,14 @@ class DistributionMoments:
             idx = min(range(len(sig_levels)), key=lambda i: abs(sig_levels[i] - target_pct))
             critical_value = float(critical_values[idx])
             is_normal = ad_statistic < critical_value
-        
-        # Severity: how many times it exceeds the critical value
+
         severity_ratio = ad_statistic / critical_value if critical_value > 0 else float('inf')
         
         if severity_ratio < 1.0:
             tail_risk = "LOW"
-        elif severity_ratio < 2.0:
+        elif severity_ratio < _AD['severity_moderate']:
             tail_risk = "MODERATE"
-        elif severity_ratio < 5.0:
+        elif severity_ratio < _AD['severity_high']:
             tail_risk = "HIGH"
         else:
             tail_risk = "SEVERE"

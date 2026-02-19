@@ -12,7 +12,7 @@ from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
 
 class RatioAnalyzer:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
         self.sharpe_calc = SharpeCalculator(self.annual_factor)
         self.sortino_calc = SortinoCalculator(self.annual_factor)
     

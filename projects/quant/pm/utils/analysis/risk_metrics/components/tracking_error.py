@@ -2,11 +2,13 @@ import numpy as np
 import pandas as pd
 from typing import Dict
 from .helpers import calculate_portfolio_returns
-from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
+from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW, TRACKING_ERROR_DEFAULTS
+
+_TE = TRACKING_ERROR_DEFAULTS
 
 class TrackingErrorCalculator:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     def calculate(
         self,
@@ -53,7 +55,7 @@ class TrackingErrorCalculator:
     ) -> pd.Series:
 
         if window is None:
-            window = max(63, ROLLING_WINDOW // 4)
+            window = max(_TE['min_rolling_window'], ROLLING_WINDOW // _TE['rolling_window_divisor'])
         
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         df = pd.DataFrame({
