@@ -8,8 +8,8 @@ class CAPMResult:
     beta: float
     correlation: float
     jensen_alpha: float
-    r_squared: float = np.nan     # % variance of asset explained by market
-    treynor_ratio: float = np.nan # (annualised excess return) / beta
+    r_squared: float = np.nan   
+    treynor_ratio: float = np.nan 
 
 class CAPMCalculator:
     def __init__(self, annual_factor: float = ANNUAL_FACTOR):
@@ -23,7 +23,7 @@ class CAPMCalculator:
     ) -> CAPMResult:
 
         if not isinstance(asset_returns, np.ndarray) or not isinstance(market_returns, np.ndarray):
-            raise TypeError("Los retornos deben ser numpy arrays")
+            raise TypeError("Returns must be numpy arrays")
 
         y = asset_returns - risk_free_rate_daily
         x = market_returns - risk_free_rate_daily
@@ -36,7 +36,6 @@ class CAPMCalculator:
         except Exception:
             return CAPMResult(np.nan, np.nan, np.nan, np.nan)
 
-        # R² = 1 - SS_res / SS_tot
         try:
             y_hat = X @ params
             ss_res = float(np.sum((y - y_hat) ** 2))
@@ -53,7 +52,6 @@ class CAPMCalculator:
 
         jensen_alpha = self._annualize_alpha(alpha_daily)
 
-        # Treynor ratio: annualised excess return / beta (measures return per unit of systematic risk)
         try:
             annualised_excess = float(y.mean() * self.annual_factor)
             treynor = annualised_excess / beta if (not np.isnan(beta) and abs(beta) > 1e-10) else np.nan

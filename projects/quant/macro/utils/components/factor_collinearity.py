@@ -27,7 +27,7 @@ class FactorCollinearityAnalyzer:
                 if not np.isfinite(vif) or vif > 1000:
                     vif = np.inf
                 vif_values.append(vif)
-            except:
+            except Exception:
                 vif_values.append(np.inf)
         
         return pd.Series(

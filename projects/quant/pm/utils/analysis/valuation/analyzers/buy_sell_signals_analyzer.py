@@ -58,7 +58,7 @@ class BuySellSignalsAnalyzer:
 
         company_data = self.company_analyzer.fetch_data(ticker)
         if not company_data.get('success'):
-            raise ValueError(f"Error obteniendo datos: {company_data.get('error')}")
+            raise ValueError(f"Error fetching data: {company_data.get('error')}")
 
         analysis = self.company_analyzer.analyze(ticker, company_data['data'])
         final_start, final_end = self._resolve_dates(start_date, end_date)
@@ -75,8 +75,7 @@ class BuySellSignalsAnalyzer:
             current_price
         )
         upside = self._calculate_upside(price_target, current_price)
-
-        # Sanity check: evitar contradicciones entre señal y upside
+        
         signal, confidence = self.signal_determiner.validate_with_upside(
             signal, confidence, upside
         )
@@ -131,16 +130,16 @@ class BuySellSignalsAnalyzer:
         return float(current_price)
     
     def _extract_scores(self, analysis: dict) -> dict:
+        se = self.score_extractor
+        profitability = se.extract_profitability(analysis)
+        health = se.extract_health(analysis)
+        growth = se.extract_growth(analysis)
         return {
-            'valuation': self.score_extractor.extract_valuation(analysis),
-            'profitability': self.score_extractor.extract_profitability(analysis),
-            'health': self.score_extractor.extract_health(analysis),
-            'growth': self.score_extractor.extract_growth(analysis),
-            'fundamental': self.fundamental_agg.aggregate(
-                self.score_extractor.extract_profitability(analysis),
-                self.score_extractor.extract_health(analysis),
-                self.score_extractor.extract_growth(analysis)
-            )
+            'valuation': se.extract_valuation(analysis),
+            'profitability': profitability,
+            'health': health,
+            'growth': growth,
+            'fundamental': self.fundamental_agg.aggregate(profitability, health, growth)
         }
     
     def _calculate_upside(self, price_target: float, current_price: float) -> float:

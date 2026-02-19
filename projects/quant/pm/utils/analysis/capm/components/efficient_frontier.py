@@ -13,7 +13,6 @@ except ImportError:
 
 
 def _shrink_cov(returns_matrix: np.ndarray, annual_factor: int) -> np.ndarray:
-    """Ledoit-Wolf shrinkage estimator for the annualised covariance matrix."""
     n = returns_matrix.shape[1]
     if _HAS_SKLEARN and returns_matrix.shape[0] > n:
         lw = LedoitWolf()
@@ -69,7 +68,6 @@ class EfficientFrontierCalculator:
         if mean_ret.isna().any():
             mean_ret = mean_ret.fillna(0)
 
-        # Ledoit-Wolf shrinkage for a more stable covariance estimate
         cov_array = _shrink_cov(returns_clean.values, self.annual_factor)
         cov_matrix = pd.DataFrame(cov_array, index=returns_clean.columns, columns=returns_clean.columns)
 
@@ -210,6 +208,7 @@ class EfficientFrontierCalculator:
         allow_short: bool = False
     ) -> tuple:
 
+        returns = returns.dropna()
         if returns.empty:
             return np.nan, np.nan, np.array([])
         

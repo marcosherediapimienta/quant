@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, safe_div, score_metric
+from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import VALUATION_THRESHOLDS, EFFICIENCY_SCORING, ALERT_THRESHOLDS, REPORTING_CONFIG
 
 @dataclass
@@ -13,11 +13,24 @@ class EfficiencyThresholds:
     dio: Dict[str, float] = None
     
     def __post_init__(self):
-        efficiency_thresholds = VALUATION_THRESHOLDS['efficiency']
-        self.asset_turnover = self.asset_turnover or efficiency_thresholds['asset_turnover']
-        self.inventory_turnover = self.inventory_turnover or efficiency_thresholds['inventory_turnover']
-        self.dso = self.dso or efficiency_thresholds['dso']
-        self.dio = self.dio or efficiency_thresholds['dio']
+        efficiency = VALUATION_THRESHOLDS['efficiency']
+        for field in ('asset_turnover', 'inventory_turnover', 'dso', 'dio'):
+            if getattr(self, field) is None:
+                setattr(self, field, efficiency[field])
+
+
+_SCORING_SPECS = [
+    MetricSpec(key='asset_turnover', range_key='asset_turnover', weight_key='asset_turnover', higher_is_better=True),
+    MetricSpec(key='days_sales_outstanding', range_key='dso', weight_key='dso', higher_is_better=False),
+    MetricSpec(key='days_inventory_outstanding', range_key='dio', weight_key='dio', higher_is_better=False),
+]
+
+_CLASSIFICATION_SPECS = [
+    ('asset_turnover_class', 'asset_turnover', 'asset_turnover', True),
+    ('dso_class', 'days_sales_outstanding', 'dso', False),
+    ('dio_class', 'days_inventory_outstanding', 'dio', False),
+    ('inventory_turnover_class', 'inventory_turnover', 'inventory_turnover', True),
+]
 
 
 class EfficiencyMetrics:
@@ -58,13 +71,18 @@ class EfficiencyMetrics:
         }
         
         classifications = {
-            'asset_turnover_class': self._classify_value(asset_turnover, self.thresholds.asset_turnover, higher_is_better=True),
-            'dso_class': self._classify_value(dso, self.thresholds.dso, higher_is_better=False),
-            'dio_class': self._classify_value(dio, self.thresholds.dio, higher_is_better=False),
-            'inventory_turnover_class': self._classify_value(inventory_turnover, self.thresholds.inventory_turnover, higher_is_better=True)
+            cls_key: classify_metric(
+                metrics[metric_key],
+                getattr(self.thresholds, threshold_attr),
+                higher_is_better=higher_is_better
+            )
+            for cls_key, metric_key, threshold_attr, higher_is_better in _CLASSIFICATION_SPECS
         }
 
-        score = self._calculate_score(metrics)
+        score = WeightedScorer.calculate(
+            metrics, _SCORING_SPECS,
+            self.config['weights'], self.config['ranges']
+        )
         
         return {
             'metrics': metrics,
@@ -72,68 +90,6 @@ class EfficiencyMetrics:
             'score': score,
             'alerts': self._generate_alerts(metrics)
         }
-    
-    def _classify_value(self, value: float, thresholds: Dict, higher_is_better: bool = True) -> str:
-
-        if pd.isna(value):
-            return 'N/A'
-        
-        levels = ['excellent', 'good', 'fair', 'poor']
-        
-        if higher_is_better:
-            for level in levels:
-                if value >= thresholds.get(level, 0):
-                    return level
-            return 'poor'
-        else:
-            for level in levels:
-                if value <= thresholds.get(level, float('inf')):
-                    return level
-            return 'poor'
-    
-    def _calculate_score(self, metrics: Dict) -> float:
-        scores = []
-        weights = []
-        cfg_weights = self.config['weights']
-        cfg_ranges = self.config['ranges']
-        
-        if pd.notna(metrics['asset_turnover']):
-            at_score = score_metric(
-                metrics['asset_turnover'], 
-                cfg_ranges['asset_turnover']['min'],
-                cfg_ranges['asset_turnover']['max'],
-                higher_is_better=True
-            )
-            scores.append(at_score)
-            weights.append(cfg_weights['asset_turnover'])
-
-        if pd.notna(metrics['days_sales_outstanding']):
-            dso_score = score_metric(
-                metrics['days_sales_outstanding'], 
-                cfg_ranges['dso']['min'],
-                cfg_ranges['dso']['max'],
-                higher_is_better=False
-            )
-            scores.append(dso_score)
-            weights.append(cfg_weights['dso'])
-
-        if pd.notna(metrics['days_inventory_outstanding']):
-            dio_score = score_metric(
-                metrics['days_inventory_outstanding'], 
-                cfg_ranges['dio']['min'],
-                cfg_ranges['dio']['max'],
-                higher_is_better=False
-            )
-            scores.append(dio_score)
-            weights.append(cfg_weights['dio'])
-        
-        if not scores:
-            return np.nan
-        
-        total_weight = sum(weights)
-        weighted_sum = sum(s * w for s, w in zip(scores, weights))
-        
-        return weighted_sum / total_weight if total_weight > 0 else np.nan
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
         alerts = []

@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from .helpers import calculate_portfolio_returns, annualize_return, annualize_volatility
-from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW
+from ....tools.config import ANNUAL_FACTOR, ROLLING_WINDOW, EPSILON
 
 class SharpeCalculator:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor if annual_factor else ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
     
     def calculate(
         self,
@@ -34,10 +34,10 @@ class SharpeCalculator:
         ddof: int = 0
     ) -> pd.Series:
 
-        window = window if window else ROLLING_WINDOW
+        window = window if window is not None else ROLLING_WINDOW
 
         portfolio_ret = calculate_portfolio_returns(returns, weights)
         mu_roll = portfolio_ret.rolling(window).mean() * self.annual_factor
         sigma_roll = portfolio_ret.rolling(window).std(ddof=ddof) * np.sqrt(self.annual_factor)
-        sharpe_roll = (mu_roll - risk_free_rate) / (sigma_roll + 1e-12)
+        sharpe_roll = (mu_roll - risk_free_rate) / (sigma_roll + EPSILON)
         return sharpe_roll

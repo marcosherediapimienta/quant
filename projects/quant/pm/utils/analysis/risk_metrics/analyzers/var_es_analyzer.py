@@ -5,14 +5,14 @@ from ..components.var import VaRCalculator
 from ..components.es import ESCalculator
 from ....tools.config import (
     ANNUAL_FACTOR, 
-    DEFAULT_CONFIDENCE_LEVEL,
+    RISK_ANALYSIS,
     MONTE_CARLO_SIMULATIONS,
-    MONTE_CARLO_SEED
+    MONTE_CARLO_SEED,
 )
 
 class VarEsAnalyzer:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
         self.var_calc = VaRCalculator(self.annual_factor)
         self.es_calc = ESCalculator(self.annual_factor)
     
@@ -27,10 +27,10 @@ class VarEsAnalyzer:
     ) -> Dict[float, Dict[str, Dict[str, float]]]:
 
         if confidence_levels is None:
-            confidence_levels = (0.90, DEFAULT_CONFIDENCE_LEVEL, 0.99)
-        
+            confidence_levels = RISK_ANALYSIS['multi_level_confidence']
+
         if methods is None:
-            methods = ['historical', 'parametric', 'monte_carlo']
+            methods = RISK_ANALYSIS['default_var_methods']
         
         if n_simulations is None:
             n_simulations = MONTE_CARLO_SIMULATIONS

@@ -9,7 +9,7 @@ class FrontierPlotter:
     def plot_efficient_frontier(
         self,
         frontier: FrontierResult,
-        title: str = "Frontera Eficiente",
+        title: str = "Efficient Frontier",
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
 
@@ -21,11 +21,11 @@ class FrontierPlotter:
             frontier.returns * 100,
             'b-',
             linewidth=2,
-            label='Frontera Eficiente'
+            label='Efficient Frontier'
         )
         
-        ax.set_xlabel('Volatilidad (%)', fontsize=12)
-        ax.set_ylabel('Retorno Esperado (%)', fontsize=12)
+        ax.set_xlabel('Volatility (%)', fontsize=12)
+        ax.set_ylabel('Expected Return (%)', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -37,7 +37,7 @@ class FrontierPlotter:
         frontier: FrontierResult,
         cml: CMLResult,
         risk_free_rate: float,
-        title: str = "Frontera Eficiente y CML",
+        title: str = "Efficient Frontier and CML",
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
 
@@ -49,7 +49,7 @@ class FrontierPlotter:
             frontier.returns * 100,
             'b-',
             linewidth=2,
-            label='Frontera Eficiente'
+            label='Efficient Frontier'
         )
 
         ax.plot(
@@ -68,7 +68,7 @@ class FrontierPlotter:
                 color='red',
                 marker='*',
                 zorder=5,
-                label=f'Portafolio Tangente\n(Sharpe={cml.slope:.3f})',
+                label=f'Tangent Portfolio\n(Sharpe={cml.slope:.3f})',
                 edgecolors='black',
                 linewidth=1.5
             )
@@ -80,13 +80,13 @@ class FrontierPlotter:
             color='green',
             marker='o',
             zorder=5,
-            label=f'Tasa Libre de Riesgo ({risk_free_rate*100:.2f}%)',
+            label=f'Risk-Free Rate ({risk_free_rate*100:.2f}%)',
             edgecolors='black',
             linewidth=1.5
         )
         
-        ax.set_xlabel('Volatilidad (%)', fontsize=12)
-        ax.set_ylabel('Retorno Esperado (%)', fontsize=12)
+        ax.set_xlabel('Volatility (%)', fontsize=12)
+        ax.set_ylabel('Expected Return (%)', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend(loc='best')
         ax.grid(True, alpha=0.3)
@@ -110,7 +110,7 @@ class FrontierPlotter:
             sml.expected_returns * 100,
             'b-',
             linewidth=2,
-            label=f'SML (Pendiente={sml.slope*100:.2f}%)'
+            label=f'SML (Slope={sml.slope*100:.2f}%)'
         )
         
         if asset_betas is not None and asset_returns is not None:
@@ -148,7 +148,7 @@ class FrontierPlotter:
                     textcoords='offset points'
                 )
 
-        ax.axvline(x=1, color='k', linestyle='--', linewidth=1, alpha=0.5, label='β=1 (Mercado)')
+        ax.axvline(x=1, color='k', linestyle='--', linewidth=1, alpha=0.5, label='β=1 (Market)')
         ax.scatter(
             1,
             sml.market_return * 100,
@@ -156,13 +156,13 @@ class FrontierPlotter:
             color='blue',
             marker='*',
             zorder=5,
-            label='Mercado',
+            label='Market',
             edgecolors='black',
             linewidth=1.5
         )
         
         ax.set_xlabel('Beta', fontsize=12)
-        ax.set_ylabel('Retorno Esperado (%)', fontsize=12)
+        ax.set_ylabel('Expected Return (%)', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend(loc='best')
         ax.grid(True, alpha=0.3)

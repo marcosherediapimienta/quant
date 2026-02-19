@@ -6,7 +6,7 @@ from ....tools.config import ANNUAL_FACTOR
 
 class DrawdownAnalyzer:
     def __init__(self, annual_factor: float = None):
-        self.annual_factor = annual_factor or ANNUAL_FACTOR
+        self.annual_factor = annual_factor if annual_factor is not None else ANNUAL_FACTOR
         self.dd_calc = DrawdownCalculator(self.annual_factor)
     
     def analyze(

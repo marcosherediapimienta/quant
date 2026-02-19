@@ -1,4 +1,4 @@
-# Entorno virtual
+# Virtual environment
 venv/
 env/
 ENV/
@@ -29,23 +29,23 @@ MANIFEST
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Archivos de configuración local
+# Local configuration files
 .env
 .venv
 
-# Archivos temporales
+# Temporary files
 *.tmp
 *.temp
 *.log
 
-# Archivos de datos grandes (opcional)
+# Large data files
 *.csv
 *.xlsx
 *.parquet
 *.h5
 *.hdf5
 
-# Gráficos generados
+# Generated plots
 *.png
 *.jpg
 *.jpeg
@@ -59,6 +59,6 @@ MANIFEST
 *.swo
 *~
 
-# Sistema operativo
+# Operating system
 .DS_Store
 Thumbs.db

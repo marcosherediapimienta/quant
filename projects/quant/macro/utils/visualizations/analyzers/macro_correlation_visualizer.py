@@ -41,7 +41,7 @@ class MacroCorrelationVisualizer:
                     corr_matrix, ax=ax2
                 )
         
-        plt.suptitle('Análisis de Correlación: Portfolio vs Factores Macro',
+        plt.suptitle('Correlation Analysis: Portfolio vs Macro Factors',
                     fontsize=16, fontweight='bold', y=0.995)
         
         return fig

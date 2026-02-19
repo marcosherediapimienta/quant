@@ -31,14 +31,14 @@ class RollingBetasPlotter:
             axes[i].plot(rolling_betas.index, rolling_betas[col], linewidth=2)
             axes[i].axhline(0, color='red', linestyle='--', alpha=0.5)
             axes[i].set_title(f'Beta Rolling: {factor_name}', fontsize=11, fontweight='bold')
-            axes[i].set_xlabel('Fecha')
+            axes[i].set_xlabel('Date')
             axes[i].set_ylabel('Beta')
             axes[i].grid(True, alpha=0.3)
  
         for i in range(len(beta_cols), len(axes)):
             axes[i].axis('off')
         
-        plt.suptitle('Evolución de Betas (Rolling Window)', 
+        plt.suptitle('Beta Evolution (Rolling Window)', 
                     fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
         

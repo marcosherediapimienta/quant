@@ -35,7 +35,7 @@ class VarEsVisualizer:
             portfolio_ret,
             methods_results,
             confidence_level=confidence_level,
-            title='VaR y ES Diarios',
+            title='Daily VaR and ES',
             ax=ax1
         )
 
@@ -51,7 +51,7 @@ class VarEsVisualizer:
             portfolio_ret,
             var_annual_results,
             confidence_level=confidence_level,
-            title='VaR y ES Anualizados',
+            title='Annualized VaR and ES',
             ax=ax2
         )
 
@@ -62,11 +62,11 @@ class VarEsVisualizer:
             self.var_es_plotter.plot_var_breach_analysis(
                 portfolio_ret,
                 var_threshold,
-                title=f'Violaciones VaR - {method.capitalize()}',
+                title=f'VaR Breaches - {method.capitalize()}',
                 ax=ax
             )
         
-        plt.suptitle(f'Análisis VaR y ES (Confianza: {confidence_level*100:.0f}%)',
+        plt.suptitle(f'VaR and ES Analysis (Confidence: {confidence_level*100:.0f}%)',
                     fontsize=16, fontweight='bold', y=0.995)
         
         return fig
