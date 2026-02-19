@@ -9,18 +9,20 @@ Built for portfolio management, risk analysis, CAPM modeling, company valuation,
 Investment portfolio analysis.
 
 - **Optimization**: Markowitz, Black-Litterman, risk parity, score-based weighting.
-- **Risk**: VaR (historical, parametric, Monte Carlo), Expected Shortfall (CVaR), Sharpe, Sortino, Treynor, maximum drawdown, tracking error, Information Ratio, rolling correlations, distribution analysis (skewness, kurtosis).
-- **CAPM**: beta, Jensen's alpha, significance testing (HAC robust), Security Market Line, multi-asset CAPM.
-- **Valuation**: multiples (P/E, P/B, P/S, EV/EBITDA, PEG), profitability (ROE, ROA, margins), financial health, growth, efficiency, composite scoring, buy/sell signals, price target estimation.
+- **Risk**: VaR (historical, parametric, Monte Carlo), Expected Shortfall (CVaR), Sharpe, Sortino, Calmar, Sterling, maximum drawdown, tracking error, Information Ratio, normality testing, distribution analysis, rolling metrics, benchmark comparison.
+- **CAPM**: beta, Jensen's alpha, Treynor ratio, significance testing (HAC robust), Security Market Line, Capital Market Line, efficient frontier (Ledoit-Wolf shrinkage), tangent and minimum variance portfolios, multi-asset comparison.
+- **Valuation**: multiples (P/E, P/B, EV/EBITDA, PEG, FCF yield), profitability (ROIC, ROE, ROA, margins), financial health, growth, efficiency, composite scoring, buy/sell signals, price target estimation.
 
 ### Macro (`macro`)
 
 Macroeconomic analysis and its impact on portfolios.
 
-- Multi-factor regression with HAC robust standard errors
-- Factor categories: volatility, interest rates, credit, currencies, commodities
-- Implied yield curve and credit spreads
-- Rolling correlations and macro situation dashboard
+- Multi-factor regression with HAC robust standard errors, risk decomposition (systematic vs idiosyncratic), rolling regression.
+- Lagged and rolling correlations with statistical significance.
+- Factor sensitivity analysis, collinearity diagnostics (VIF), factor selection.
+- Implied yield curve (forward rates, term premium, breakeven inflation).
+- Macro situation dashboard: yield curve, inflation signals, credit conditions, VIX, global bonds, risk sentiment.
+- Factor categories: equity, rates, credit, currencies, commodities, volatility.
 
 ### Chatbot — WarrenAI
 
