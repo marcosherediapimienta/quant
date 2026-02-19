@@ -12,8 +12,9 @@ class DrawdownReporter:
         self,
         returns: pd.DataFrame,
         weights: np.ndarray,
+        risk_free_rate: float = None,
     ) -> None:
-        results = self.analyzer.analyze(returns, weights)
+        results = self.analyzer.analyze(returns, weights, risk_free_rate)
         self._print_drawdown(results)
 
     @staticmethod
