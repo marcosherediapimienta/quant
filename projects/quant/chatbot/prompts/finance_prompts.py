@@ -11,12 +11,14 @@ SYSTEM_PROMPT_BASE = """You are WarrenAI, an expert assistant in quantitative fi
 
 *Risk Metrics:*
 - Sharpe Ratio, Sortino Ratio (annualized, rolling)
-- Value at Risk (VaR): historical, parametric, and Monte Carlo methods
+- Value at Risk (VaR): historical, parametric, Monte Carlo, and Cornish-Fisher methods
 - Expected Shortfall (ES / CVaR): historical, parametric, and Monte Carlo methods
-- Maximum Drawdown and recovery analysis
+- Normality validation: Jarque-Bera test, Anderson-Darling test, skewness/kurtosis checks
+- Maximum Drawdown, recovery analysis, Calmar Ratio, Sterling Ratio
 - Volatility (annualized, rolling)
 - Distribution moments: skewness, kurtosis, normality tests
-- Rolling metrics over configurable windows
+- Rolling metrics over configurable windows (Sharpe, Sortino, volatility)
+- Benchmark comparison: Tracking Error, Information Ratio, relative Beta, relative Alpha
 
 *Portfolio Optimization:*
 - Markowitz mean-variance optimization with efficient frontier
@@ -29,24 +31,24 @@ SYSTEM_PROMPT_BASE = """You are WarrenAI, an expert assistant in quantitative fi
 - Weight constraints (min/max per asset)
 
 *Fundamental / Company Valuation:*
-- Valuation multiples: P/E (trailing & forward), P/B, P/S, EV/EBITDA, EV/Revenue, PEG, FCF yield, earnings yield
-- Profitability metrics: ROE, ROA, gross/operating/net margins
-- Financial health: current ratio, debt/equity, interest coverage
+- Valuation multiples: P/E (trailing & forward), P/B, EV/EBITDA, EV/Revenue, PEG, FCF yield, earnings yield
+- Profitability metrics: ROIC, ROE, ROA, gross/operating/net margins
+- Financial health: current ratio, debt/equity, debt/EBITDA, interest coverage, FCF analysis
 - Growth metrics: revenue growth, earnings growth, FCF growth
 - Efficiency metrics: asset turnover, inventory turnover, DSO, DIO, revenue per employee
-- Composite scoring system with weighted aggregation across categories
-- Buy/sell signal generation and price target estimation
+- Composite scoring system with weighted aggregation across categories (WeightedScorer)
+- Buy/sell signal generation with confidence levels and price target estimation (score-based, PEG-based)
 
 *Macroeconomic Analysis:*
 - Multi-factor regression with HAC (Newey-West) robust standard errors
-- Factor categories: volatility (VIX), interest rates (2Y–30Y), credit (HYG, LQD), currencies (DXY), commodities (gold, oil, copper), global indices
-- Yield curve analysis: slope, inversion detection, implied yield curve
+- Factor categories: equity indices, volatility (VIX), interest rates (2Y–30Y), credit (HYG, LQD), currencies (DXY), commodities (gold, oil, copper)
+- Yield curve analysis: slope, inversion detection, implied yield curve (forward rates, term premium, breakeven inflation)
 - Credit spread analysis: HY vs Treasury, HY vs IG (risk appetite)
 - Inflation signals, global bond analysis, risk sentiment assessment
-- Rolling correlations and sensitivity analysis
-- Factor collinearity detection (VIF)
-- Risk decomposition: systematic vs idiosyncratic
-- Macro situation dashboard with overall risk scoring
+- Rolling correlations, lagged correlations, and sensitivity analysis
+- Factor collinearity detection (VIF, correlation matrix) and factor selection
+- Risk decomposition: systematic vs idiosyncratic, rolling regression
+- Macro situation dashboard: yield curve panel, inflation signals, credit conditions, VIX sentiment, global bonds, overall risk scoring
 
 *Technical Implementation:*
 - Python, NumPy, Pandas, statsmodels, scipy, scikit-learn, FAISS
@@ -111,13 +113,19 @@ QUERY_ENHANCEMENT_PROMPTS = {
     'tail': "Search for information about tail risk, fat tails, Expected Shortfall, extreme losses",
 
     # Drawdown & volatility
-    'drawdown': "Search for information about Maximum Drawdown, peak, trough, recovery, calmar ratio",
-    'volatilidad': "Search for information about volatility, standard deviation, GARCH, rolling volatility",
+    'drawdown': "Search for information about Maximum Drawdown, peak, trough, recovery, Calmar ratio, Sterling ratio",
+    'calmar': "Search for information about Calmar ratio, drawdown-adjusted return, maximum drawdown, risk-adjusted performance",
+    'sterling': "Search for information about Sterling ratio, drawdown-adjusted return, average drawdown, risk-adjusted performance",
     'volatility': "Search for information about volatility, standard deviation, GARCH, rolling volatility",
-    'rolling': "Search for information about rolling metrics, rolling Sharpe, rolling beta, rolling correlation, window size",
+    'rolling': "Search for information about rolling metrics, rolling Sharpe, rolling Sortino, rolling beta, rolling correlation, window size",
+    'benchmark': "Search for information about benchmark comparison, tracking error, information ratio, relative beta, relative alpha",
+    'cornish': "Search for information about Cornish-Fisher VaR, skewness-kurtosis adjustment, non-normal VaR, tail risk correction",
 
-    # Distribution
-    'normal': "Search for information about normal distribution, kurtosis, skewness, normality test",
+    # Distribution & normality
+    'normal': "Search for information about normal distribution, kurtosis, skewness, normality test, Jarque-Bera, Anderson-Darling",
+    'normality': "Search for information about normality testing, Jarque-Bera test, Anderson-Darling test, parametric VaR validity",
+    'jarque': "Search for information about Jarque-Bera normality test, skewness, kurtosis, p-value",
+    'anderson': "Search for information about Anderson-Darling normality test, tail risk severity, critical values",
     'skewness': "Search for information about skewness, return distribution asymmetry",
     'kurtosis': "Search for information about kurtosis, fat tails, extreme return distribution",
     'distribution': "Search for information about return distribution, moments, skewness, kurtosis, normality testing",
@@ -135,12 +143,10 @@ QUERY_ENHANCEMENT_PROMPTS = {
     # Portfolio optimization
     'portfolio': "Search for information about portfolio optimization, optimal weights, efficient frontier, Markowitz, risk parity, Black-Litterman",
     'markowitz': "Search for information about Markowitz model, mean-variance, efficient frontier, diversification, covariance matrix",
-    'frontera': "Search for information about efficient frontier, optimization, mean-variance, optimal portfolio",
     'frontier': "Search for information about efficient frontier, optimization, mean-variance, optimal portfolio",
     'optimiz': "Search for information about portfolio optimization, scipy optimize, weight constraints, multi-start",
     'diversif': "Search for information about diversification, asset correlation, idiosyncratic risk",
     'weights': "Search for information about optimal weights, tangency portfolio, equal weight, minimum variance, risk parity",
-    'pesos': "Search for information about optimal weights, tangency portfolio, equal weight, minimum variance, risk parity",
     'risk parity': "Search for information about risk parity, equal risk contribution, inverse volatility, portfolio optimization",
     'black-litterman': "Search for information about Black-Litterman model, market equilibrium, investor views, posterior returns",
     'black litterman': "Search for information about Black-Litterman model, market equilibrium, investor views, posterior returns",
@@ -150,13 +156,13 @@ QUERY_ENHANCEMENT_PROMPTS = {
 
     # Fundamental / valuation
     'valuation': "Search for information about fundamental analysis, valuation multiples, scoring system, P/E, P/B, EV/EBITDA, FCF yield",
-    'valuación': "Search for information about fundamental analysis, valuation multiples, scoring system, P/E, P/B, EV/EBITDA, FCF yield",
     'fundamental': "Search for information about fundamental analysis, company scoring, profitability, financial health, growth, efficiency",
     'per': "Search for information about P/E ratio, price-to-earnings, relative valuation, forward P/E, trailing P/E",
     'p/e': "Search for information about P/E ratio, price-to-earnings, relative valuation, forward P/E, trailing P/E",
     'peg': "Search for information about PEG ratio, price-earnings-growth, earnings growth, valuation",
     'fcf': "Search for information about free cash flow yield, FCF, cash generation, valuation metric",
-    'profitab': "Search for information about profitability metrics, ROE, ROA, gross margin, operating margin, net margin",
+    'roic': "Search for information about Return on Invested Capital, ROIC, NOPAT, invested capital, capital efficiency",
+    'profitab': "Search for information about profitability metrics, ROIC, ROE, ROA, gross margin, operating margin, net margin",
     'roe': "Search for information about Return on Equity, profitability, shareholder returns, ROA",
     'margin': "Search for information about profit margins, gross margin, operating margin, net margin, profitability",
     'health': "Search for information about financial health, current ratio, debt-to-equity, interest coverage, leverage",
@@ -172,26 +178,26 @@ QUERY_ENHANCEMENT_PROMPTS = {
     # Macro
     'macro': "Search for information about macroeconomic factors, multi-factor regression, HAC, risk decomposition, macro situation",
     'vix': "Search for information about VIX, implied volatility, fear index, market correlation, risk sentiment",
-    'inflaci': "Search for information about inflation, CPI, real rates, portfolio impact, inflation signals",
     'inflation': "Search for information about inflation, CPI, real rates, portfolio impact, inflation signals",
-    'tasas': "Search for information about interest rates, yield curve, duration, bonds, term structure",
     'rates': "Search for information about interest rates, yield curve, duration, bonds, term structure",
-    'yield curve': "Search for information about yield curve, term structure, slope, inversion, implied yield curve, recession signal",
+    'yield curve': "Search for information about yield curve, term structure, slope, inversion, implied yield curve, forward rates, term premium, recession signal",
+    'forward rate': "Search for information about implied forward rates, term premium, breakeven inflation, yield curve interpretation",
+    'term premium': "Search for information about term premium, forward rates, yield curve slope, risk compensation",
+    'breakeven': "Search for information about breakeven inflation, TIPS, nominal vs real rates, inflation expectations",
     'credit spread': "Search for information about credit spreads, HY vs Treasury, HY vs IG, risk appetite, credit conditions",
     'credit': "Search for information about credit conditions, HYG, LQD, credit spreads, default risk",
     'spread': "Search for information about credit spreads, yield curve spread, HY vs IG, risk premium",
-    'correlaci': "Search for information about asset correlation, correlation matrix, diversification, rolling correlation",
     'correlation': "Search for information about asset correlation, correlation matrix, diversification, rolling correlation",
     'regression': "Search for information about multi-factor regression, HAC standard errors, betas, t-statistics, R-squared",
     'hac': "Search for information about HAC robust standard errors, Newey-West, heteroscedasticity, autocorrelation",
     'collinear': "Search for information about factor collinearity, VIF, variance inflation factor, multicollinearity",
     'vif': "Search for information about VIF, variance inflation factor, collinearity, multicollinearity detection",
     'sensitivity': "Search for information about macro sensitivity analysis, factor exposure, rolling betas, factor loadings",
-    'risk decomp': "Search for information about risk decomposition, systematic vs idiosyncratic risk, factor contributions",
+    'risk decomp': "Search for information about risk decomposition, systematic vs idiosyncratic risk, factor contributions, rolling regression",
+    'factor select': "Search for information about factor selection, collinearity filtering, VIF, significant factors",
     'situation': "Search for information about macro situation dashboard, yield curve analysis, credit conditions, risk sentiment, overall risk score",
 
     # Returns
-    'retorno': "Search for information about return calculation, log-returns, simple returns, annualized return",
     'return': "Search for information about return calculation, log-returns, simple returns, annualized return",
 }
 

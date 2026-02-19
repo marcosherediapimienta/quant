@@ -2,16 +2,18 @@ import ast
 from pathlib import Path
 from typing import List, Dict, Optional
 
-DEFAULT_EXCLUDE_DIRS = [
-    '__pycache__', '.git', 'venv', 'env', '.pytest_cache',
-    'node_modules', 'dist', 'build', '.tox', 'htmlcov',
-    '.mypy_cache', '.ruff_cache', 'eggs', '.eggs'
-]
-
-DEFAULT_EXCLUDE_FILES = [
-    'setup.py', 'setup.cfg', 'conftest.py', 'manage.py',
-    'wsgi.py', 'asgi.py', 'migrations'
-]
+try:
+    from .tools.config import (
+        DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_FILES,
+        MAX_CLASS_LINES, MAX_FUNCTION_LINES, MAX_METHOD_LINES,
+        MIN_METHOD_NAME_LENGTH, KEYWORD_SCORES,
+    )
+except ImportError:
+    from tools.config import (
+        DEFAULT_EXCLUDE_DIRS, DEFAULT_EXCLUDE_FILES,
+        MAX_CLASS_LINES, MAX_FUNCTION_LINES, MAX_METHOD_LINES,
+        MIN_METHOD_NAME_LENGTH, KEYWORD_SCORES,
+    )
 
 class CodeIndexer:
     def __init__(self, project_root: str):
@@ -45,16 +47,16 @@ class CodeIndexer:
                 if path_parts & excluded_dirs:
                     continue
 
-                # Verificar si el archivo debe excluirse
+                # Check if the file should be excluded
                 if any(excl in file_path.name for excl in excluded_files):
                     continue
 
                 try:
                     self._index_file(file_path)
                 except Exception as e:
-                    print(f"⚠ Error indexando {file_path}: {e}")
+                    print(f"[!] Error indexing {file_path}: {e}")
 
-        print(f"✓ Indexed {len(self.documents)} code segments")
+        print(f"[OK] Indexed {len(self.documents)} code segments")
         return self.documents
 
     def _index_file(self, file_path: Path):
@@ -68,13 +70,13 @@ class CodeIndexer:
                 continue
 
         if content is None:
-            print(f"⚠ No se pudo leer {file_path} (encoding desconocido)")
+            print(f"[!] Could not read {file_path} (unknown encoding)")
             return
 
         try:
             tree = ast.parse(content)
         except SyntaxError as e:
-            print(f"⚠ Error de sintaxis en {file_path}: {e}")
+            print(f"[!] Syntax error in {file_path}: {e}")
             return
 
         lines = content.splitlines()
@@ -101,7 +103,7 @@ class CodeIndexer:
     def _index_class(self, node: ast.ClassDef, lines: List[str], rel_path: str):
         docstring = ast.get_docstring(node) or ''
         start = node.lineno - 1
-        end = min(node.end_lineno, start + 60)
+        end = min(node.end_lineno, start + MAX_CLASS_LINES)
         body = '\n'.join(lines[start:end])
         bases = [ast.unparse(b) for b in node.bases] if node.bases else []
         signature = f"class {node.name}"
@@ -139,7 +141,7 @@ class CodeIndexer:
 
         docstring = ast.get_docstring(node) or ''
         start = node.lineno - 1
-        end = min(node.end_lineno, start + 40)
+        end = min(node.end_lineno, start + MAX_FUNCTION_LINES)
         body = '\n'.join(lines[start:end])
         full_name = f"{class_name}.{node.name}" if class_name else node.name
 
@@ -166,11 +168,11 @@ class CodeIndexer:
 
         docstring = ast.get_docstring(node) or ''
 
-        if not docstring and len(node.name) < 4:
+        if not docstring and len(node.name) < MIN_METHOD_NAME_LENGTH:
             return
 
         start = node.lineno - 1
-        end = min(node.end_lineno, start + 30)
+        end = min(node.end_lineno, start + MAX_METHOD_LINES)
         body = '\n'.join(lines[start:end])
 
         self.documents.append({
@@ -190,7 +192,7 @@ class CodeIndexer:
         texts = []
         for doc in self.documents:
             text = f"# {doc['type'].upper()}: {doc['name']}\n"
-            text += f"# Archivo: {doc['file']}\n\n"
+            text += f"# File: {doc['file']}\n\n"
             text += doc['content']
 
             if doc['metadata'].get('docstring'):
@@ -206,17 +208,15 @@ class CodeIndexer:
         results = []
 
         for doc in self.documents:
-            score = 0
-            name_lower = doc['name'].lower()
-            content_lower = doc['content'].lower()
-            docstring_lower = doc['metadata'].get('docstring', '').lower()
-
-            if keyword_lower in name_lower:
-                score += 10
-            if keyword_lower in docstring_lower:
-                score += 7
-            if keyword_lower in content_lower:
-                score += 3
+            fields = {
+                'name': doc['name'].lower(),
+                'docstring': doc['metadata'].get('docstring', '').lower(),
+                'content': doc['content'].lower(),
+            }
+            score = sum(
+                weight for field, weight in KEYWORD_SCORES.items()
+                if keyword_lower in fields.get(field, '')
+            )
 
             if score > 0:
                 results.append({'doc': doc, 'score': score})

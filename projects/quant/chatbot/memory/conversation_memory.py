@@ -1,7 +1,10 @@
 from typing import List, Dict, Optional
 from datetime import datetime
 
-MAX_CONTEXT_MSG_LENGTH = 500
+try:
+    from ..tools.config import MAX_CONTEXT_MSG_LENGTH
+except ImportError:
+    from tools.config import MAX_CONTEXT_MSG_LENGTH
 
 class ConversationMemory:
     def __init__(self, max_messages: int = 20):
@@ -38,11 +41,11 @@ class ConversationMemory:
 
         context_lines = []
         for msg in recent_messages:
-            role_label = "Usuario" if msg['role'] == 'user' else "WarrenAI"
+            role_label = "User" if msg['role'] == 'user' else "WarrenAI"
             content = msg['content']
 
             if len(content) > MAX_CONTEXT_MSG_LENGTH:
-                content = content[:MAX_CONTEXT_MSG_LENGTH] + "... [truncado]"
+                content = content[:MAX_CONTEXT_MSG_LENGTH] + "... [truncated]"
 
             context_lines.append(f"**{role_label}:** {content}")
 
