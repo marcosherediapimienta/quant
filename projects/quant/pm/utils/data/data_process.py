@@ -40,14 +40,14 @@ class DataManager:
         **kwargs
     ) -> tuple[pd.DataFrame, pd.Series]:
   
-        print("Descargando portafolio completo...")
+        print("Downloading full portfolio...")
         assets = self.download_assets(tickers, start_date, end_date, **kwargs)
         benchmark = self.download_benchmark(benchmark_name, start_date, end_date, **kwargs)
         common_dates = assets.index.intersection(benchmark.index)
         assets_aligned = assets.loc[common_dates]
         benchmark_aligned = benchmark.loc[common_dates]
         
-        print(f"Portafolio descargado: {len(tickers)} activos + benchmark")
+        print(f"Portfolio downloaded: {len(tickers)} assets + benchmark")
         
         return assets_aligned, benchmark_aligned
     
