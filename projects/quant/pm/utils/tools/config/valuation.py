@@ -14,7 +14,15 @@ VALUATION_THRESHOLDS = {
         'interest_coverage': {'excellent': 10.0, 'good': 5.0, 'fair': 3.0, 'poor': 1.5},
     },
     'valuation_multiples': {
+        'pe_ratio': {'cheap': 15, 'fair': 18, 'expensive': 25, 'very_expensive': 35},
+        'ev_ebitda': {'cheap': 10, 'fair': 12, 'expensive': 15, 'very_expensive': 20},
         'pb_ratio': {'cheap': 1.5, 'fair': 3.0, 'expensive': 5.0, 'very_expensive': 8.0},
+        'peg_ratio': {'very_cheap': 0.5, 'cheap': 1.0, 'fair': 1.5, 'expensive': 2.0},
+        'fcf_yield': {'excellent': 0.06, 'good': 0.05, 'fair': 0.03, 'poor': 0.02},
+    },
+    'growth': {
+        'revenue_growth': {'excellent': 0.25, 'good': 0.15, 'fair': 0.08, 'poor': 0.03},
+        'earnings_growth': {'excellent': 0.30, 'good': 0.20, 'fair': 0.10, 'poor': 0.05},
     },
     'efficiency': {
         'asset_turnover': {'excellent': 1.5, 'good': 1.0, 'fair': 0.7, 'poor': 0.4},
@@ -54,11 +62,17 @@ ALERT_THRESHOLDS = {
     'profitability': {
         'roic_low': 0.08,
         'operating_margin_low': 0.05,
+        'roe_negative': 0,
+        'net_margin_negative': 0,
     },
     'financial_health': {
         'debt_ebitda_danger': 4,
         'debt_ebitda_warning': 3,
         'current_ratio_low': 1.0,
+        'fcf_negative': 0,
+        'net_cash_negative': 0,
+        'debt_equity_likely_percentage_threshold': 10,
+        'debt_equity_conversion_factor': 100,
     },
     'growth': {
         'revenue_decline_significant': -0.10,
@@ -212,6 +226,22 @@ TRADING_SIGNAL_RULES = {
             'confidence': 50
         }
     },
+    'hold_confidence': {
+        'base': 50.0,
+        'proximity_threshold': 5,
+        'proximity_min': 40.0,
+        'proximity_penalty': 10,
+        'tiers': [
+            {'fund_min': 80, 'val_max': 45, 'confidence': 60.0},
+            {'fund_min': 70, 'val_max': 45, 'confidence': 55.0},
+            {'val_range': [45, 55], 'fund_range': [60, 75], 'confidence': 55.0},
+        ],
+        'avg_tiers': [
+            {'min_avg': 65, 'confidence': 55.0},
+            {'min_avg': 55, 'confidence': 52.0},
+        ],
+        'default_confidence': 48.0
+    },
     'sanity_check': {
         'sell_override_to_hold': {
             'upside_min': 0.10,
@@ -225,6 +255,10 @@ TRADING_SIGNAL_RULES = {
 }
 
 PRICE_TARGET_CONFIG = {
+    'clamp': {
+        'max_upside_factor': 1.75,
+        'max_downside_factor': 0.25,
+    },
     'peg_method': {
         'fair_peg': 1.0,
         'adjustment_divisor_bear': 100,
@@ -248,6 +282,25 @@ PRICE_TARGET_CONFIG = {
         'adjustment_divisor_bull': 333
     }
 }
+
+OVERALL_VALUATION_METRICS = [
+    {'key': 'pe_ttm', 'config_key': 'pe', 'higher_means_cheaper': False},
+    {'key': 'ev_ebitda', 'config_key': 'ev_ebitda', 'higher_means_cheaper': False},
+    {'key': 'fcf_yield', 'config_key': 'fcf_yield', 'higher_means_cheaper': True},
+    {'key': 'pb_ratio', 'config_key': 'pb', 'higher_means_cheaper': False},
+]
+
+SIGNAL_EVALUATION_ORDER = [
+    ('buy', 'strong'),
+    ('buy', 'moderate'),
+    ('buy', 'value'),
+    ('buy', 'quality'),
+    ('sell', 'strong'),
+    ('sell', 'moderate'),
+    ('sell', 'overvalued'),
+    ('hold', 'mixed_quality_price'),
+    ('hold', 'mixed_moderate'),
+]
 
 OVERALL_VALUATION_LOGIC = {
     'thresholds': {
@@ -282,21 +335,6 @@ OVERALL_VALUATION_LOGIC = {
     }
 }
 
-VALUATION_MULTIPLES_FALLBACKS = {
-    'pe_ratio': {
-        'fair': 18,
-        'very_expensive': 35
-    },
-    'ev_ebitda': {
-        'fair': 12,
-        'very_expensive': 20
-    },
-    'fcf_yield': {
-        'good': 0.05,
-        'fair': 0.03
-    }
-}
-
 SECTOR_ANALYSIS_CONFIG = {
     'max_peers': 10,
     'percentile_thresholds': {
@@ -306,11 +344,11 @@ SECTOR_ANALYSIS_CONFIG = {
         'below_average': 20
     },
     'percentile_labels': {
-        'top': 'Top performer del sector',
-        'above': 'Por encima del promedio',
-        'average': 'En el promedio del sector',
-        'below': 'Por debajo del promedio',
-        'bottom': 'Rezagado del sector'
+        'top': 'Top performer in sector',
+        'above': 'Above sector average',
+        'average': 'At sector average',
+        'below': 'Below sector average',
+        'bottom': 'Sector laggard'
     }
 }
 
@@ -390,6 +428,10 @@ COMPANY_ANALYSIS_WEIGHTS = {
     }
 }
 
+ROIC_CONFIG = {
+    'default_tax_rate': 0.21,
+}
+
 INVESTMENT_PROFILES = {
     'balanced': {
         'profitability': 0.30,
@@ -397,7 +439,7 @@ INVESTMENT_PROFILES = {
         'growth': 0.15,
         'efficiency': 0.10,
         'valuation': 0.15,
-        'description': 'Para inversores que buscan equilibrio'
+        'description': 'Balanced approach across all dimensions'
     },
     'value': {
         'profitability': 0.20,
@@ -405,7 +447,7 @@ INVESTMENT_PROFILES = {
         'growth': 0.10,
         'efficiency': 0.10,
         'valuation': 0.35,
-        'description': 'Para inversores de valor (bajo P/E, alto dividend yield)'
+        'description': 'Value investing focus (low P/E, high dividend yield)'
     },
     'growth': {
         'profitability': 0.15,
@@ -413,7 +455,7 @@ INVESTMENT_PROFILES = {
         'growth': 0.45,
         'efficiency': 0.10,
         'valuation': 0.15,
-        'description': 'Para inversores de crecimiento (alto revenue growth)'
+        'description': 'Growth investing focus (high revenue growth)'
     },
     'quality': {
         'profitability': 0.35,
@@ -421,7 +463,7 @@ INVESTMENT_PROFILES = {
         'growth': 0.15,
         'efficiency': 0.10,
         'valuation': 0.05,
-        'description': 'Para inversores que priorizan calidad (alto ROE, bajo debt)'
+        'description': 'Quality-first approach (high ROE, low debt)'
     }
 }
 
