@@ -95,63 +95,9 @@ class CompanyAnalyzer:
             try:
                 balance_sheet = stock.quarterly_balance_sheet
                 income_stmt = stock.quarterly_income_stmt
-
-                if not balance_sheet.empty:
-                    latest_bs = balance_sheet.columns[0]
-
-                    if 'Total Assets' in balance_sheet.index:
-                        info['totalAssets'] = float(balance_sheet.loc['Total Assets', latest_bs])
-
-                    if 'Inventory' in balance_sheet.index:
-                        info['inventory'] = float(balance_sheet.loc['Inventory', latest_bs])
-
-                    if 'Receivables' in balance_sheet.index:
-                        info['netReceivables'] = float(balance_sheet.loc['Receivables', latest_bs])
-
-                    if 'Stockholders Equity' in balance_sheet.index:
-                        info['totalStockholderEquity'] = float(balance_sheet.loc['Stockholders Equity', latest_bs])
-
-                if not income_stmt.empty:
-                    latest_is = income_stmt.columns[0]
-
-                    if 'Cost Of Revenue' in income_stmt.index:
-                        info['costOfRevenue'] = float(income_stmt.loc['Cost Of Revenue', latest_is])
-
-                if not income_stmt.empty and not balance_sheet.empty:
-                    latest_is = income_stmt.columns[0]
-                    latest_bs = balance_sheet.columns[0]
-                    operating_income = None
-                    if 'Operating Income' in income_stmt.index:
-                        operating_income = float(income_stmt.loc['Operating Income', latest_is])
-                    elif 'EBIT' in income_stmt.index:
-                        operating_income = float(income_stmt.loc['EBIT', latest_is])
-
-                    tax_rate = None
-                    if 'Tax Provision' in income_stmt.index and 'Pretax Income' in income_stmt.index:
-                        tax_provision = float(income_stmt.loc['Tax Provision', latest_is])
-                        pretax_income = float(income_stmt.loc['Pretax Income', latest_is])
-                        if pretax_income != 0:
-                            tax_rate = tax_provision / pretax_income
-                    
-                    if tax_rate is None:
-                        tax_rate = info.get('effectiveTaxRate', 0.21)  
-
-                    if operating_income is not None and tax_rate is not None:
-                        nopat = operating_income * (1 - tax_rate)
-
-                        invested_capital = None
-                        if 'Invested Capital' in balance_sheet.index:
-                            invested_capital = float(balance_sheet.loc['Invested Capital', latest_bs])
-                        else:
-                            if 'Total Assets' in balance_sheet.index and 'Current Liabilities' in balance_sheet.index:
-                                total_assets = float(balance_sheet.loc['Total Assets', latest_bs])
-                                current_liabilities = float(balance_sheet.loc['Current Liabilities', latest_bs])
-                                invested_capital = total_assets - current_liabilities
-                        
-                        if invested_capital and invested_capital > 0:
-                            roic = nopat / invested_capital
-                            info['returnOnCapital'] = roic
-                        
+                self._enrich_from_balance_sheet(info, balance_sheet)
+                self._enrich_from_income_stmt(info, income_stmt)
+                self._enrich_roic(info, balance_sheet, income_stmt)
             except Exception as e:
                 print(f"⚠️  No se pudieron obtener estados financieros para {ticker}: {str(e)}")
             
@@ -166,6 +112,79 @@ class CompanyAnalyzer:
                 'error': f'Error obteniendo datos de {ticker}: {str(e)}'
             }
             
+    @staticmethod
+    def _safe_float(df: 'pd.DataFrame', field: str, column) -> float:
+        if field in df.index:
+            return float(df.loc[field, column])
+        return None
+
+    def _enrich_from_balance_sheet(self, info: Dict, balance_sheet: 'pd.DataFrame') -> None:
+        if balance_sheet.empty:
+            return
+        col = balance_sheet.columns[0]
+        field_map = {
+            'Total Assets': 'totalAssets',
+            'Inventory': 'inventory',
+            'Receivables': 'netReceivables',
+            'Stockholders Equity': 'totalStockholderEquity',
+        }
+        for src, dst in field_map.items():
+            val = self._safe_float(balance_sheet, src, col)
+            if val is not None:
+                info[dst] = val
+
+    def _enrich_from_income_stmt(self, info: Dict, income_stmt: 'pd.DataFrame') -> None:
+        if income_stmt.empty:
+            return
+        col = income_stmt.columns[0]
+        val = self._safe_float(income_stmt, 'Cost Of Revenue', col)
+        if val is not None:
+            info['costOfRevenue'] = val
+
+    def _enrich_roic(self, info: Dict, balance_sheet: 'pd.DataFrame', income_stmt: 'pd.DataFrame') -> None:
+        if income_stmt.empty or balance_sheet.empty:
+            return
+        is_col = income_stmt.columns[0]
+        bs_col = balance_sheet.columns[0]
+
+        operating_income = (
+            self._safe_float(income_stmt, 'Operating Income', is_col)
+            or self._safe_float(income_stmt, 'EBIT', is_col)
+        )
+        if operating_income is None:
+            return
+
+        tax_rate = None
+        tax_provision = self._safe_float(income_stmt, 'Tax Provision', is_col)
+        pretax_income = self._safe_float(income_stmt, 'Pretax Income', is_col)
+        if tax_provision is not None and pretax_income is not None and pretax_income != 0:
+            tax_rate = tax_provision / pretax_income
+        if tax_rate is None:
+            tax_rate = info.get('effectiveTaxRate', 0.21)
+
+        nopat = operating_income * (1 - tax_rate)
+
+        invested_capital = self._safe_float(balance_sheet, 'Invested Capital', bs_col)
+        if invested_capital is None:
+            total_assets = self._safe_float(balance_sheet, 'Total Assets', bs_col)
+            current_liab = self._safe_float(balance_sheet, 'Current Liabilities', bs_col)
+            if total_assets is not None and current_liab is not None:
+                invested_capital = total_assets - current_liab
+
+        if invested_capital and invested_capital > 0:
+            info['returnOnCapital'] = nopat / invested_capital
+
+    def _compute_total_score(self, scores: Dict) -> float:
+        total_score = 0.0
+        total_weight = 0.0
+        for category in ('profitability', 'financial_health', 'growth', 'efficiency', 'valuation'):
+            score = scores[category]
+            if pd.notna(score):
+                weight = getattr(self.weights, category)
+                total_score += score * weight
+                total_weight += weight
+        return total_score / total_weight if total_weight > 0 else np.nan
+
     def analyze(self, ticker: str, data: Dict = None) -> Dict:
 
         if data is None:
@@ -191,19 +210,7 @@ class CompanyAnalyzer:
                 'efficiency': efficiency_result.get('score', 0),
                 'valuation': valuation_result.get('score', 0)
             }
-
-            total_score = 0
-            total_weight = 0
-            
-            for category in ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']:
-                score = scores[category]
-
-                if pd.notna(score):  
-                    weight = getattr(self.weights, category)
-                    total_score += score * weight
-                    total_weight += weight
-            
-            scores['total'] = total_score / total_weight if total_weight > 0 else np.nan
+            scores['total'] = self._compute_total_score(scores)
             conclusion = self._determine_conclusion(scores['total'])
             
             return {
@@ -240,31 +247,14 @@ class CompanyAnalyzer:
         data = fetch_result['data']
         
         try:
-            profitability_score = self.profitability.calculate(data).get('score', 0)
-            health_score = self.health.calculate(data).get('score', 0)
-            growth_score = self.growth.calculate(data).get('score', 0)
-            efficiency_score = self.efficiency.calculate(data).get('score', 0)
-            valuation_score = self.valuation.calculate(data).get('score', 0)
-            
             scores = {
-                'profitability': profitability_score,
-                'financial_health': health_score,
-                'growth': growth_score,
-                'efficiency': efficiency_score,
-                'valuation': valuation_score
+                'profitability': self.profitability.calculate(data).get('score', 0),
+                'financial_health': self.health.calculate(data).get('score', 0),
+                'growth': self.growth.calculate(data).get('score', 0),
+                'efficiency': self.efficiency.calculate(data).get('score', 0),
+                'valuation': self.valuation.calculate(data).get('score', 0),
             }
-
-            total_score = 0
-            total_weight = 0
-            
-            for category in ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']:
-                score = scores[category]
-                if pd.notna(score):
-                    weight = getattr(self.weights, category)
-                    total_score += score * weight
-                    total_weight += weight
-            
-            scores['total'] = total_score / total_weight if total_weight > 0 else np.nan
+            scores['total'] = self._compute_total_score(scores)
             
             return {
                 'success': True,

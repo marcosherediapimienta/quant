@@ -104,23 +104,12 @@ class CompanySelector:
     
     def _score_by_method(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
 
-        if method == 'balanced':
-            w = self.scoring_weights['balanced']
-            df['final_score'] = (
-                df['profitability'] * w['profitability'] +
-                df['health'] * w['health'] +
-                df['growth'] * w['growth'] +
-                df['valuation'] * w['valuation']
-            )
-        elif method == 'value':
-            w = self.scoring_weights['value']
-            df['final_score'] = df['total'] * w['total'] + df['valuation'] * w['valuation']
-        elif method == 'growth':
-            w = self.scoring_weights['growth']
-            df['final_score'] = df['total'] * w['total'] + df['growth'] * w['growth']
-        else:  
+        if method in self.scoring_weights:
+            w = self.scoring_weights[method]
+            df['final_score'] = sum(df[col] * weight for col, weight in w.items())
+        else:
             df['final_score'] = df['total']
-        
+
         return df.sort_values('final_score', ascending=False)
     
     def _apply_diversification(self, df: pd.DataFrame) -> List[str]:

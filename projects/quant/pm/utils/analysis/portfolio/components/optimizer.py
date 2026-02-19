@@ -60,6 +60,9 @@ class WeightOptimizer:
     # Public interface
     # ─────────────────────────────────────────────
 
+    _REQUIRES_ANALYSIS = {'score', 'score_risk_adjusted', 'black_litterman'}
+    _REQUIRES_RETURNS = {'score_risk_adjusted', 'markowitz', 'risk_parity', 'black_litterman'}
+
     def optimize(
         self,
         tickers: List[str],
@@ -74,30 +77,27 @@ class WeightOptimizer:
         if not method:
             method = PORTFOLIO_CONFIG['optimization']['default_method']
 
-        if method == 'equal':
+        strategies = {
+            'equal': lambda: self._equal_weights(tickers),
+            'score': lambda: self._score_weights(tickers, analysis_results),
+            'score_risk_adjusted': lambda: self._score_risk_adjusted_weights(tickers, analysis_results, returns_data),
+            'markowitz': lambda: self._markowitz_weights(tickers, returns_data),
+            'risk_parity': lambda: self._risk_parity_weights(tickers, returns_data),
+            'black_litterman': lambda: self._black_litterman_weights(tickers, returns_data, analysis_results),
+        }
+
+        if method not in strategies:
             return self._equal_weights(tickers)
-        elif method == 'score':
-            if analysis_results is None:
-                return self._equal_weights(tickers)
-            return self._score_weights(tickers, analysis_results)
-        elif method == 'score_risk_adjusted':
-            if analysis_results is None or returns_data is None or returns_data.empty:
-                return self._equal_weights(tickers)
-            return self._score_risk_adjusted_weights(tickers, analysis_results, returns_data)
-        elif method == 'markowitz':
-            if returns_data is None or returns_data.empty:
-                return self._equal_weights(tickers)
-            return self._markowitz_weights(tickers, returns_data)
-        elif method == 'risk_parity':
-            if returns_data is None or returns_data.empty:
-                return self._equal_weights(tickers)
-            return self._risk_parity_weights(tickers, returns_data)
-        elif method == 'black_litterman':
-            if analysis_results is None or returns_data is None or returns_data.empty:
-                return self._equal_weights(tickers)
-            return self._black_litterman_weights(tickers, returns_data, analysis_results)
-        else:
+
+        has_analysis = analysis_results is not None
+        has_returns = returns_data is not None and not returns_data.empty
+
+        if method in self._REQUIRES_ANALYSIS and not has_analysis:
             return self._equal_weights(tickers)
+        if method in self._REQUIRES_RETURNS and not has_returns:
+            return self._equal_weights(tickers)
+
+        return strategies[method]()
 
     # ─────────────────────────────────────────────
     # Simple methods
