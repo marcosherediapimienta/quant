@@ -1,4 +1,5 @@
 from typing import Dict, Tuple
+import logging
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -7,6 +8,8 @@ from ..tools.config import (
     MACRO_SPREADS,
     YIELD_SCALE,
 )
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformConfig:
@@ -30,7 +33,7 @@ class MacroTransformCalculator:
     def calculate_log_returns(self, series: pd.Series) -> pd.Series:
         invalid_values = (series <= 0).sum()
         if invalid_values > 0:
-            print(f"[Macro] {series.name}: {invalid_values} valores <= 0, reemplazados por NaN")
+            logger.warning(f"[Macro] {series.name}: {invalid_values} values <= 0, replaced with NaN")
 
         series_clean = series.copy()
         series_clean[series_clean <= 0] = np.nan
@@ -42,7 +45,7 @@ class MacroTransformCalculator:
         try:
             return series.asfreq('B').ffill()
         except (ValueError, AttributeError):
-            # Fallback para series sin freq inferible (ej: datos de FRED)
+            # Fallback for series without inferable freq (e.g. FRED data)
             bdays = pd.bdate_range(start=series.index.min(), end=series.index.max())
             return series.reindex(bdays).ffill()
     
@@ -88,7 +91,7 @@ class MacroTransformCalculator:
                 trans = self.to_business_daily(trans)
                 transformed[name] = trans
             except Exception as e:
-                print(f"[Macro] Error transformando {name}: {e}")
+                logger.error(f"[Macro] Error transforming {name}: {e}")
 
         if target_index is None:
             all_indices = [s.index for s in transformed.values() if len(s) > 0]
@@ -99,11 +102,8 @@ class MacroTransformCalculator:
         df = pd.DataFrame(index=target_index)
         for name, series in transformed.items():
             aligned = series.reindex(df.index)
-            if fill_method:
-                if fill_method == 'ffill':
-                    aligned = aligned.ffill()
-                elif fill_method == 'bfill':
-                    aligned = aligned.bfill()
+            if fill_method and hasattr(aligned, fill_method):
+                aligned = getattr(aligned, fill_method)()
             df[name] = aligned
         return transformed, df
     
@@ -114,7 +114,7 @@ class MacroTransformCalculator:
     ) -> pd.Series:
  
         if spread_name not in self.spreads_config:
-            raise ValueError(f"Spread '{spread_name}' no encontrado en config")
+            raise ValueError(f"Spread '{spread_name}' not found in config")
         
         config = self.spreads_config[spread_name]
 
@@ -125,19 +125,20 @@ class MacroTransformCalculator:
             long_col = config['risky']
             short_col = config['safe']
         else:
-            raise ValueError(f"Config de spread inválida: {spread_name}")
+            raise ValueError(f"Invalid spread config: {spread_name}")
         
         if long_col not in data.columns or short_col not in data.columns:
-            raise ValueError(f"Columnas no encontradas: {long_col}, {short_col}")
+            raise ValueError(f"Columns not found: {long_col}, {short_col}")
 
         transform = config.get('transform', 'diff')
         
-        if transform == 'diff':
-            spread = data[long_col] - data[short_col]
-        elif transform == 'ratio':
-            spread = data[long_col] / data[short_col]
-        else:
-            raise ValueError(f"Transform no soportado: {transform}")
+        _SPREAD_OPS = {
+            'diff': lambda a, b: a - b,
+            'ratio': lambda a, b: a / b,
+        }
+        if transform not in _SPREAD_OPS:
+            raise ValueError(f"Unsupported transform: {transform}")
+        spread = _SPREAD_OPS[transform](data[long_col], data[short_col])
         
         spread.name = spread_name
         return spread
@@ -153,7 +154,7 @@ class MacroTransformCalculator:
                 spread = self.calculate_spread(data, spread_name)
                 spreads[spread_name] = spread
             except Exception as e:
-                print(f"[Macro] Error calculando spread {spread_name}: {e}")
+                logger.error(f"[Macro] Error calculating spread {spread_name}: {e}")
         
         return pd.DataFrame(spreads)
     

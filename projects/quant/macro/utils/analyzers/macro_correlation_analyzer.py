@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict
 from ..components.macro_correlation import MacroCorrelationCalculator
-from ..tools.config import MAX_LAG
+from ..tools.config import MAX_LAG, CORRELATION_LAGS_DEFAULT
 
 class MacroCorrelationAnalyzer:
     def __init__(self, max_lag: int = None):
@@ -22,7 +22,7 @@ class MacroCorrelationAnalyzer:
         corr_matrix_lags = self.calculator.calculate_matrix_with_lags(
             portfolio_returns,
             macro_factors,
-            lags=[0, 1, 5, 21, 63, 126]
+            lags=CORRELATION_LAGS_DEFAULT
         )
         
         return {

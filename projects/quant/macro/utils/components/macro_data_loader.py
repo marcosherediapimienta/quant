@@ -27,12 +27,12 @@ class MacroDataLoader:
             )
             
             if data.empty:
-                raise ValueError("No se descargaron datos")
+                raise ValueError("No data downloaded")
             
             return data
             
         except Exception as e:
-            raise RuntimeError(f"Error en descarga: {e}")
+            raise RuntimeError(f"Download error: {e}")
     
     def download_single(
         self,

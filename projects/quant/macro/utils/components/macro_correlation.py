@@ -1,4 +1,5 @@
 from typing import Dict
+import logging
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -108,7 +109,7 @@ class MacroCorrelationCalculator:
                     idx_best = lag_df['corr'].abs().idxmax()
                     best_row = lag_df.loc[idx_best]
                     is_significant = False
-                    print(f"⚠️  [Macro] {factor_name}: Ninguna correlación significativa (mejor p-value: {best_row['p']:.4f})")
+                    logging.debug(f"[Macro] {factor_name}: No significant correlation (best p-value: {best_row['p']:.4f})")
                 
                 results.append({
                     'factor': factor_name,
@@ -121,7 +122,7 @@ class MacroCorrelationCalculator:
                 })
                 
             except Exception as e:
-                print(f"[Macro] Error con factor {factor_name}: {e}")
+                logging.warning(f"[Macro] Error with factor {factor_name}: {e}")
         
         df = pd.DataFrame(results)
         if not df.empty:

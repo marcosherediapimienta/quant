@@ -1,4 +1,5 @@
 from typing import Dict, List
+import logging
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -7,6 +8,8 @@ from ..tools.config import (
     REGRESSION_MIN_OBS,
     REGRESSION_SIGNIFICANCE,
 )
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class RegressionResult:
@@ -48,7 +51,7 @@ class MacroRegressionCalculator:
         
         if len(df) < self.min_obs:
             raise ValueError(
-                f"Observaciones insuficientes: {len(df)} < {self.min_obs}"
+                f"Insufficient observations: {len(df)} < {self.min_obs}"
             )
 
         y = df.iloc[:, 0].values
@@ -60,7 +63,7 @@ class MacroRegressionCalculator:
 
         if self.use_hac:
             n = len(y)
-            maxlags = self.hac_maxlags if self.hac_maxlags is not None else int(np.sqrt(n))
+            maxlags = self.hac_maxlags if self.hac_maxlags is not None else max(1, int(4 * (n / 100) ** (2 / 9)))
             fit = model.fit(cov_type='HAC', cov_kwds={'maxlags': maxlags})
         else:
             fit = model.fit()
@@ -68,20 +71,13 @@ class MacroRegressionCalculator:
         alpha_daily = float(fit.params[0])
 
         if alpha_daily <= -0.95:
-            import logging as _log
-            _log.getLogger(__name__).warning(
-                "Extreme daily alpha detected: %.4f — indicates ≥95%% daily loss, likely data error. Returning NaN.",
+            logger.warning(
+                "Extreme daily alpha detected: %.4f — likely data error. Returning NaN.",
                 alpha_daily
             )
             alpha_annual = np.nan
-        elif alpha_daily > -0.99:
-            alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
         else:
-            import logging as _log
-            _log.getLogger(__name__).warning(
-                "Very negative daily alpha: %.4f — using linear approximation", alpha_daily
-            )
-            alpha_annual = alpha_daily * self.annual_factor
+            alpha_annual = (1 + alpha_daily) ** self.annual_factor - 1
         
         betas = {name: float(fit.params[i+1]) for i, name in enumerate(factor_names)}
         t_stats = {name: float(fit.tvalues[i+1]) for i, name in enumerate(factor_names)}
@@ -176,14 +172,7 @@ class MacroRegressionCalculator:
         self,
         result: RegressionResult
     ) -> List[str]:
-
-        significant = []
-        
-        for factor_name in result.factor_names:
-            if result.p_values[factor_name] < self.significance_level:
-                significant.append(factor_name)
-        
-        return significant
+        return [f for f in result.factor_names if result.p_values[f] < self.significance_level]
     
     def calculate_risk_decomposition(
         self,
@@ -215,12 +204,11 @@ class MacroRegressionCalculator:
         })
 
         if df_clean.isna().any().any():
-            import logging as _log
-            _log.getLogger(__name__).warning("NaN values found in risk decomposition, dropping rows...")
+            logger.warning("NaN values found in risk decomposition, dropping rows...")
             df_clean = df_clean.dropna()
         
         if len(df_clean) == 0:
-            raise ValueError("No hay datos válidos después de limpiar NaN")
+            raise ValueError("No valid data after dropping NaN")
 
         var_total = float(np.var(df_clean['portfolio'].values, ddof=0))
         var_systematic = float(np.var(df_clean['fitted'].values, ddof=0))
@@ -229,8 +217,7 @@ class MacroRegressionCalculator:
         cov_fitted_residual = float(np.cov(df_clean['fitted'].values, df_clean['residuals'].values)[0, 1])
         
         if abs(var_total - sum_vars) > 1e-4:
-            import logging as _log
-            _log.getLogger(__name__).warning(
+            logger.warning(
                 "Variance decomposition mismatch: Var(Y)=%.6f, Var(Ŷ)+Var(ε)=%.6f, "
                 "diff=%.6f (%.2f%%), Cov(Ŷ,ε)=%.6f — n=%d",
                 var_total, sum_vars, abs(var_total - sum_vars),

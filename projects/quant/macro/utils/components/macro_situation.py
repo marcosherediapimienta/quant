@@ -1,6 +1,7 @@
+import logging
 import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
 from ..tools.config import (
     PERIOD_WEEK,
@@ -9,6 +10,8 @@ from ..tools.config import (
     PERIOD_YEAR,
     MACRO_SITUATION_THRESHOLDS,
 )
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class YieldCurveAnalysis:
@@ -48,9 +51,52 @@ class RiskSentiment:
     gold_trend_1w: float = None
     safe_haven: str = None
 
-class MacroSituationAnalyzer: 
-    def __init__(self):
-        pass
+class MacroSituationAnalyzer:
+
+    _VIX_MARKET_LEVELS = (
+        ('panic',   "PANIC — Extreme stress"),
+        ('stress',  "STRESS — High tension"),
+        ('tension', "TENSION — Elevated anxiety"),
+        ('normal',  "NORMAL — Controlled volatility"),
+    )
+    _VIX_MARKET_DEFAULT = "COMPLACENCY — Very low volatility"
+
+    _VIX_FEAR_LEVELS = (
+        ('panic',   "PANIC"),
+        ('stress',  "EXTREME FEAR"),
+        ('tension', "ANXIETY"),
+        ('normal',  "MODERATE"),
+    )
+    _VIX_FEAR_DEFAULT = "COMPLACENCY"
+
+    _INFLATION_LEVELS = (
+        ('high',     "HIGH - Strong inflationary pressure"),
+        ('moderate', "MODERATE - Controlled inflation"),
+        ('low',      "LOW - Contained inflation"),
+    )
+    _INFLATION_DEFAULT = "DEFLATION - Falling prices"
+
+    @staticmethod
+    def _classify(value: float, category: str, levels: tuple, default: str) -> str:
+        thresholds = MACRO_SITUATION_THRESHOLDS[category]
+        for key, label in levels:
+            if value > thresholds[key]:
+                return label
+        return default
+
+    @staticmethod
+    def _calculate_trend(series: pd.Series, period: int) -> Optional[float]:
+        if len(series) >= period and series.iloc[-period] > 0:
+            return (series.iloc[-1] / series.iloc[-period] - 1) * 100
+        return None
+
+    @staticmethod
+    def _pct_change(series: pd.Series, period: int) -> float:
+        if len(series) >= period:
+            past = series.iloc[-period]
+            if past > 0:
+                return (series.iloc[-1] / past - 1) * 100
+        return np.nan
     
     def analyze_yield_curve_usa(
         self,
@@ -181,18 +227,7 @@ class MacroSituationAnalyzer:
 
         if changes:
             avg_change = np.mean(changes)
-            high_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['high']
-            moderate_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['moderate']
-            low_threshold = MACRO_SITUATION_THRESHOLDS['inflation']['low']
-            
-            if avg_change > high_threshold:
-                pressure = "HIGH - Strong inflationary pressure"
-            elif avg_change > moderate_threshold:
-                pressure = "MODERATE - Controlled inflation"
-            elif avg_change > low_threshold:
-                pressure = "LOW - Contained inflation"
-            else:
-                pressure = "DEFLATION - Falling prices"
+            pressure = self._classify(avg_change, 'inflation', self._INFLATION_LEVELS, self._INFLATION_DEFAULT)
         else:
             pressure = "N/A"
             avg_change = np.nan
@@ -215,24 +250,8 @@ class MacroSituationAnalyzer:
         lqd_level = None
 
         if 'VIX' in factors_data and len(factors_data['VIX']) > 0:
-            vix = factors_data['VIX'].iloc[-1]
-            vix_level = vix
-            
-            vix_panic = MACRO_SITUATION_THRESHOLDS['vix']['panic']
-            vix_stress = MACRO_SITUATION_THRESHOLDS['vix']['stress']
-            vix_tension = MACRO_SITUATION_THRESHOLDS['vix']['tension']
-            vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
-            
-            if vix > vix_panic:
-                market_condition = "PANIC — Extreme stress"
-            elif vix > vix_stress:
-                market_condition = "STRESS — High tension"
-            elif vix > vix_tension:
-                market_condition = "TENSION — Elevated anxiety"
-            elif vix > vix_normal:
-                market_condition = "NORMAL — Controlled volatility"
-            else:
-                market_condition = "COMPLACENCY — Very low volatility"
+            vix_level = factors_data['VIX'].iloc[-1]
+            market_condition = self._classify(vix_level, 'vix', self._VIX_MARKET_LEVELS, self._VIX_MARKET_DEFAULT)
 
         if 'HYG' in factors_data and 'LQD' in factors_data:
             if len(factors_data['HYG']) > 0 and len(factors_data['LQD']) > 0:
@@ -256,56 +275,21 @@ class MacroSituationAnalyzer:
         
         if 'VIX' in factors_data and len(factors_data['VIX']) > 0:
             vix = factors_data['VIX'].iloc[-1]
-            
-            vix_panic = MACRO_SITUATION_THRESHOLDS['vix']['panic']
-            vix_stress = MACRO_SITUATION_THRESHOLDS['vix']['stress']
-            vix_tension = MACRO_SITUATION_THRESHOLDS['vix']['tension']
-            vix_normal = MACRO_SITUATION_THRESHOLDS['vix']['normal']
-            
-            if vix > vix_panic:
-                fear_level = "PANIC"
-            elif vix > vix_stress:
-                fear_level = "EXTREME FEAR"
-            elif vix > vix_tension:
-                fear_level = "ANXIETY"
-            elif vix > vix_normal:
-                fear_level = "MODERATE"
-            else:
-                fear_level = "COMPLACENCY"
+            fear_level = self._classify(vix, 'vix', self._VIX_FEAR_LEVELS, self._VIX_FEAR_DEFAULT)
 
-        dxy_trend_3m = None
-        dxy_trend_1m = None
-        dxy_trend_1w = None
-        
+        dxy_trend_3m = dxy_trend_1m = dxy_trend_1w = None
         if 'DXY' in factors_data and len(factors_data['DXY']) > 0:
             dxy = factors_data['DXY']
-            current = dxy.iloc[-1]
+            dxy_trend_3m = self._calculate_trend(dxy, PERIOD_QUARTER)
+            dxy_trend_1m = self._calculate_trend(dxy, PERIOD_MONTH)
+            dxy_trend_1w = self._calculate_trend(dxy, PERIOD_WEEK)
 
-            if len(dxy) >= PERIOD_QUARTER and dxy.iloc[-PERIOD_QUARTER] > 0:
-                dxy_trend_3m = (current / dxy.iloc[-PERIOD_QUARTER] - 1) * 100
-            
-            if len(dxy) >= PERIOD_MONTH and dxy.iloc[-PERIOD_MONTH] > 0:
-                dxy_trend_1m = (current / dxy.iloc[-PERIOD_MONTH] - 1) * 100
-
-            if len(dxy) >= PERIOD_WEEK and dxy.iloc[-PERIOD_WEEK] > 0:
-                dxy_trend_1w = (current / dxy.iloc[-PERIOD_WEEK] - 1) * 100
-
-        gold_trend_3m = None
-        gold_trend_1m = None
-        gold_trend_1w = None
-        
+        gold_trend_3m = gold_trend_1m = gold_trend_1w = None
         if 'GOLD' in factors_data and len(factors_data['GOLD']) > 0:
             gold = factors_data['GOLD']
-            current = gold.iloc[-1]
-
-            if len(gold) >= PERIOD_QUARTER and gold.iloc[-PERIOD_QUARTER] > 0:
-                gold_trend_3m = (current / gold.iloc[-PERIOD_QUARTER] - 1) * 100
-
-            if len(gold) >= PERIOD_MONTH and gold.iloc[-PERIOD_MONTH] > 0:
-                gold_trend_1m = (current / gold.iloc[-PERIOD_MONTH] - 1) * 100
-            
-            if len(gold) >= PERIOD_WEEK and gold.iloc[-PERIOD_WEEK] > 0:
-                gold_trend_1w = (current / gold.iloc[-PERIOD_WEEK] - 1) * 100
+            gold_trend_3m = self._calculate_trend(gold, PERIOD_QUARTER)
+            gold_trend_1m = self._calculate_trend(gold, PERIOD_MONTH)
+            gold_trend_1w = self._calculate_trend(gold, PERIOD_WEEK)
 
         dollar_strength = None
         strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
@@ -349,12 +333,10 @@ class MacroSituationAnalyzer:
         significant_gold = MACRO_SITUATION_THRESHOLDS['trends']['significant_gold']
         strong_move = MACRO_SITUATION_THRESHOLDS['trends']['strong_move']
 
-        gold_trend_1y = None
-        if 'GOLD' in factors_data and len(factors_data['GOLD']) >= PERIOD_YEAR:
-            gold = factors_data['GOLD']
-            current_gold = gold.iloc[-1]
-            if gold.iloc[-PERIOD_YEAR] > 0:
-                gold_trend_1y = (current_gold / gold.iloc[-PERIOD_YEAR] - 1) * 100
+        gold_trend_1y = (
+            self._calculate_trend(factors_data['GOLD'], PERIOD_YEAR)
+            if 'GOLD' in factors_data else None
+        )
         
         if gold_trend_3m is not None:
             if gold_trend_3m > significant_gold:
@@ -411,45 +393,28 @@ class MacroSituationAnalyzer:
             'INTL_BOND': {'region': 'International', 'tenor': '10Y'}
         }
         
-        print(f"[analyze_global_bonds Debug] Factores disponibles en factors_data: {list(factors_data.keys())}")
-        print(f"[analyze_global_bonds Debug] Factores buscados: {list(regions.keys())}")
+        logger.debug(f"[analyze_global_bonds] Available factors: {list(factors_data.keys())}")
+        logger.debug(f"[analyze_global_bonds] Requested factors: {list(regions.keys())}")
         
         for factor, bond_info in regions.items():
-            if factor in factors_data:
-                series = factors_data[factor]
-                if len(series) > 0:
-                    current = series.iloc[-1]
-                    region_name = f"{bond_info['region']} {bond_info['tenor']}"
-                    bond_data = {'level': current}
+            if factor not in factors_data:
+                logger.debug(f"[analyze_global_bonds] Factor {factor} not found in factors_data")
+                continue
 
-                    if len(series) >= PERIOD_YEAR:
-                        year_ago = series.iloc[-PERIOD_YEAR]
-                        if year_ago > 0:
-                            change_1y = (current / year_ago - 1) * 100
-                            bond_data['change_1y'] = change_1y
-                        else:
-                            bond_data['change_1y'] = np.nan
-                    else:
-                        bond_data['change_1y'] = np.nan
+            series = factors_data[factor]
+            if len(series) == 0:
+                logger.debug(f"[analyze_global_bonds] Factor {factor} found but empty")
+                continue
 
-                    if len(series) >= PERIOD_MONTH:
-                        month_ago = series.iloc[-PERIOD_MONTH]
-                        if month_ago > 0:
-                            change_1m = (current / month_ago - 1) * 100
-                            bond_data['change_1m'] = change_1m
-                        else:
-                            bond_data['change_1m'] = np.nan
-                    else:
-                        bond_data['change_1m'] = np.nan
-                    
-                    bonds[region_name] = bond_data
-                    print(f"[analyze_global_bonds Debug] Bono agregado: {region_name} (factor: {factor})")
-                else:
-                    print(f"[analyze_global_bonds Debug] Factor {factor} encontrado pero sin datos (len={len(series)})")
-            else:
-                print(f"[analyze_global_bonds Debug] Factor {factor} NO encontrado en factors_data")
+            region_name = f"{bond_info['region']} {bond_info['tenor']}"
+            bonds[region_name] = {
+                'level': series.iloc[-1],
+                'change_1y': self._pct_change(series, PERIOD_YEAR),
+                'change_1m': self._pct_change(series, PERIOD_MONTH),
+            }
+            logger.debug(f"[analyze_global_bonds] Bond added: {region_name} (factor: {factor})")
         
-        print(f"[analyze_global_bonds Debug] Bonos finales: {list(bonds.keys())}")
+        logger.debug(f"[analyze_global_bonds] Final bonds: {list(bonds.keys())}")
         return bonds
     
     def get_current_snapshot(
