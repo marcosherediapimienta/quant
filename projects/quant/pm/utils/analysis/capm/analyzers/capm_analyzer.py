@@ -25,11 +25,7 @@ class CAPMAnalyzer:
         alpha_daily = alpha_test.alpha_daily if not np.isnan(alpha_test.alpha_daily) else capm.alpha_daily
         beta = alpha_test.beta if not np.isnan(alpha_test.beta) else capm.beta
         alpha_annual = alpha_test.jensen_alpha if not np.isnan(alpha_test.jensen_alpha) else capm.jensen_alpha
-
-        try:
-            r_squared = float(capm.correlation ** 2) if not np.isnan(capm.correlation) else np.nan
-        except (TypeError, ValueError, OverflowError):
-            r_squared = np.nan
+        r_squared = alpha_test.r_squared if not np.isnan(alpha_test.r_squared) else capm.r_squared
 
         return {
             'alpha_daily': alpha_daily,

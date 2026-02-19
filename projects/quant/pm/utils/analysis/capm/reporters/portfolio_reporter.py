@@ -19,26 +19,26 @@ class PortfolioReporter:
         
         tangent = results['tangent_portfolio']
         if tangent is None:
-            print("⚠️  No se pudo calcular el portafolio tangente")
+            print(" Could not calculate tangent portfolio")
             return
         
-        print("PORTAFOLIO TANGENTE (Máximo Sharpe)".center(60))
-        print("CARACTERÍSTICAS")
-        print(f"  Retorno Esperado:        {tangent['return']*100:>8.2f}%")
-        print(f"  Volatilidad:             {tangent['volatility']*100:>8.2f}%")
+        print("TANGENT PORTFOLIO (Maximum Sharpe)".center(60))
+        print("CHARACTERISTICS")
+        print(f"  Expected Return:         {tangent['return']*100:>8.2f}%")
+        print(f"  Volatility:              {tangent['volatility']*100:>8.2f}%")
         print(f"  Sharpe Ratio:            {tangent['sharpe_ratio']:>8.3f}")
         
         if tangent['weights'] is not None:
-            print("COMPOSICIÓN DEL PORTAFOLIO")
+            print("PORTFOLIO COMPOSITION")
             weights_df = pd.DataFrame({
-                'Activo': tangent['assets'],
-                'Peso': tangent['weights']
+                'Asset': tangent['assets'],
+                'Weight': tangent['weights']
             })
-            weights_df = weights_df[weights_df['Peso'] > MIN_WEIGHT_DISPLAY]
-            weights_df = weights_df.sort_values('Peso', ascending=False)
+            weights_df = weights_df[weights_df['Weight'] > MIN_WEIGHT_DISPLAY]
+            weights_df = weights_df.sort_values('Weight', ascending=False)
             
             for _, row in weights_df.iterrows():
-                print(f"  {row['Activo']:<10} {row['Peso']*100:>7.2f}%")
+                print(f"  {row['Asset']:<10} {row['Weight']*100:>7.2f}%")
         
     def generate_minimum_variance_report(
         self,
@@ -49,21 +49,21 @@ class PortfolioReporter:
         results = self.analyzer.analyze_minimum_variance(returns, allow_short)
         
         if results['weights'] is None or len(results['weights']) == 0:
-            print("⚠️  No se pudo calcular el portafolio de mínima varianza")
+            print(" Could not calculate minimum variance portfolio")
             return
 
-        print("PORTAFOLIO DE MÍNIMA VARIANZA".center(60))
-        print("CARACTERÍSTICAS")
-        print(f"  Retorno Esperado:        {results['return']*100:>8.2f}%")
-        print(f"  Volatilidad:             {results['volatility']*100:>8.2f}%")
+        print("MINIMUM VARIANCE PORTFOLIO".center(60))
+        print("CHARACTERISTICS")
+        print(f"  Expected Return:         {results['return']*100:>8.2f}%")
+        print(f"  Volatility:              {results['volatility']*100:>8.2f}%")
         
-        print("COMPOSICIÓN DEL PORTAFOLIO")
+        print("PORTFOLIO COMPOSITION")
         weights_df = pd.DataFrame({
-            'Activo': results['assets'],
-            'Peso': results['weights']
+            'Asset': results['assets'],
+            'Weight': results['weights']
         })
-        weights_df = weights_df[weights_df['Peso'] > MIN_WEIGHT_DISPLAY]
-        weights_df = weights_df.sort_values('Peso', ascending=False)
+        weights_df = weights_df[weights_df['Weight'] > MIN_WEIGHT_DISPLAY]
+        weights_df = weights_df.sort_values('Weight', ascending=False)
         
         for _, row in weights_df.iterrows():
-            print(f"  {row['Activo']:<10} {row['Peso']*100:>7.2f}%")
+            print(f"  {row['Asset']:<10} {row['Weight']*100:>7.2f}%")
