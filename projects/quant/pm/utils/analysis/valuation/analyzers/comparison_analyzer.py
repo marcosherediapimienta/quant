@@ -3,6 +3,9 @@ import pandas as pd
 from typing import Dict, List
 from .company_analyzer import CompanyAnalyzer, AnalysisWeights, ConclusionThresholds
 
+_SCORE_CATEGORIES = ('profitability', 'financial_health', 'growth', 'efficiency', 'valuation')
+_STAT_CATEGORIES = (*_SCORE_CATEGORIES, 'total')
+
 class ComparisonAnalyzer:
     def __init__(self, company_analyzer: CompanyAnalyzer = None):
         self.company_analyzer = company_analyzer or CompanyAnalyzer()
@@ -31,7 +34,7 @@ class ComparisonAnalyzer:
         
         if not valid_results:
             return {
-                'error': 'No se pudieron analizar las empresas',
+                'error': 'Could not analyze the given companies',
                 'individual_results': results,
                 'success': False
             }
@@ -50,7 +53,8 @@ class ComparisonAnalyzer:
             'success': True
         }
     
-    def _create_ranking(self, results: Dict[str, Dict]) -> List[Dict]:
+    @staticmethod
+    def _create_ranking(results: Dict[str, Dict]) -> List[Dict]:
         ranking_data = []
         
         for ticker, result in results.items():
@@ -70,44 +74,36 @@ class ComparisonAnalyzer:
         
         return ranking_data
     
-    def _identify_leaders(self, results: Dict[str, Dict]) -> Dict:
-        categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation']
+    @staticmethod
+    def _identify_leaders(results: Dict[str, Dict]) -> Dict:
         leaders = {}
         
-        for cat in categories:
-            scores = []
-            for ticker, result in results.items():
-                score = result.get('scores', {}).get(cat)
-                if pd.notna(score):
-                    scores.append((ticker, result.get('name', ticker), score))
+        for cat in _SCORE_CATEGORIES:
+            scores = [
+                (ticker, result.get('name', ticker), result.get('scores', {}).get(cat))
+                for ticker, result in results.items()
+                if pd.notna(result.get('scores', {}).get(cat))
+            ]
             
             if scores:
                 scores_sorted = sorted(scores, key=lambda x: x[2], reverse=True)
                 leaders[cat] = {
-                    'best': {
-                        'ticker': scores_sorted[0][0],
-                        'name': scores_sorted[0][1],
-                        'score': scores_sorted[0][2]
-                    },
-                    'worst': {
-                        'ticker': scores_sorted[-1][0],
-                        'name': scores_sorted[-1][1],
-                        'score': scores_sorted[-1][2]
-                    }
+                    'best': {'ticker': scores_sorted[0][0], 'name': scores_sorted[0][1], 'score': scores_sorted[0][2]},
+                    'worst': {'ticker': scores_sorted[-1][0], 'name': scores_sorted[-1][1], 'score': scores_sorted[-1][2]}
                 }
         
         return leaders
     
-    def _calculate_group_stats(self, results: Dict[str, Dict]) -> Dict:
-        categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation', 'total']
+    @staticmethod
+    def _calculate_group_stats(results: Dict[str, Dict]) -> Dict:
         stats = {}
         
-        for cat in categories:
-            scores = []
-            for result in results.values():
-                score = result.get('scores', {}).get(cat)
-                if pd.notna(score):
-                    scores.append(score)
+        for cat in _STAT_CATEGORIES:
+            scores = [
+                result.get('scores', {}).get(cat)
+                for result in results.values()
+                if pd.notna(result.get('scores', {}).get(cat))
+            ]
             
             if scores:
                 stats[cat] = {

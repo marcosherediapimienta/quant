@@ -8,6 +8,14 @@ from .formatters import (
     separator, FormatConfig
 )
 
+_SCORE_CATEGORIES = [
+    ('Profitability', 'profitability'),
+    ('Financial Health', 'financial_health'),
+    ('Growth', 'growth'),
+    ('Efficiency', 'efficiency'),
+    ('Valuation', 'valuation'),
+]
+
 @dataclass 
 class ReportSections:
     summary: bool = True
@@ -32,37 +40,32 @@ class CompanyReporter:
         if not result.get('success'):
             return self._render_error(result)
         
-        lines = []
-        lines.append(self._render_header(result))
+        section_renderers = [
+            ('summary', self._render_summary),
+            ('profitability', self._render_profitability),
+            ('financial_health', self._render_financial_health),
+            ('growth', self._render_growth),
+            ('efficiency', self._render_efficiency),
+            ('valuation', self._render_valuation),
+            ('alerts', self._render_alerts),
+        ]
 
-        if self.sections.summary:
-            lines.append(self._render_summary(result))
-        
-        if self.sections.profitability:
-            lines.append(self._render_profitability(result))
-        
-        if self.sections.financial_health:
-            lines.append(self._render_financial_health(result))
-        
-        if self.sections.growth:
-            lines.append(self._render_growth(result))
-        
-        if self.sections.efficiency:
-            lines.append(self._render_efficiency(result))
-        
-        if self.sections.valuation:
-            lines.append(self._render_valuation(result))
-        
-        if self.sections.alerts:
-            lines.append(self._render_alerts(result))
+        lines = [self._render_header(result)]
+
+        for section_name, renderer in section_renderers:
+            if getattr(self.sections, section_name, False):
+                rendered = renderer(result)
+                if rendered:
+                    lines.append(rendered)
 
         lines.append(self._render_footer(result))
         return "\n".join(filter(None, lines))
     
-    def _render_error(self, result: Dict) -> str:
+    @staticmethod
+    def _render_error(result: Dict) -> str:
         ticker = result.get('ticker', 'N/A')
-        error = result.get('error', 'Error desconocido')
-        return f"❌ Error analizando {ticker}: {error}"
+        error = result.get('error', 'Unknown error')
+        return f"❌ Error analyzing {ticker}: {error}"
     
     def _render_header(self, r: Dict) -> str:
         w = self.config.line_width
@@ -70,8 +73,8 @@ class CompanyReporter:
             "=" * w,
             f"ANALYSIS: {r.get('name', r['ticker'])} ({r['ticker']})",
             "=" * w,
-            f"Sector: {r.get('sector') or 'N/A'} | Industria: {r.get('industry') or 'N/A'}",
-            f"País: {r.get('country') or 'N/A'} | Moneda: {r.get('currency', 'USD')}",
+            f"Sector: {r.get('sector') or 'N/A'} | Industry: {r.get('industry') or 'N/A'}",
+            f"Country: {r.get('country') or 'N/A'} | Currency: {r.get('currency', 'USD')}",
             ""
         ]
         return "\n".join(lines)
@@ -81,21 +84,13 @@ class CompanyReporter:
         bw = self.config.bar_width
         s = r['scores']
         
-        categories = [
-            ('Profitability', 'profitability'),
-            ('Financial Health', 'financial_health'),
-            ('Growth', 'growth'),
-            ('Efficiency', 'efficiency'),
-            ('Valuation', 'valuation'),
-        ]
-        
         lines = [
             separator("─", w),
             "SCORE SUMMARY",
             separator("─", w),
         ]
         
-        for name, key in categories:
+        for name, key in _SCORE_CATEGORIES:
             score = s.get(key)
             emoji = score_emoji(score)
             bar = score_bar(score, bw)
@@ -185,9 +180,9 @@ class CompanyReporter:
             f"EFFICIENCY (Score: {fmt_num(score, 1)})",
             separator("─", w),
             f"  Asset Turnover:   {fmt_multiple(e['asset_turnover'])}",
-            f"  DSO:              {fmt_num(e['days_sales_outstanding'], 0)} días",
-            f"  DIO:              {fmt_num(e['days_inventory_outstanding'], 0)} días",
-            f"  Revenue/Empleado: {fmt_money(e['revenue_per_employee'])}",
+            f"  DSO:              {fmt_num(e['days_sales_outstanding'], 0)} days",
+            f"  DIO:              {fmt_num(e['days_inventory_outstanding'], 0)} days",
+            f"  Revenue/Employee: {fmt_money(e['revenue_per_employee'])}",
             ""
         ]
         return "\n".join(lines)

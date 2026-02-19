@@ -2,9 +2,9 @@ from typing import List, Dict
 from ....tools.config import PORTFOLIO_CONFIG
 
 class PortfolioMetricsCalculator:
-    def __init__(self, default_sector: str = ''):
+    def __init__(self, default_sector: str = None):
         defaults = PORTFOLIO_CONFIG['defaults']
-        self.default_sector = default_sector if default_sector else defaults['sector_name']
+        self.default_sector = default_sector if default_sector is not None else defaults['sector_name']
     
     def calculate(
         self,

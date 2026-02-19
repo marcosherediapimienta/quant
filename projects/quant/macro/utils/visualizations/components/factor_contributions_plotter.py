@@ -46,10 +46,10 @@ class FactorContributionsPlotter:
             ax.plot(contrib_cumsum.index, contrib_cumsum[col], 
                    label=col, linewidth=2, alpha=0.8)
         
-        ax.set_title('Contribución Acumulada por Factor Macro', 
+        ax.set_title('Accumulated Contribution by Macro Factor', 
                     fontsize=14, fontweight='bold')
-        ax.set_xlabel('Fecha')
-        ax.set_ylabel('Crecimiento (base 1)')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Growth (base 1)')
         ax.axhline(1, color='black', linestyle='--', linewidth=1, alpha=0.5)
         ax.legend(loc='best', ncol=2, fontsize=9)
         ax.grid(True, alpha=0.3)

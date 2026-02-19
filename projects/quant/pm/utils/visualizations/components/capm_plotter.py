@@ -11,7 +11,7 @@ class CAPMPlotter:
         alpha: float,
         beta: float,
         risk_free_rate: float,
-        title: str = "Regresión CAPM",
+        title: str = "CAPM Regression",
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
 
@@ -21,16 +21,16 @@ class CAPMPlotter:
         market_excess = market_returns - risk_free_rate
         asset_excess = asset_returns - risk_free_rate
 
-        ax.scatter(market_excess, asset_excess, alpha=0.5, s=20, label='Observaciones')
+        ax.scatter(market_excess, asset_excess, alpha=0.5, s=20, label='Observations')
 
         x_line = np.linspace(market_excess.min(), market_excess.max(), 100)
         y_line = alpha + beta * x_line
         ax.plot(x_line, y_line, 'r-', linewidth=2, label=f'CAPM: α={alpha:.4f}, β={beta:.3f}')
 
-        ax.plot(x_line, x_line, 'k--', linewidth=1, alpha=0.5, label='Mercado (β=1)')
+        ax.plot(x_line, x_line, 'k--', linewidth=1, alpha=0.5, label='Market (β=1)')
         
-        ax.set_xlabel('Retorno Exceso del Mercado', fontsize=12)
-        ax.set_ylabel('Retorno Exceso del Activo', fontsize=12)
+        ax.set_xlabel('Market Excess Return', fontsize=12)
+        ax.set_ylabel('Asset Excess Return', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -40,7 +40,7 @@ class CAPMPlotter:
     def plot_alpha_beta_comparison(
         self,
         results_df: 'pd.DataFrame',
-        title: str = "Comparación Alpha vs Beta",
+        title: str = "Alpha vs Beta Comparison",
         ax: Optional[plt.Axes] = None
     ) -> plt.Axes:
 
@@ -70,7 +70,7 @@ class CAPMPlotter:
         ax.axvline(x=1, color='k', linestyle='--', linewidth=1, alpha=0.5, label='β=1')
         
         ax.set_xlabel('Beta', fontsize=12)
-        ax.set_ylabel('Alpha Anual (%)', fontsize=12)
+        ax.set_ylabel('Annual Alpha (%)', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)

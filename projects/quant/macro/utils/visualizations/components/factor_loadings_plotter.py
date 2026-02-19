@@ -31,8 +31,8 @@ class FactorLoadingsPlotter:
         
         bars = ax.barh(factors, values, color=colors, alpha=0.7, edgecolor='black')
         ax.axvline(0, color='black', linestyle='-', linewidth=1)
-        ax.set_xlabel('Beta (Sensibilidad)', fontsize=11, fontweight='bold')
-        ax.set_title('Factor Loadings (Betas) por Factor Macro', 
+        ax.set_xlabel('Beta (Sensitivity)', fontsize=11, fontweight='bold')
+        ax.set_title('Factor Loadings (Betas) by Macro Factor', 
                     fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='x')
 
@@ -45,7 +45,7 @@ class FactorLoadingsPlotter:
         if is_own_figure:
             try:
                 plt.tight_layout()
-            except:
+            except Exception:
                 pass
         
         return ax
@@ -68,16 +68,16 @@ class FactorLoadingsPlotter:
         df.plot(kind='bar', ax=ax, width=0.8, alpha=0.8, edgecolor='black')
         ax.set_xlabel('Factor', fontsize=11, fontweight='bold')
         ax.set_ylabel('Beta', fontsize=11, fontweight='bold')
-        ax.set_title('Comparación de Factor Loadings', fontsize=14, fontweight='bold')
+        ax.set_title('Factor Loadings Comparison', fontsize=14, fontweight='bold')
         ax.axhline(0, color='black', linestyle='-', linewidth=1)
-        ax.legend(title='Período', fontsize=9)
+        ax.legend(title='Period', fontsize=9)
         ax.grid(True, alpha=0.3, axis='y')
         plt.xticks(rotation=45, ha='right')
         
         if is_own_figure:
             try:
                 plt.tight_layout()
-            except:
+            except Exception:
                 pass
         
         return ax

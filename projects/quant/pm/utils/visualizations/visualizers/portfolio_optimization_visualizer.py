@@ -36,7 +36,7 @@ class PortfolioOptimizationVisualizer:
         if cml is not None:
             self.plotter.plot_frontier_with_cml(
                 frontier, cml, risk_free_rate,
-                title="Frontera Eficiente y Capital Market Line",
+                title="Efficient Frontier and Capital Market Line",
                 ax=ax1
             )
         else:
@@ -46,37 +46,37 @@ class PortfolioOptimizationVisualizer:
 
         if tangent and tangent['weights'] is not None:
             weights_df = pd.DataFrame({
-                'Activo': tangent['assets'],
-                'Peso': tangent['weights']
+                'Asset': tangent['assets'],
+                'Weight': tangent['weights']
             })
-            weights_df = weights_df[weights_df['Peso'] > MIN_WEIGHT_DISPLAY].sort_values('Peso', ascending=True)
-            ax2.barh(weights_df['Activo'], weights_df['Peso'] * 100)
-            ax2.set_xlabel('Peso (%)', fontsize=11)
-            ax2.set_title('Composición Portafolio Tangente', fontsize=12, fontweight='bold')
+            weights_df = weights_df[weights_df['Weight'] > MIN_WEIGHT_DISPLAY].sort_values('Weight', ascending=True)
+            ax2.barh(weights_df['Asset'], weights_df['Weight'] * 100)
+            ax2.set_xlabel('Weight (%)', fontsize=11)
+            ax2.set_title('Tangent Portfolio Composition', fontsize=12, fontweight='bold')
             ax2.grid(True, alpha=0.3, axis='x')
         else:
-            ax2.text(0.5, 0.5, 'No disponible', ha='center', va='center', transform=ax2.transAxes)
-            ax2.set_title('Composición Portafolio Tangente', fontsize=12, fontweight='bold')
+            ax2.text(0.5, 0.5, 'Not available', ha='center', va='center', transform=ax2.transAxes)
+            ax2.set_title('Tangent Portfolio Composition', fontsize=12, fontweight='bold')
 
         ax3 = fig.add_subplot(gs[1, 1])
         ax3.axis('off')
         if tangent:
             stats_text = f"""
-            PORTAFOLIO TANGENTE
+            TANGENT PORTFOLIO
             
-            Retorno Esperado:  {tangent['return']*100:.2f}%
-            Volatilidad:       {tangent['volatility']*100:.2f}%
+            Expected Return:   {tangent['return']*100:.2f}%
+            Volatility:        {tangent['volatility']*100:.2f}%
             Sharpe Ratio:      {tangent['sharpe_ratio']:.3f}
             
-            Tasa Libre Riesgo: {risk_free_rate*100:.2f}%
+            Risk-Free Rate:    {risk_free_rate*100:.2f}%
             """
         else:
-            stats_text = "No disponible"
+            stats_text = "Not available"
         
         ax3.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
                 verticalalignment='center', transform=ax3.transAxes)
         
-        plt.suptitle("Análisis de Optimización de Portafolio", 
+        plt.suptitle("Portfolio Optimization Analysis", 
                     fontsize=16, fontweight='bold', y=0.98)
         
         return fig

@@ -23,7 +23,7 @@ class DataLoader:
         threads = threads if threads is not None else DOWNLOAD_DEFAULTS['threads']
         progress = progress if progress is not None else DOWNLOAD_DEFAULTS['progress']
         
-        print(f"Período: {start_date} → {end_date}")
+        print(f"Period: {start_date} → {end_date}")
         
         try:
             data = yf.download(
@@ -37,11 +37,11 @@ class DataLoader:
             )
             
             if data.empty:
-                raise ValueError("No se descargaron datos")
+                raise ValueError("No data downloaded")
             return data
             
         except Exception as e:
-            raise RuntimeError(f"Error en descarga: {e}")
+            raise RuntimeError(f"Download error: {e}")
     
     def download_single(
         self,

@@ -1,8 +1,7 @@
-import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, score_metric, classify_metric
+from .helpers import nan_if_missing, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
     VALUATION_THRESHOLDS, 
     SCORING_RANGES,
@@ -16,11 +15,15 @@ class GrowthThresholds:
     earnings_growth: Dict[str, float] = None
     
     def __post_init__(self):
-        val_thresh = VALUATION_THRESHOLDS.get('growth', {})
-        self.revenue_growth = self.revenue_growth or val_thresh.get('revenue_growth',
-            {'excellent': 0.25, 'good': 0.15, 'fair': 0.08, 'poor': 0.03})
-        self.earnings_growth = self.earnings_growth or val_thresh.get('earnings_growth',
-            {'excellent': 0.30, 'good': 0.20, 'fair': 0.10, 'poor': 0.05})
+        growth = VALUATION_THRESHOLDS['growth']
+        for field in ('revenue_growth', 'earnings_growth'):
+            if getattr(self, field) is None:
+                setattr(self, field, growth[field])
+
+_SCORING_SPECS = [
+    MetricSpec(key='revenue_growth_yoy', range_key='revenue', weight_key='revenue'),
+    MetricSpec(key='earnings_growth_yoy', range_key='earnings', weight_key='earnings'),
+]
 
 class GrowthMetrics:
     def __init__(self, thresholds: GrowthThresholds = None):
@@ -46,22 +49,7 @@ class GrowthMetrics:
             'earnings_growth_class': classify_metric(earnings_growth, self.thresholds.earnings_growth)
         }
 
-        scores = []
-        if pd.notna(revenue_growth):
-            scores.append(score_metric(
-                revenue_growth, 
-                self.ranges['revenue']['min'], 
-                self.ranges['revenue']['max']
-            ) * self.weights['revenue'])
-        if pd.notna(earnings_growth):
-            scores.append(score_metric(
-                earnings_growth, 
-                self.ranges['earnings']['min'], 
-                self.ranges['earnings']['max']
-            ) * self.weights['earnings'])
-
-        total_weight = sum([self.weights['revenue'], self.weights['earnings']][:len(scores)])
-        growth_score = sum(scores) / total_weight if total_weight > 0 else np.nan
+        growth_score = WeightedScorer.calculate(metrics, _SCORING_SPECS, self.weights, self.ranges)
         sustainability = self._analyze_sustainability(metrics)
         
         return {
@@ -87,26 +75,29 @@ class GrowthMetrics:
             high_threshold = alert_cfg['high_earnings_growth_threshold']
             
             if earn_g > rev_g * earnings_multiple and earn_g > high_threshold:
-                analysis['concerns'].append("Earnings crecen más rápido que ventas - verificar sostenibilidad")
+                analysis['concerns'].append("Earnings growing faster than revenue - verify sustainability")
                 analysis['is_sustainable'] = False
 
         if pd.notna(rev_g) and rev_g < alert_cfg['revenue_decline_mild']:
-            analysis['concerns'].append("Ventas en declive")
+            analysis['concerns'].append("Revenue in decline")
             analysis['is_sustainable'] = False
         
         return analysis
     
+    _ALERT_SPECS = (
+        ('revenue_growth_yoy',  '<', 'revenue_decline_significant', "Significant revenue decline (>{t}%)"),
+        ('earnings_growth_yoy', '<', 'earnings_decline_strong',     "Strong earnings decline (>{t}%)"),
+        ('revenue_growth_yoy',  '>', 'growth_too_high',             "Very high growth (>{t}%) - verify sustainability"),
+    )
+
     def _generate_alerts(self, metrics: Dict) -> List[str]:
+        cfg = ALERT_THRESHOLDS['growth']
         alerts = []
-        alert_cfg = ALERT_THRESHOLDS['growth']
-        
-        if pd.notna(metrics['revenue_growth_yoy']) and metrics['revenue_growth_yoy'] < alert_cfg['revenue_decline_significant']:
-            alerts.append(f"Significant revenue decline (>{abs(alert_cfg['revenue_decline_significant'])*100:.0f}%)")
-        
-        if pd.notna(metrics['earnings_growth_yoy']) and metrics['earnings_growth_yoy'] < alert_cfg['earnings_decline_strong']:
-            alerts.append(f"Strong earnings decline (>{abs(alert_cfg['earnings_decline_strong'])*100:.0f}%)")
-        
-        if pd.notna(metrics['revenue_growth_yoy']) and metrics['revenue_growth_yoy'] > alert_cfg['growth_too_high']:
-            alerts.append(f"Very high growth (>{alert_cfg['growth_too_high']*100:.0f}%) - verify sustainability")
-        
+        for key, op, threshold_key, msg in self._ALERT_SPECS:
+            value = metrics[key]
+            if pd.isna(value):
+                continue
+            t = cfg[threshold_key]
+            if (value > t) if op == '>' else (value < t):
+                alerts.append(msg.format(t=f"{abs(t)*100:.0f}"))
         return alerts

@@ -18,6 +18,14 @@ class ImpliedYieldCurveCalculator:
         '3M': 0.25, '2Y': 2.0, '5Y': 5.0, '10Y': 10.0, '30Y': 30.0
     }
     
+    SIGNAL_THRESHOLDS = (
+        ( 0.5, "Market expects RATE HIKES",      "HAWKISH"),
+        ( 0.1, "Market expects MODERATE HIKES",   "SLIGHTLY HAWKISH"),
+        (-0.1, "Market expects STABILITY",        "NEUTRAL"),
+        (-0.5, "Market expects MODERATE CUTS",    "SLIGHTLY DOVISH"),
+    )
+    SIGNAL_DEFAULT = ("Market expects RATE CUTS", "DOVISH")
+    
     def calculate_forward_rate(
         self,
         rate_short: float,
@@ -99,11 +107,7 @@ class ImpliedYieldCurveCalculator:
         tips_yield_proxy: float,
         tips_is_etf: bool = True
     ) -> Optional[float]:
-
-        if tips_is_etf:
-            return None
-        else:
-            return nominal_rate - tips_yield_proxy
+        return None if tips_is_etf else nominal_rate - tips_yield_proxy
     
     def interpret_forward_curve(
         self,
@@ -124,23 +128,11 @@ class ImpliedYieldCurveCalculator:
 
         avg_diff = np.mean(list(forward_vs_spot.values())) if forward_vs_spot else 0
         
-        if avg_diff > 0.5:
-            expectations = "Market expects RATE HIKES"
-            signal = "HAWKISH"
-        elif avg_diff > 0.1:
-            expectations = "Market expects MODERATE HIKES"
-            signal = "SLIGHTLY HAWKISH"
-        elif avg_diff > -0.1:
-            expectations = "Market expects STABILITY"
-            signal = "NEUTRAL"
-        elif avg_diff > -0.5:
-            expectations = "Market expects MODERATE CUTS"
-            signal = "SLIGHTLY DOVISH"
-        else:
-            expectations = "Market expects RATE CUTS"
-            signal = "DOVISH"
+        for threshold, expectations, signal in self.SIGNAL_THRESHOLDS:
+            if avg_diff > threshold:
+                return expectations, signal
         
-        return expectations, signal
+        return self.SIGNAL_DEFAULT
     
     def analyze(
         self,

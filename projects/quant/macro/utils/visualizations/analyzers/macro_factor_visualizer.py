@@ -44,30 +44,30 @@ class MacroFactorVisualizer:
         idiosyncratic_pct = risk_decomp.get('idiosyncratic_pct', risk_decomp.get('idiosyncratic_risk', 0))
 
         stats_text = f"""
-        ESTADÍSTICAS DEL MODELO
+        MODEL STATISTICS
 
-        R²:                {factor_results['r_squared']:.4f}
-        R² Ajustado:       {factor_results['adj_r_squared']:.4f}
-        Observaciones:     {factor_results['n_obs']}
+        R-squared:         {factor_results['r_squared']:.4f}
+        Adj. R-squared:    {factor_results['adj_r_squared']:.4f}
+        Observations:      {factor_results['n_obs']}
 
         ALPHA
 
-        Alpha Diario:      {factor_results['alpha']*100:.4f}%
-        Alpha Anual:       {factor_results['alpha_annual']*100:.2f}%
+        Daily Alpha:       {factor_results['alpha']*100:.4f}%
+        Annual Alpha:      {factor_results['alpha_annual']*100:.2f}%
 
-        RIESGO
+        RISK
 
-        Sistemático:       {systematic_pct:.2f}%
-        Idiosincrático:    {idiosyncratic_pct:.2f}%
+        Systematic:        {systematic_pct:.2f}%
+        Idiosyncratic:     {idiosyncratic_pct:.2f}%
 
-        FACTORES SIGNIFICATIVOS
+        SIGNIFICANT FACTORS
 
-        {len(significant)} de {len(betas)} factores
+        {len(significant)} of {len(betas)} factors
         """
 
         ax3.text(0.1, 0.5, stats_text, fontsize=11, family='monospace',
                 verticalalignment='center', transform=ax3.transAxes)
-        plt.suptitle('Análisis de Factores Macro - Resumen Completo',
+        plt.suptitle('Macro Factor Analysis - Full Summary',
                     fontsize=16, fontweight='bold', y=0.995)
         
         return fig

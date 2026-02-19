@@ -27,12 +27,12 @@ class DrawdownVisualizer:
         fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
 
         axes[0].plot(cumulative_returns.index, cumulative_returns.values,
-                    linewidth=1.5, label='Retornos Acumulados', color='steelblue')
+                    linewidth=1.5, label='Cumulative Returns', color='steelblue')
         axes[0].plot(running_max.index, running_max.values,
-                    linewidth=1, linestyle='--', label='Máximo Histórico', 
+                    linewidth=1, linestyle='--', label='Historical High', 
                     color='green', alpha=0.7)
-        axes[0].set_title('Evolución del Portfolio', fontsize=14, fontweight='bold')
-        axes[0].set_ylabel('Retorno Acumulado', fontsize=12)
+        axes[0].set_title('Portfolio Evolution', fontsize=14, fontweight='bold')
+        axes[0].set_ylabel('Cumulative Return', fontsize=12)
         axes[0].legend()
         axes[0].grid(True, alpha=0.3)
 
@@ -49,7 +49,7 @@ class DrawdownVisualizer:
                     linewidth=1.5, color='darkred')
         axes[1].set_title('Drawdown', fontsize=14, fontweight='bold')
         axes[1].set_ylabel('Drawdown (%)', fontsize=12)
-        axes[1].set_xlabel('Fecha', fontsize=12)
+        axes[1].set_xlabel('Date', fontsize=12)
         axes[1].grid(True, alpha=0.3)
         axes[1].axhline(y=dd_results['max_drawdown_pct'], 
                        color='red', linestyle='--', alpha=0.7,
@@ -58,8 +58,8 @@ class DrawdownVisualizer:
 
         stats_text = (
             f"Max Drawdown: {dd_results['max_drawdown_pct']:.2f}%\n"
-            f"Fecha: {dd_results['max_drawdown_date'].date()}\n"
-            f"Duración: {dd_results['max_underwater_duration']} días\n"
+            f"Date: {dd_results['max_drawdown_date'].date()}\n"
+            f"Duration: {dd_results['max_underwater_duration']} days\n"
             f"Calmar Ratio: {dd_results['calmar_ratio']:.3f}\n"
             f"Sterling Ratio: {dd_results['sterling_ratio']:.3f}"
         )

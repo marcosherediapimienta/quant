@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, safe_div, score_metric, classify_metric
+from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 
 from ....tools.config import VALUATION_THRESHOLDS, FINANCIAL_HEALTH_SCORING, ALERT_THRESHOLDS
 
@@ -14,11 +14,19 @@ class FinancialHealthThresholds:
     interest_coverage: Dict[str, float] = None
     
     def __post_init__(self):
-        health_thresholds = VALUATION_THRESHOLDS['financial_health']
-        self.debt_ebitda = self.debt_ebitda or health_thresholds['debt_ebitda']
-        self.debt_equity = self.debt_equity or health_thresholds['debt_equity']
-        self.current_ratio = self.current_ratio or health_thresholds['current_ratio']
-        self.interest_coverage = self.interest_coverage or health_thresholds['interest_coverage']
+        health = VALUATION_THRESHOLDS['financial_health']
+        for field in ('debt_ebitda', 'debt_equity', 'current_ratio', 'interest_coverage'):
+            if getattr(self, field) is None:
+                setattr(self, field, health[field])
+
+
+_SCORING_SPECS = [
+    MetricSpec(key='debt_ebitda', range_key='debt_ebitda', weight_key='debt_ebitda', higher_is_better=False),
+    MetricSpec(key='debt_equity', range_key='debt_equity', weight_key='debt_equity', higher_is_better=False),
+    MetricSpec(key='current_ratio', range_key='current_ratio', weight_key='current_ratio', higher_is_better=True),
+    MetricSpec(key='net_cash_ebitda', range_key='net_cash_ebitda', weight_key='net_cash_ebitda', higher_is_better=True),
+    MetricSpec(key='free_cash_flow', range_key='free_cash_flow', weight_key='free_cash_flow', binary_positive=True),
+]
 
 
 class FinancialHealthMetrics:
@@ -32,12 +40,7 @@ class FinancialHealthMetrics:
         ebitda = nan_if_missing(data.get('ebitda'))
         current_ratio = nan_if_missing(data.get('currentRatio'))
         quick_ratio = nan_if_missing(data.get('quickRatio'))
-        debt_equity = nan_if_missing(data.get('debtToEquity'))
-
-        if pd.notna(debt_equity):
-            conversion_factor = ALERT_THRESHOLDS['financial_health'].get('debt_equity_conversion_factor', 100)
-            if debt_equity > 10:  # Probablemente está en %
-                debt_equity = debt_equity / conversion_factor
+        debt_equity = self._normalize_debt_equity(nan_if_missing(data.get('debtToEquity')))
 
         debt_ebitda = safe_div(total_debt, ebitda)
         net_cash = self._calculate_net_cash(total_cash, total_debt)
@@ -60,14 +63,23 @@ class FinancialHealthMetrics:
         }
         
         classifications = {
-            'debt_ebitda_class': self._classify_debt_ratio(debt_ebitda, self.thresholds.debt_ebitda),
-            'debt_equity_class': self._classify_debt_ratio(debt_equity, self.thresholds.debt_equity),
+            'debt_ebitda_class': classify_metric(
+                debt_ebitda, self.thresholds.debt_ebitda,
+                higher_is_better=False, strict=False, default='poor'
+            ),
+            'debt_equity_class': classify_metric(
+                debt_equity, self.thresholds.debt_equity,
+                higher_is_better=False, strict=False, default='poor'
+            ),
             'current_ratio_class': classify_metric(current_ratio, self.thresholds.current_ratio),
             'fcf_class': self._classify_fcf(fcf),
             'net_cash_class': 'positive' if pd.notna(net_cash) and net_cash > 0 else 'negative' if pd.notna(net_cash) else 'N/A'
         }
         
-        score = self._calculate_score(metrics)
+        score = WeightedScorer.calculate(
+            metrics, _SCORING_SPECS,
+            self.config['weights'], self.config['ranges']
+        )
         
         return {
             'metrics': metrics,
@@ -76,64 +88,16 @@ class FinancialHealthMetrics:
             'alerts': self._generate_alerts(metrics)
         }
     
-    def _calculate_score(self, metrics: Dict) -> float:
-        scores = []
-        weights = []
-        cfg_weights = self.config['weights']
-        cfg_ranges = self.config['ranges']
-
-        if pd.notna(metrics['debt_ebitda']):
-            score = score_metric(
-                metrics['debt_ebitda'], 
-                cfg_ranges['debt_ebitda']['min'],
-                cfg_ranges['debt_ebitda']['max'],
-                higher_is_better=False
-            )
-            scores.append(score)
-            weights.append(cfg_weights['debt_ebitda'])
-
-        if pd.notna(metrics['debt_equity']):
-            score = score_metric(
-                metrics['debt_equity'], 
-                cfg_ranges['debt_equity']['min'],
-                cfg_ranges['debt_equity']['max'],
-                higher_is_better=False
-            )
-            scores.append(score)
-            weights.append(cfg_weights['debt_equity'])
-
-        if pd.notna(metrics['current_ratio']):
-            score = score_metric(
-                metrics['current_ratio'], 
-                cfg_ranges['current_ratio']['min'],
-                cfg_ranges['current_ratio']['max'],
-                higher_is_better=True
-            )
-            scores.append(score)
-            weights.append(cfg_weights['current_ratio'])
-
-        if pd.notna(metrics['net_cash_ebitda']):
-            score = score_metric(
-                metrics['net_cash_ebitda'], 
-                cfg_ranges['net_cash_ebitda']['min'],
-                cfg_ranges['net_cash_ebitda']['max'],
-                higher_is_better=True
-            )
-            scores.append(score)
-            weights.append(cfg_weights['net_cash_ebitda'])
-
-        if pd.notna(metrics['free_cash_flow']):
-            fcf_score = 100 if metrics['free_cash_flow'] > 0 else 0
-            scores.append(fcf_score)
-            weights.append(cfg_weights['free_cash_flow'])
-        
-        if not scores:
-            return np.nan
-        
-        total_weight = sum(weights)
-        weighted_sum = sum(s * w for s, w in zip(scores, weights))
-        
-        return weighted_sum / total_weight if total_weight > 0 else np.nan
+    @staticmethod
+    def _normalize_debt_equity(debt_equity: float) -> float:
+        if pd.isna(debt_equity):
+            return debt_equity
+        alert_cfg = ALERT_THRESHOLDS['financial_health']
+        threshold = alert_cfg['debt_equity_likely_percentage_threshold']
+        factor = alert_cfg['debt_equity_conversion_factor']
+        if debt_equity > threshold:
+            debt_equity = debt_equity / factor
+        return debt_equity
     
     def _generate_alerts(self, metrics: Dict) -> List[str]:
         alerts = []
@@ -151,22 +115,23 @@ class FinancialHealthMetrics:
             alerts.append(f"Current Ratio low ({current_ratio:.2f}): liquidity issues")
 
         fcf = metrics['free_cash_flow']
-        if pd.notna(fcf) and fcf < alert_cfg.get('fcf_negative', 0):
+        if pd.notna(fcf) and fcf < alert_cfg['fcf_negative']:
             alerts.append("Negative Free Cash Flow: company is consuming cash")
 
         net_cash = metrics['net_cash']
-        if pd.notna(net_cash) and net_cash < alert_cfg.get('net_cash_negative', 0):
+        if pd.notna(net_cash) and net_cash < alert_cfg['net_cash_negative']:
             alerts.append("Negative net cash position (more debt than cash)")
         
         return alerts
 
-    def _calculate_net_cash(self, total_cash: float, total_debt: float) -> float:
-
+    @staticmethod
+    def _calculate_net_cash(total_cash: float, total_debt: float) -> float:
         if pd.isna(total_cash) or pd.isna(total_debt):
             return np.nan
         return total_cash - total_debt
     
-    def _get_free_cash_flow(self, data: Dict) -> float:
+    @staticmethod
+    def _get_free_cash_flow(data: Dict) -> float:
         fcf = nan_if_missing(data.get('freeCashflow'))
         
         if pd.isna(fcf):
@@ -179,25 +144,8 @@ class FinancialHealthMetrics:
         
         return fcf
     
-    def _classify_debt_ratio(self, ratio: float, thresholds: Dict[str, float]) -> str:
-
-        if pd.isna(ratio):
-            return 'N/A'
-
-        for level, threshold in sorted(thresholds.items(), key=lambda x: x[1]):
-            if ratio <= threshold:
-                return level
-        
-        return 'poor'
-    
-    def _classify_fcf(self, fcf: float) -> str:
-
+    @staticmethod
+    def _classify_fcf(fcf: float) -> str:
         if pd.isna(fcf):
             return 'N/A'
-        
-        if fcf > 0:
-            return 'positive'
-        elif fcf == 0:
-            return 'neutral'
-        else:
-            return 'negative'
+        return 'positive' if fcf > 0 else 'neutral' if fcf == 0 else 'negative'

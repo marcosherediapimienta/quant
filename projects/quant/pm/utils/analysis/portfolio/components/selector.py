@@ -9,25 +9,23 @@ logger = logging.getLogger(__name__)
 class CompanySelector:
     def __init__(
         self,
-        min_score: float = 0.0,
-        max_companies: int = 0,
-        max_per_sector: int = 0,
-        default_sector: str = ''
+        min_score: float = None,
+        max_companies: int = None,
+        max_per_sector: int = None,
+        default_sector: str = None,
     ):
         config = PORTFOLIO_CONFIG['selection']
         defaults = PORTFOLIO_CONFIG['defaults']
-        
-        self.min_score = min_score if min_score > 0 else config['min_score']
-        self.max_companies = max_companies if max_companies > 0 else config['max_companies']
 
-        default_max_per_sector = config['max_per_sector']
+        self.min_score = min_score if min_score is not None else config['min_score']
+        self.max_companies = max_companies if max_companies is not None else config['max_companies']
 
-        if max_per_sector > 0:
+        if max_per_sector is not None:
             self.max_per_sector = max_per_sector
         else:
-            self.max_per_sector = max(default_max_per_sector, self.max_companies // 3)
+            self.max_per_sector = max(config['max_per_sector'], self.max_companies // 3)
 
-        self.default_sector = default_sector if default_sector else defaults['sector_name']
+        self.default_sector = default_sector if default_sector is not None else defaults['sector_name']
         self.score_extractor = ScoreExtractor()
         self.scoring_weights = PORTFOLIO_CONFIG['scoring_weights']
     
@@ -85,14 +83,10 @@ class CompanySelector:
         return pd.DataFrame(rows)
 
     def _deduplicate_by_company(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Remove duplicate share classes of the same company (e.g. GOOGL and GOOG).
-        For each unique company_name, keep only the ticker with the highest total score.
-        """
+  
         if df.empty or 'company_name' not in df.columns:
             return df
-        
-        # Within each company keep the highest-scoring ticker
+
         idx_best = df.groupby('company_name')['total'].idxmax()
         deduped = df.loc[idx_best].reset_index(drop=True)
         
@@ -104,23 +98,12 @@ class CompanySelector:
     
     def _score_by_method(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
 
-        if method == 'balanced':
-            w = self.scoring_weights['balanced']
-            df['final_score'] = (
-                df['profitability'] * w['profitability'] +
-                df['health'] * w['health'] +
-                df['growth'] * w['growth'] +
-                df['valuation'] * w['valuation']
-            )
-        elif method == 'value':
-            w = self.scoring_weights['value']
-            df['final_score'] = df['total'] * w['total'] + df['valuation'] * w['valuation']
-        elif method == 'growth':
-            w = self.scoring_weights['growth']
-            df['final_score'] = df['total'] * w['total'] + df['growth'] * w['growth']
-        else:  
+        if method in self.scoring_weights:
+            w = self.scoring_weights[method]
+            df['final_score'] = sum(df[col] * weight for col, weight in w.items())
+        else:
             df['final_score'] = df['total']
-        
+
         return df.sort_values('final_score', ascending=False)
     
     def _apply_diversification(self, df: pd.DataFrame) -> List[str]:

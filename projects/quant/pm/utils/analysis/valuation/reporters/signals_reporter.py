@@ -9,6 +9,12 @@ from .formatters import (
 
 from ....tools.config import REPORTING_CONFIG
 
+_SIGNAL_EMOJIS = {
+    'BUY': '🟢',
+    'SELL': '🔴',
+    'HOLD': '🟡',
+}
+
 @dataclass
 class SignalsReportSections:
     individual: bool = True
@@ -37,7 +43,7 @@ class SignalsReporter:
         print(f"INVESTMENT SIGNAL: {signal.ticker}")
         print("=" * w)
         
-        emoji = self._get_signal_emoji(signal.signal)
+        emoji = _SIGNAL_EMOJIS.get(signal.signal.upper(), '⚪')
         print(f"\n{emoji} {signal.signal} (Confidence: {signal.confidence:.1f}%)")
 
         print(f"📊 SCORES:")
@@ -47,7 +53,7 @@ class SignalsReporter:
         print(f"💰 PRICES:")
         print(f"   Current:       {fmt_money(signal.current_price)}")
         print(f"   Target:        {fmt_money(signal.price_target)}")
-        print(f"   Potential:     {fmt_pct(signal.upside_potential / 100)}")
+        print(f"   Potential:     {fmt_pct(signal.upside_potential)}")
 
         if signal.reasons:
             print(f"\n💡 REASONS:")
@@ -62,9 +68,7 @@ class SignalsReporter:
         if not self.sections.summary:
             return
         
-        buys = [s for s in signals if s.signal in ["BUY", "COMPRA"]]
-        sells = [s for s in signals if s.signal in ["SELL", "VENTA"]]
-        holds = [s for s in signals if s.signal in ["HOLD", "MANTENER"]]
+        by_type = self._group_by_signal(signals)
         
         w = self.config.line_width
         print("\n" + "=" * w)
@@ -73,17 +77,17 @@ class SignalsReporter:
 
         top_n = self.reporting_cfg['top_opportunities']
         
-        print(f"\n🟢 BUYS: {len(buys)}")
-        if buys:
-            for s in sorted(buys, key=lambda x: x.confidence, reverse=True)[:top_n]:
-                print(f"   {s.ticker}: {s.confidence:.1f}% confidence, {fmt_pct(s.upside_potential / 100)} potential")
+        print(f"\n🟢 BUYS: {len(by_type['BUY'])}")
+        if by_type['BUY']:
+            for s in sorted(by_type['BUY'], key=lambda x: x.confidence, reverse=True)[:top_n]:
+                print(f"   {s.ticker}: {s.confidence:.1f}% confidence, {fmt_pct(s.upside_potential)} potential")
         
-        print(f"\n🔴 SELLS: {len(sells)}")
-        if sells:
-            for s in sorted(sells, key=lambda x: x.confidence, reverse=True)[:top_n]:
+        print(f"\n🔴 SELLS: {len(by_type['SELL'])}")
+        if by_type['SELL']:
+            for s in sorted(by_type['SELL'], key=lambda x: x.confidence, reverse=True)[:top_n]:
                 print(f"   {s.ticker}: {s.confidence:.1f}% confidence")
         
-        print(f"\n🟡 HOLDS: {len(holds)}")
+        print(f"\n🟡 HOLDS: {len(by_type['HOLD'])}")
         print("=" * w)
 
     def print_top_opportunities(self, signals: List, top_n: int = None) -> None:
@@ -94,7 +98,9 @@ class SignalsReporter:
         if top_n is None:
             top_n = self.reporting_cfg['top_opportunities']
         
-        buys = [s for s in signals if s.signal in ["BUY", "COMPRA"]]
+        by_type = self._group_by_signal(signals)
+        buys = by_type['BUY']
+
         if not buys:
             print("\n⚠️ No buy opportunities identified")
             return
@@ -115,7 +121,7 @@ class SignalsReporter:
         for i, s in enumerate(top_buys, 1):
             print(f"\n{i}. {s.ticker}")
             print(f"   Confidence: {s.confidence:.1f}%")
-            print(f"   Potential: {fmt_pct(s.upside_potential / 100)}")
+            print(f"   Potential: {fmt_pct(s.upside_potential)}")
             print(f"   Price: {fmt_money(s.current_price)} → {fmt_money(s.price_target)}")
             print(f"   Valuation: {s.valuation_score:.1f} | Fundamental: {s.fundamental_score:.1f}")
             if s.reasons:
@@ -130,16 +136,16 @@ class SignalsReporter:
             'Fundamental': f"{s.fundamental_score:.1f}",
             'Current Price': fmt_money(s.current_price),
             'Target Price': fmt_money(s.price_target),
-            'Potential': fmt_pct(s.upside_potential / 100)
+            'Potential': fmt_pct(s.upside_potential)
         } for s in signals])
     
-    def _get_signal_emoji(self, signal: str) -> str:
-        mapping = {
-            'BUY': '🟢',
-            'COMPRA': '🟢',
-            'SELL': '🔴',
-            'VENTA': '🔴',
-            'HOLD': '🟡',
-            'MANTENER': '🟡'
-        }
-        return mapping.get(signal.upper(), '⚪')
+    @staticmethod
+    def _group_by_signal(signals: List) -> dict:
+        groups = {'BUY': [], 'SELL': [], 'HOLD': []}
+        for s in signals:
+            key = s.signal.upper()
+            if key in groups:
+                groups[key].append(s)
+            else:
+                groups['HOLD'].append(s)
+        return groups

@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
-from .helpers import nan_if_missing, safe_div, score_metric
+from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
     VALUATION_THRESHOLDS, 
     VALUATION_SCORING, 
     OVERALL_VALUATION_LOGIC,
+    OVERALL_VALUATION_METRICS,
     ALERT_THRESHOLDS,
-    VALUATION_MULTIPLES_FALLBACKS
 )
 
 @dataclass
@@ -17,30 +17,21 @@ class ValuationThresholds:
     ev_ebitda: Dict[str, float] = None
     pb_ratio: Dict[str, float] = None
     fcf_yield: Dict[str, float] = None
+    peg_ratio: Dict[str, float] = None
     
     def __post_init__(self):
-        logic = OVERALL_VALUATION_LOGIC['thresholds']
-        fallbacks = VALUATION_MULTIPLES_FALLBACKS
-        
-        self.pe_ratio = self.pe_ratio or {
-            'cheap': logic['pe']['cheap'],
-            'fair': fallbacks['pe_ratio']['fair'],
-            'expensive': logic['pe']['expensive'],
-            'very_expensive': fallbacks['pe_ratio']['very_expensive']
-        }
-        self.ev_ebitda = self.ev_ebitda or {
-            'cheap': logic['ev_ebitda']['cheap'],
-            'fair': fallbacks['ev_ebitda']['fair'],
-            'expensive': logic['ev_ebitda']['expensive'],
-            'very_expensive': fallbacks['ev_ebitda']['very_expensive']
-        }
-        self.pb_ratio = self.pb_ratio or VALUATION_THRESHOLDS['valuation_multiples']['pb_ratio']
-        self.fcf_yield = self.fcf_yield or {
-            'excellent': logic['fcf_yield']['cheap'],
-            'good': fallbacks['fcf_yield']['good'],
-            'fair': fallbacks['fcf_yield']['fair'],
-            'poor': logic['fcf_yield']['expensive']
-        }
+        multiples = VALUATION_THRESHOLDS['valuation_multiples']
+        for field in ('pe_ratio', 'ev_ebitda', 'pb_ratio', 'peg_ratio', 'fcf_yield'):
+            if getattr(self, field) is None:
+                setattr(self, field, multiples[field])
+
+_SCORING_SPECS = [
+    MetricSpec(key='pe_ttm', range_key='pe_ttm', weight_key='pe_ttm', higher_is_better=False, require_positive=True),
+    MetricSpec(key='ev_ebitda', range_key='ev_ebitda', weight_key='ev_ebitda', higher_is_better=False, require_positive=True),
+    MetricSpec(key='pb_ratio', range_key='pb_ratio', weight_key='pb_ratio', higher_is_better=False, require_positive=True),
+    MetricSpec(key='fcf_yield', range_key='fcf_yield', weight_key='fcf_yield', higher_is_better=True),
+    MetricSpec(key='peg_ratio', range_key='peg_ratio', weight_key='peg_ratio', higher_is_better=False, require_positive=True),
+]
 
 class ValuationMultiples:
     def __init__(self, thresholds: ValuationThresholds = None):
@@ -59,29 +50,7 @@ class ValuationMultiples:
         market_cap = nan_if_missing(data.get('marketCap'))
         fcf = nan_if_missing(data.get('freeCashflow'))
 
-        if pd.isna(peg) or peg <= 0:
-            earnings_growth = nan_if_missing(data.get('earningsGrowth'))
-
-            if pd.isna(earnings_growth) or earnings_growth <= 0:
-                earnings_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
-            
-            if pd.notna(pe_ttm) and pe_ttm > 0 and pd.notna(earnings_growth) and earnings_growth != 0:
-                if earnings_growth < 0:
-                    peg = np.nan
-                else:
-                    if earnings_growth <= 1:
-                        earnings_growth_pct = earnings_growth * 100
-                    else:
-                        earnings_growth_pct = earnings_growth
-
-                    if pd.notna(earnings_growth_pct) and earnings_growth_pct > 0:
-                        peg = pe_ttm / earnings_growth_pct
-
-                        if peg < 0.1 or peg > 50:
-                            peg = np.nan
-                    else:
-                        peg = np.nan
-        
+        peg = self._compute_peg(peg, pe_ttm, data)
         fcf_yield = safe_div(fcf, market_cap)
         earnings_yield = safe_div(1, pe_ttm) if pd.notna(pe_ttm) and pe_ttm > 0 else np.nan
         
@@ -99,65 +68,18 @@ class ValuationMultiples:
         }
         
         classifications = {
-            'pe_class': self._classify_pe(pe_ttm),
-            'ev_ebitda_class': self._classify_ev_ebitda(ev_ebitda),
-            'pb_class': self._classify_pb(pb),
-            'fcf_yield_class': self._classify_fcf_yield(fcf_yield),
-            'peg_class': self._classify_peg(peg),
+            'pe_class': self._classify_lower_is_better(pe_ttm, self.thresholds.pe_ratio, require_positive=True),
+            'ev_ebitda_class': self._classify_lower_is_better(ev_ebitda, self.thresholds.ev_ebitda, require_positive=True),
+            'pb_class': self._classify_lower_is_better(pb, self.thresholds.pb_ratio, require_positive=True),
+            'fcf_yield_class': classify_metric(fcf_yield, self.thresholds.fcf_yield),
+            'peg_class': self._classify_lower_is_better(peg, self.thresholds.peg_ratio, require_positive=True, default='very_expensive'),
             'overall': self._overall_valuation(metrics)
         }
         
-        scores = []
-        weights_list = []
-        cfg_weights = self.config['weights']
-        cfg_ranges = self.config['ranges']
-        
-        if pd.notna(pe_ttm) and pe_ttm > 0:
-            scores.append(score_metric(
-                pe_ttm, 
-                cfg_ranges['pe_ttm']['min'],
-                cfg_ranges['pe_ttm']['max'],
-                higher_is_better=False
-            ))
-            weights_list.append(cfg_weights['pe_ttm'])
-            
-        if pd.notna(ev_ebitda) and ev_ebitda > 0:
-            scores.append(score_metric(
-                ev_ebitda, 
-                cfg_ranges['ev_ebitda']['min'],
-                cfg_ranges['ev_ebitda']['max'],
-                higher_is_better=False
-            ))
-            weights_list.append(cfg_weights['ev_ebitda'])
-            
-        if pd.notna(pb) and pb > 0:
-            scores.append(score_metric(
-                pb, 
-                cfg_ranges['pb_ratio']['min'],
-                cfg_ranges['pb_ratio']['max'],
-                higher_is_better=False
-            ))
-            weights_list.append(cfg_weights['pb_ratio'])
-            
-        if pd.notna(fcf_yield):
-            scores.append(score_metric(
-                fcf_yield, 
-                cfg_ranges['fcf_yield']['min'],
-                cfg_ranges['fcf_yield']['max']
-            ))
-            weights_list.append(cfg_weights['fcf_yield'])
-
-        if pd.notna(peg) and peg > 0 and 'peg_ratio' in cfg_ranges and 'peg_ratio' in cfg_weights:
-            scores.append(score_metric(
-                peg,
-                cfg_ranges['peg_ratio']['min'],
-                cfg_ranges['peg_ratio']['max'],
-                higher_is_better=False
-            ))
-            weights_list.append(cfg_weights['peg_ratio'])
-        
-        total_weight = sum(weights_list)
-        valuation_score = sum(s * w for s, w in zip(scores, weights_list)) / total_weight if total_weight > 0 else np.nan
+        valuation_score = WeightedScorer.calculate(
+            metrics, _SCORING_SPECS,
+            self.config['weights'], self.config['ranges']
+        )
         
         return {
             'metrics': metrics,
@@ -166,79 +88,31 @@ class ValuationMultiples:
             'alerts': self._generate_alerts(metrics)
         }
 
-    def _classify_pe(self, value: float) -> str:
-
-        if pd.isna(value) or value <= 0:
-            return 'N/A'
-
-        thresholds = self.thresholds.pe_ratio
-
-        if value < thresholds['cheap']:
-            return 'cheap'
-        elif value < thresholds['fair']:
-            return 'fair'
-        elif value < thresholds['expensive']:
-            return 'expensive'
-        return 'very_expensive'
-    
-    def _classify_ev_ebitda(self, value: float) -> str:
-
-        if pd.isna(value) or value <= 0:
-            return 'N/A'
-
-        thresholds = self.thresholds.ev_ebitda
-
-        if value < thresholds['cheap']:
-            return 'cheap'
-        elif value < thresholds['fair']:
-            return 'fair'
-        elif value < thresholds['expensive']:
-            return 'expensive'
-        return 'very_expensive'
-    
-    def _classify_pb(self, value: float) -> str:
-
-        if pd.isna(value) or value <= 0:
-            return 'N/A'
-
-        thresholds = self.thresholds.pb_ratio
-
-        if value < thresholds['cheap']:
-            return 'cheap'
-        elif value < thresholds['fair']:
-            return 'fair'
-        elif value < thresholds['expensive']:
-            return 'expensive'
-        return 'very_expensive'
-    
-    def _classify_fcf_yield(self, value: float) -> str:
-
+    @staticmethod
+    def _classify_lower_is_better(
+        value: float, thresholds: Dict, require_positive: bool = False, default: str = 'very_expensive'
+    ) -> str:
         if pd.isna(value):
             return 'N/A'
-
-        thresholds = self.thresholds.fcf_yield
-
-        if value >= thresholds['excellent']:
-            return 'excellent'
-        elif value >= thresholds['good']:
-            return 'good'
-        elif value >= thresholds['fair']:
-            return 'fair'
-        return 'poor'
-    
-    def _classify_peg(self, value: float) -> str:
-
-        if pd.isna(value) or value <= 0:
+        if require_positive and value <= 0:
             return 'N/A'
-        if value < 0.5:
-            return 'very_cheap'
-        elif value < 1.0:
-            return 'cheap'
-        elif value < 1.5:
-            return 'fair'
-        elif value < 2.0:
-            return 'expensive'
-        return 'very_expensive'
+        return classify_metric(value, thresholds, higher_is_better=False, strict=True, default=default)
+
+    @staticmethod
+    def _compute_peg(peg: float, pe_ttm: float, data: Dict) -> float:
+        if pd.notna(peg) and peg > 0:
+            return peg
+
+        earnings_growth = nan_if_missing(data.get('earningsGrowth'))
+        if pd.isna(earnings_growth) or earnings_growth <= 0:
+            earnings_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
+
+        if pd.isna(pe_ttm) or pe_ttm <= 0 or pd.isna(earnings_growth) or earnings_growth <= 0:
+            return np.nan
+
+        growth_pct = earnings_growth * 100 if earnings_growth <= 1 else earnings_growth
+        peg = pe_ttm / growth_pct
+        return peg if 0.1 <= peg <= 50 else np.nan
     
     def _overall_valuation(self, metrics: Dict) -> str:
         cheap_count = 0
@@ -247,81 +121,42 @@ class ValuationMultiples:
         thresholds = self.overall_logic['thresholds']
         voting = self.overall_logic['voting']
 
-        pe = metrics['pe_ttm']
+        for spec in OVERALL_VALUATION_METRICS:
+            value = metrics.get(spec['key'])
+            cfg = thresholds[spec['config_key']]
 
-        if pd.notna(pe) and thresholds['pe']['min_valid'] < pe < thresholds['pe']['max_valid']:
+            if pd.isna(value) or not (cfg['min_valid'] < value < cfg['max_valid']):
+                continue
+
             valid_metrics += 1
+            hmc = spec['higher_means_cheaper']
+            cheap_count += (value > cfg['cheap']) if hmc else (value < cfg['cheap'])
+            expensive_count += (value < cfg['expensive']) if hmc else (value > cfg['expensive'])
 
-            if pe < thresholds['pe']['cheap']:
-                cheap_count += 1
-            elif pe > thresholds['pe']['expensive']:
-                expensive_count += 1
-
-        ev = metrics['ev_ebitda']
-
-        if pd.notna(ev) and thresholds['ev_ebitda']['min_valid'] < ev < thresholds['ev_ebitda']['max_valid']:
-            valid_metrics += 1
-            if ev < thresholds['ev_ebitda']['cheap']:
-                cheap_count += 1
-            elif ev > thresholds['ev_ebitda']['expensive']:
-                expensive_count += 1
-
-        fcf_y = metrics['fcf_yield']
-
-        if pd.notna(fcf_y) and thresholds['fcf_yield']['min_valid'] < fcf_y < thresholds['fcf_yield']['max_valid']:
-            valid_metrics += 1
-            if fcf_y > thresholds['fcf_yield']['cheap']:
-                cheap_count += 1
-            elif fcf_y < thresholds['fcf_yield']['expensive']:
-                expensive_count += 1
-
-        pb = metrics.get('pb_ratio')
-
-        if pd.notna(pb) and thresholds['pb']['min_valid'] < pb < thresholds['pb']['max_valid']:
-            valid_metrics += 1
-            if pb < thresholds['pb']['cheap']:
-                cheap_count += 1
-            elif pb > thresholds['pb']['expensive']:
-                expensive_count += 1
-
-        if valid_metrics < voting['min_valid_metrics']:
+        if valid_metrics < voting['min_valid_metrics'] or (cheap_count > 0 and expensive_count > 0):
             return 'FAIR_VALUE'
-
-        if cheap_count > 0 and expensive_count > 0:
-            return 'FAIR_VALUE'
-
         if cheap_count >= voting['min_votes_for_decision']:
             return 'UNDERVALUED'
-        elif expensive_count >= voting['min_votes_for_decision']:
+        if expensive_count >= voting['min_votes_for_decision']:
             return 'OVERVALUED'
-        
         return 'FAIR_VALUE'
     
+    _ALERT_SPECS = (
+        ('pe_ttm',    '>', 'pe_very_high',    "P/E very high (>{t}): possibly overvalued"),
+        ('pe_ttm',    '<', 'pe_negative',     "Negative P/E: company has losses"),
+        ('ev_ebitda', '>', 'ev_ebitda_high',  "EV/EBITDA very high (>{t})"),
+        ('fcf_yield', '<', 'fcf_yield_negative', "Negative FCF Yield: not generating free cash flow"),
+        ('peg_ratio', '>', 'peg_high',        "PEG > {t}: high price relative to growth"),
+    )
+
     def _generate_alerts(self, metrics: Dict) -> List[str]:
         alerts = []
-        alert_cfg = ALERT_THRESHOLDS['valuation']
-        
-        pe = metrics['pe_ttm']
-
-        if pd.notna(pe):
-            if pe > alert_cfg['pe_very_high']:
-                alerts.append(f"P/E very high (>{alert_cfg['pe_very_high']}): possibly overvalued")
-            elif pe < alert_cfg['pe_negative']:
-                alerts.append("Negative P/E: company has losses")
-        
-        ev_ebitda = metrics['ev_ebitda']
-
-        if pd.notna(ev_ebitda) and ev_ebitda > alert_cfg['ev_ebitda_high']:
-            alerts.append(f"EV/EBITDA very high (>{alert_cfg['ev_ebitda_high']})")
-        
-        fcf_yield = metrics['fcf_yield']
-
-        if pd.notna(fcf_yield) and fcf_yield < alert_cfg['fcf_yield_negative']:
-            alerts.append("Negative FCF Yield: not generating free cash flow")
-        
-        peg = metrics['peg_ratio']
-        
-        if pd.notna(peg) and peg > alert_cfg['peg_high']:
-            alerts.append(f"PEG > {alert_cfg['peg_high']}: high price relative to growth")
-        
+        cfg = ALERT_THRESHOLDS['valuation']
+        for key, op, threshold_key, msg in self._ALERT_SPECS:
+            value = metrics[key]
+            if pd.isna(value):
+                continue
+            t = cfg[threshold_key]
+            if (value > t) if op == '>' else (value < t):
+                alerts.append(msg.format(t=t))
         return alerts

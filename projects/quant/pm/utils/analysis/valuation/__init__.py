@@ -28,7 +28,9 @@ from .metrics import (
     ScoreAggregator,
     SignalDeterminer,
     PriceTargetCalculator,
-    ReasonGenerator
+    ReasonGenerator,
+    MetricSpec,
+    WeightedScorer
 )
 
 __all__ = [
@@ -55,5 +57,7 @@ __all__ = [
     'ScoreAggregator',
     'SignalDeterminer',
     'PriceTargetCalculator',
-    'ReasonGenerator'
+    'ReasonGenerator',
+    'MetricSpec',
+    'WeightedScorer'
 ]

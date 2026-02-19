@@ -1,7 +1,10 @@
+import logging
 import numpy as np
 import pandas as pd
 from typing import List, Tuple
 from ....tools.config import ANNUAL_FACTOR
+
+logger = logging.getLogger(__name__)
 
 def daily_risk_free_rate(annual_rate: float, annual_factor: float = None) -> float:
 
@@ -36,7 +39,7 @@ def normalize_weights(
     total = weights.sum()
     
     if not np.isclose(total, 1.0) and warn:
-        print(f"Pesos normalizados: {total:.4f} → 1.0")
+        logger.debug(f"Weights normalized: {total:.4f} → 1.0")
     
     return weights / total if total != 0 else weights
 

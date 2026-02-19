@@ -15,7 +15,7 @@ class MultiAssetReporter:
         analysis = self.analyzer.analyze_multiple(returns, market_returns, risk_free_rate)
         
         if analysis.empty:
-            print("⚠️  Insufficient data for analysis")
+            print(" Insufficient data for analysis")
             return
 
         sig_level = self.analyzer.significance_level

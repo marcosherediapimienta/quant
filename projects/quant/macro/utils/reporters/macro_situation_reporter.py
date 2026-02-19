@@ -2,6 +2,17 @@ import numpy as np
 from typing import Dict
 from ..analyzers.macro_situation_analyzer import MacroSituationAnalyzer
 
+def _attr(obj, name, default=None):
+
+    if hasattr(obj, 'get'):
+        return getattr(obj, name, obj.get(name, default))
+    return getattr(obj, name, default)
+
+
+def _fmt_change(value, suffix="%") -> str:
+    return f"{value:>+6.2f}{suffix}" if not np.isnan(value) else "N/A"
+
+
 class MacroSituationReporter:
     def __init__(self, analyzer: MacroSituationAnalyzer = None):
         self.analyzer = analyzer if analyzer is not None else MacroSituationAnalyzer()
@@ -11,7 +22,7 @@ class MacroSituationReporter:
         summary = self.analyzer.get_summary(analysis)
         self._print_executive_summary(summary)
         self._print_yield_curve(analysis['yield_curve'])
-        if 'implied_yield_curve' in analysis and analysis['implied_yield_curve']:
+        if analysis.get('implied_yield_curve'):
             self._print_implied_yield_curve(analysis['implied_yield_curve'])
         self._print_inflation(analysis['inflation'])
         self._print_credit(analysis['credit'])
@@ -21,13 +32,8 @@ class MacroSituationReporter:
     def _print_executive_summary(self, summary: Dict) -> None:
         print("EXECUTIVE SUMMARY")
         risk_level = summary.get('overall_risk', 'N/A')
-
-        if risk_level == "HIGH":
-            risk_display = "🔴 HIGH"
-        elif risk_level == "MODERATE":
-            risk_display = "🟡 MODERATE"
-        else:
-            risk_display = "🟢 LOW"
+        _RISK_LABELS = {'HIGH': '[!!] HIGH', 'MODERATE': '[!] MODERATE'}
+        risk_display = _RISK_LABELS.get(risk_level, '[OK] LOW')
         
         print(f"\n  Global risk level: {risk_display}")
         risk_factors = summary.get('risk_factors', [])
@@ -35,82 +41,64 @@ class MacroSituationReporter:
         if risk_factors:
             print(f"\n  Risk factors detected:")
             for factor in risk_factors:
-                print(f"    • {factor}")
+                print(f"    - {factor}")
         else:
-            print(f"\n  ✅ No significant risk factors detected")
+            print(f"\n  [OK] No significant risk factors detected")
     
     def _print_yield_curve(self, curve) -> None:
         print("US YIELD CURVE")
-        levels = getattr(curve, 'levels', curve.get('levels', {})) if hasattr(curve, 'get') else curve.levels
+        levels = _attr(curve, 'levels', {})
         if levels:
             print("\n  Current levels:")
             for tenor, rate in sorted(levels.items()):
                 print(f"    {tenor:>4}: {rate:>6.2f}%")
 
-        spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
+        spreads = _attr(curve, 'spreads', {})
         if spreads:
             print("\n  Spreads:")
             for spread_name, value in spreads.items():
-                symbol = "🔴" if value < 0 else "🟢"
-                print(f"    {symbol} {spread_name:>10}: {value:>+6.2f} pp")
+                tag = "[-]" if value < 0 else "[+]"
+                print(f"    {tag} {spread_name:>10}: {value:>+6.2f} pp")
 
-        rate_changes = getattr(curve, 'rate_changes', curve.get('rate_changes', {})) if hasattr(curve, 'get') else curve.rate_changes
+        rate_changes = _attr(curve, 'rate_changes', {})
         if rate_changes:
             print("\n  Rate changes:")
             print(f"    {'Tenor':<6} {'1 Month':<12} {'3 Months':<12} {'1 Year':<12}")
             for tenor in sorted(rate_changes.keys()):
                 changes = rate_changes[tenor]
-                change_1m = changes.get('1m', np.nan)
-                change_3m = changes.get('3m', np.nan)
-                change_1y = changes.get('1y', np.nan)
-                
-                change_1m_str = f"{change_1m:>+6.2f} pp" if not np.isnan(change_1m) else "N/A"
-                change_3m_str = f"{change_3m:>+6.2f} pp" if not np.isnan(change_3m) else "N/A"
-                change_1y_str = f"{change_1y:>+6.2f} pp" if not np.isnan(change_1y) else "N/A"
-                
-                print(f"    {tenor:<6} {change_1m_str:<12} {change_3m_str:<12} {change_1y_str:<12}")
+                vals = [_fmt_change(changes.get(k, np.nan), " pp") for k in ('1m', '3m', '1y')]
+                print(f"    {tenor:<6} {vals[0]:<12} {vals[1]:<12} {vals[2]:<12}")
 
-        divergence = getattr(curve, 'divergence_analysis', curve.get('divergence_analysis', {})) if hasattr(curve, 'get') else curve.divergence_analysis
+        divergence = _attr(curve, 'divergence_analysis', {})
         if divergence:
-            print("\n  📊 Short vs Long Rate Divergence:")
-            if '3m' in divergence:
-                d3m = divergence['3m']
-                print(f"    3 months:")
-                print(f"      Short (2Y): {d3m['short']:>+6.2f} pp")
-                print(f"      Long (10Y): {d3m['long']:>+6.2f} pp")
-                print(f"      Divergence: {d3m['divergence']:>+6.2f} pp", end="")
-                if d3m['divergence'] > 0.5:
-                    print(" 🔴 (Long rising faster — inflation expectations)")
-                elif d3m['divergence'] < -0.5:
-                    print(" 🟢 (Short rising faster — restrictive policy)")
+            print("\n  Short vs Long Rate Divergence:")
+            for period, label in (('3m', '3 months'), ('1y', '1 year')):
+                if period not in divergence:
+                    continue
+                d = divergence[period]
+                print(f"    {label}:")
+                print(f"      Short (2Y): {d['short']:>+6.2f} pp")
+                print(f"      Long (10Y): {d['long']:>+6.2f} pp")
+                div_val = d['divergence']
+                if div_val > 0.5:
+                    note = " (Long rising faster -- inflation expectations)"
+                elif div_val < -0.5:
+                    note = " (Short rising faster -- restrictive policy)"
                 else:
-                    print(" ⚪ (Aligned movements)")
-            
-            if '1y' in divergence:
-                d1y = divergence['1y']
-                print(f"    1 year:")
-                print(f"      Short (2Y): {d1y['short']:>+6.2f} pp")
-                print(f"      Long (10Y): {d1y['long']:>+6.2f} pp")
-                print(f"      Divergence: {d1y['divergence']:>+6.2f} pp", end="")
-                if d1y['divergence'] > 0.5:
-                    print(" 🔴 (Long rising faster — inflation expectations)")
-                elif d1y['divergence'] < -0.5:
-                    print(" 🟢 (Short rising faster — restrictive policy)")
-                else:
-                    print(" ⚪ (Aligned movements)")
+                    note = " (Aligned movements)"
+                print(f"      Divergence: {div_val:>+6.2f} pp{note}")
 
-        interpretation = getattr(curve, 'interpretation', curve.get('interpretation', 'N/A')) if hasattr(curve, 'get') else curve.interpretation
-        print(f"\n  💡 {interpretation}")
+        interpretation = _attr(curve, 'interpretation', 'N/A')
+        print(f"\n  {interpretation}")
     
     def _print_implied_yield_curve(self, implied_analysis) -> None:
         print("IMPLIED YIELD CURVE (FORWARD RATES)")
         
-        spot = getattr(implied_analysis, 'spot_rates', {})
-        forwards = getattr(implied_analysis, 'forward_rates', {})
-        fwd_vs_spot = getattr(implied_analysis, 'forward_vs_spot', {})
-        term_premium = getattr(implied_analysis, 'term_premium', {})
+        forwards = _attr(implied_analysis, 'forward_rates', {})
+        fwd_vs_spot = _attr(implied_analysis, 'forward_vs_spot', {})
+        term_premium = _attr(implied_analysis, 'term_premium', {})
 
-        print("\n  📈 Spot vs Implied Forward Curve:")
+        print("\n  Spot vs Implied Forward Curve:")
         print(f"    {'Segment':<14} {'Forward (%)':<14} {'vs Spot':<14} {'Signal'}")
         print(f"    {'─'*56}")
         
@@ -118,53 +106,53 @@ class MacroSituationReporter:
             diff = fwd_vs_spot.get(segment, np.nan)
             if not np.isnan(fwd_rate):
                 if not np.isnan(diff):
-                    symbol = "🔴↑" if diff > 0.3 else "🟢↓" if diff < -0.3 else "⚪→"
-                    print(f"    {segment:<14} {fwd_rate:>6.2f}%       {diff:>+6.2f} pp     {symbol}")
+                    tag = "[UP]" if diff > 0.3 else "[DN]" if diff < -0.3 else "[--]"
+                    print(f"    {segment:<14} {fwd_rate:>6.2f}%       {diff:>+6.2f} pp     {tag}")
                 else:
                     print(f"    {segment:<14} {fwd_rate:>6.2f}%")
 
         if term_premium:
-            print(f"\n  💰 Estimated Term Premium:")
+            print(f"\n  Estimated Term Premium:")
             for tenor, tp in term_premium.items():
-                symbol = "🔴" if tp < -0.2 else "🟢" if tp > 0.5 else "⚪"
-                print(f"    {symbol} {tenor}: {tp:>+6.2f} pp")
+                tag = "[-]" if tp < -0.2 else "[+]" if tp > 0.5 else "[=]"
+                print(f"    {tag} {tenor}: {tp:>+6.2f} pp")
 
-        expectations = getattr(implied_analysis, 'curve_expectations', 'N/A')
-        signal = getattr(implied_analysis, 'rate_path_signal', 'N/A')
-        print(f"\n  💡 Expectations: {expectations}")
-        print(f"  🏦 Monetary policy signal: {signal}")
+        expectations = _attr(implied_analysis, 'curve_expectations', 'N/A')
+        signal = _attr(implied_analysis, 'rate_path_signal', 'N/A')
+        print(f"\n  Expectations: {expectations}")
+        print(f"  Monetary policy signal: {signal}")
 
     def _print_inflation(self, inflation) -> None:
         print("INFLATION SIGNALS (Commodities)")
-        commodity_changes = getattr(inflation, 'commodity_changes', inflation.get('commodity_changes', {})) if hasattr(inflation, 'get') else inflation.commodity_changes
-        commodity_names = getattr(inflation, 'commodity_names', inflation.get('commodity_names', {})) if hasattr(inflation, 'get') else inflation.commodity_names
+        commodity_changes = _attr(inflation, 'commodity_changes', {})
+        commodity_names = _attr(inflation, 'commodity_names', {})
         
         print("\n  12-month change:")
         for key, name in commodity_names.items():
             if key in commodity_changes:
                 change = commodity_changes[key]
-                symbol = "🔴" if change > 15 else "🟡" if change > 5 else "🟢"
-                print(f"    {symbol} {name:<12}: {change:>+7.2f}%")
+                tag = "[!!]" if change > 15 else "[!]" if change > 5 else "[OK]"
+                print(f"    {tag} {name:<12}: {change:>+7.2f}%")
 
-        pressure = getattr(inflation, 'inflation_pressure', inflation.get('inflation_pressure', 'N/A')) if hasattr(inflation, 'get') else inflation.inflation_pressure
-        avg_change = getattr(inflation, 'avg_commodity_change', inflation.get('avg_commodity_change', np.nan)) if hasattr(inflation, 'get') else inflation.avg_commodity_change
+        pressure = _attr(inflation, 'inflation_pressure', 'N/A')
+        avg_change = _attr(inflation, 'avg_commodity_change', np.nan)
         
-        print(f"\n  💡 {pressure}")
+        print(f"\n  {pressure}")
         if not np.isnan(avg_change):
-            print(f"     Average change: {avg_change:>+.2f}%")
+            print(f"  Average change: {avg_change:>+.2f}%")
     
     def _print_credit(self, credit) -> None:
         print("CREDIT CONDITIONS & VOLATILITY")
-        vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
+        vix = _attr(credit, 'vix_level')
         if vix is not None:
-            vix_symbol = "🔴" if vix > 30 else "🟡" if vix > 20 else "🟢"
-            print(f"\n  {vix_symbol} VIX (volatility):      {vix:>7.2f}")
+            tag = "[!!]" if vix > 30 else "[!]" if vix > 20 else "[OK]"
+            print(f"\n  {tag} VIX (volatility):      {vix:>7.2f}")
 
-        condition = getattr(credit, 'market_condition', credit.get('market_condition', 'N/A')) if hasattr(credit, 'get') else credit.market_condition
-        print(f"\n  💡 {condition}")
+        condition = _attr(credit, 'market_condition', 'N/A')
+        print(f"\n  {condition}")
 
-        hyg = getattr(credit, 'hyg_level', credit.get('hyg_level')) if hasattr(credit, 'get') else credit.hyg_level
-        lqd = getattr(credit, 'lqd_level', credit.get('lqd_level')) if hasattr(credit, 'get') else credit.lqd_level
+        hyg = _attr(credit, 'hyg_level')
+        lqd = _attr(credit, 'lqd_level')
         if hyg is not None and lqd is not None:
             print(f"\n  Credit ETF levels:")
             print(f"    HYG (High Yield):        ${hyg:>7.2f}")
@@ -174,7 +162,7 @@ class MacroSituationReporter:
         print("GLOBAL SOVEREIGN BONDS")
 
         if not bonds:
-            print("\n  ⚠️  No global bond data available")
+            print("\n  [!] No global bond data available")
             return
         
         print(f"  {'Region':<15} {'Level':<12} {'1 Month':<12} {'1 Year':<12}")
@@ -184,86 +172,65 @@ class MacroSituationReporter:
             change_1m = data.get('change_1m', np.nan)
             change_1y = data.get('change_1y', np.nan)
 
-            symbol_1m = (
-                "🔴" if not np.isnan(change_1m) and change_1m < -5 else
-                "🟢" if not np.isnan(change_1m) and change_1m > 5 else
-                "⚪"
-            )
-            symbol_1y = (
-                "🔴" if not np.isnan(change_1y) and change_1y < -10 else
-                "🟢" if not np.isnan(change_1y) and change_1y > 10 else
-                "⚪"
-            )
+            def _bond_tag(val, threshold):
+                if np.isnan(val):
+                    return ""
+                return "[-]" if val < -threshold else "[+]" if val > threshold else "[=]"
+
+            tag_1m = _bond_tag(change_1m, 5)
+            tag_1y = _bond_tag(change_1y, 10)
             
             level_str = f"${level:.2f}" if not np.isnan(level) else "N/A"
-            change_1m_str = f"{symbol_1m} {change_1m:>+6.2f}%" if not np.isnan(change_1m) else "N/A"
-            change_1y_str = f"{symbol_1y} {change_1y:>+6.2f}%" if not np.isnan(change_1y) else "N/A"
+            change_1m_str = f"{tag_1m} {change_1m:>+6.2f}%" if not np.isnan(change_1m) else "N/A"
+            change_1y_str = f"{tag_1y} {change_1y:>+6.2f}%" if not np.isnan(change_1y) else "N/A"
             
             print(f"  {region:<15} {level_str:<12} {change_1m_str:<12} {change_1y_str:<12}")
     
     def _print_risk_sentiment(self, sentiment) -> None:
         print("RISK SENTIMENT")
-        fear = getattr(sentiment, 'fear_level', sentiment.get('fear_level')) if hasattr(sentiment, 'get') else sentiment.fear_level
+        fear = _attr(sentiment, 'fear_level')
 
         if fear:
             print(f"\n  Fear level:               {fear}")
 
-        dollar = getattr(sentiment, 'dollar_strength', sentiment.get('dollar_strength')) if hasattr(sentiment, 'get') else sentiment.dollar_strength
+        _TREND_SPECS = (
+            ('dollar_strength', 'Dollar strength', 'dxy_trend'),
+            ('safe_haven',      'Safe-haven demand', 'gold_trend'),
+        )
 
-        if dollar:
-            trends = []
-            dxy_1w = getattr(sentiment, 'dxy_trend_1w', sentiment.get('dxy_trend_1w')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_1w
-            dxy_1m = getattr(sentiment, 'dxy_trend_1m', sentiment.get('dxy_trend_1m')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_1m
-            dxy_3m = getattr(sentiment, 'dxy_trend_3m', sentiment.get('dxy_trend_3m')) if hasattr(sentiment, 'get') else sentiment.dxy_trend_3m
-            
-            if dxy_1w is not None:
-                trends.append(f"1W: {dxy_1w:+.2f}%")
-            if dxy_1m is not None:
-                trends.append(f"1M: {dxy_1m:+.2f}%")
-            if dxy_3m is not None:
-                trends.append(f"3M: {dxy_3m:+.2f}%")
-            
-            trend_str = f"({', '.join(trends)})" if trends else ""
-            print(f"  Dollar strength:          {dollar} {trend_str}")
-
-        safe_haven = getattr(sentiment, 'safe_haven', sentiment.get('safe_haven')) if hasattr(sentiment, 'get') else sentiment.safe_haven
-        if safe_haven:
-            trends = []
-            gold_1w = getattr(sentiment, 'gold_trend_1w', sentiment.get('gold_trend_1w')) if hasattr(sentiment, 'get') else sentiment.gold_trend_1w
-            gold_1m = getattr(sentiment, 'gold_trend_1m', sentiment.get('gold_trend_1m')) if hasattr(sentiment, 'get') else sentiment.gold_trend_1m
-            gold_3m = getattr(sentiment, 'gold_trend_3m', sentiment.get('gold_trend_3m')) if hasattr(sentiment, 'get') else sentiment.gold_trend_3m
-            
-            if gold_1w is not None:
-                trends.append(f"1W: {gold_1w:+.2f}%")
-            if gold_1m is not None:
-                trends.append(f"1M: {gold_1m:+.2f}%")
-            if gold_3m is not None:
-                trends.append(f"3M: {gold_3m:+.2f}%")
-            
-            trend_str = f"({', '.join(trends)})" if trends else ""
-            print(f"  Safe-haven demand:        {safe_haven} {trend_str}")
+        for attr_name, label, trend_prefix in _TREND_SPECS:
+            value = _attr(sentiment, attr_name)
+            if not value:
+                continue
+            parts = []
+            for suffix, period in (('_1w', '1W'), ('_1m', '1M'), ('_3m', '3M')):
+                t = _attr(sentiment, f'{trend_prefix}{suffix}')
+                if t is not None:
+                    parts.append(f"{period}: {t:+.2f}%")
+            trend_str = f"({', '.join(parts)})" if parts else ""
+            print(f"  {label + ':':<28}{value} {trend_str}")
 
     def print_compact(self, analysis: Dict) -> None:
         print("MACRO SNAPSHOT".center(60))
         curve = analysis['yield_curve']
-        spreads = getattr(curve, 'spreads', curve.get('spreads', {})) if hasattr(curve, 'get') else curve.spreads
+        spreads = _attr(curve, 'spreads', {})
         if '10Y-2Y' in spreads:
             spread = spreads['10Y-2Y']
-            symbol = "🔴" if spread < 0 else "🟢"
-            print(f"\n  {symbol} Curve 10Y-2Y: {spread:+.2f} pp")
+            tag = "[-]" if spread < 0 else "[+]"
+            print(f"\n  {tag} Curve 10Y-2Y: {spread:+.2f} pp")
 
         inflation = analysis['inflation']
-        pressure = getattr(inflation, 'inflation_pressure', inflation.get('inflation_pressure', 'N/A')) if hasattr(inflation, 'get') else inflation.inflation_pressure
+        pressure = _attr(inflation, 'inflation_pressure', 'N/A')
         print(f"  Inflation: {pressure}")
         
         credit = analysis['credit']
-        vix = getattr(credit, 'vix_level', credit.get('vix_level')) if hasattr(credit, 'get') else credit.vix_level
+        vix = _attr(credit, 'vix_level')
         if vix is not None:
-            symbol = "🔴" if vix > 25 else "🟡" if vix > 20 else "🟢"
-            print(f"  {symbol} VIX: {vix:.1f}")
+            tag = "[!!]" if vix > 25 else "[!]" if vix > 20 else "[OK]"
+            print(f"  {tag} VIX: {vix:.1f}")
 
         summary = self.analyzer.get_summary(analysis)
         risk = summary.get('overall_risk', 'N/A')
-        print(f"\n  ⚠️  Global risk: {risk}")
+        print(f"\n  [!] Global risk: {risk}")
         
         print("="*60)

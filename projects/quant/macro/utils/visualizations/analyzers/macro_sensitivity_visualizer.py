@@ -26,7 +26,7 @@ class MacroSensitivityVisualizer:
         betas = sensitivity_results.get('betas', {})
         if betas:
             self.loadings_plotter.plot_loadings_bar(betas, ax=ax1)
-            ax1.set_title('Exposiciones Actuales (Betas)', fontsize=12, fontweight='bold')
+            ax1.set_title('Current Exposures (Betas)', fontsize=12, fontweight='bold')
 
         if rolling_betas is not None and not rolling_betas.empty:
             ax2 = fig.add_subplot(gs[1, 0])
@@ -42,14 +42,14 @@ class MacroSensitivityVisualizer:
                            label=factor_name, linewidth=2, alpha=0.8)
                 
                 ax2.axhline(0, color='red', linestyle='--', alpha=0.5)
-                ax2.set_title('Evolución de Exposiciones (Rolling Betas)', 
+                ax2.set_title('Exposure Evolution (Rolling Betas)', 
                              fontsize=12, fontweight='bold')
-                ax2.set_xlabel('Fecha')
+                ax2.set_xlabel('Date')
                 ax2.set_ylabel('Beta')
                 ax2.legend(loc='best', ncol=2)
                 ax2.grid(True, alpha=0.3)
         
-        plt.suptitle('Análisis de Sensibilidad a Factores Macro',
+        plt.suptitle('Macro Factor Sensitivity Analysis',
                     fontsize=16, fontweight='bold', y=0.995)
         
         return fig
