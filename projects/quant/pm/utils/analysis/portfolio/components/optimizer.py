@@ -1,8 +1,9 @@
+import logging
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Callable, Optional, Tuple
 from scipy.optimize import minimize
-from ....tools.config import PORTFOLIO_CONFIG
+from ....tools.config import PORTFOLIO_CONFIG, OPTIMIZER_NUMERICAL, OPTIMIZER_BLACK_LITTERMAN
 
 try:
     from sklearn.covariance import LedoitWolf
@@ -10,22 +11,8 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 
-# Numerical constants
-_VOL_FLOOR = 1e-10
-_PENALTY = 1e10
-_COV_REGULARIZATION = 1e-8
-_MAX_SHRINKAGE = 0.1
-_RISK_PARITY_MIN_BOUND = 1e-4
-
-# Black-Litterman constants
-_BL_DELTA_MIN = 2.0
-_BL_DELTA_MAX = 4.0
-_BL_TAU_MIN = 0.01
-_BL_TAU_MAX = 0.1
-_BL_NEUTRAL_SCORE = 50.0
-_BL_MAX_VIEW_RETURN = 0.15
-_BL_MIN_CONFIDENCE = 0.1
-_BL_COND_THRESHOLD = 1e12
+_NUM = OPTIMIZER_NUMERICAL
+_BL = OPTIMIZER_BLACK_LITTERMAN
 
 
 def _shrink_covariance(returns_matrix: np.ndarray, annual_factor: int) -> np.ndarray:
@@ -37,31 +24,31 @@ def _shrink_covariance(returns_matrix: np.ndarray, annual_factor: int) -> np.nda
     else:
         cov = np.cov(returns_matrix.T) * annual_factor
         mu = np.trace(cov) / n
-        shrinkage = min(_MAX_SHRINKAGE, n / max(returns_matrix.shape[0], 1))
+        shrinkage = min(_NUM['max_shrinkage'], n / max(returns_matrix.shape[0], 1))
         cov = (1 - shrinkage) * cov + shrinkage * mu * np.eye(n)
 
-    cov += np.eye(n) * _COV_REGULARIZATION
+    cov += np.eye(n) * _NUM['cov_regularization']
     return cov
 
 class WeightOptimizer:
     def __init__(
         self,
-        risk_free_rate: float = 0.0,
-        annual_trading_days: int = 0,
-        min_data_points: int = 0,
-        scipy_method: str = '',
-        max_weight: float = 1.0,
-        min_weight: float = 0.0,
-        n_restarts: int = 5,
+        risk_free_rate: float = None,
+        annual_trading_days: int = None,
+        min_data_points: int = None,
+        scipy_method: str = None,
+        max_weight: float = None,
+        min_weight: float = None,
+        n_restarts: int = None,
     ):
-        opt_config = PORTFOLIO_CONFIG['optimization']
-        self.risk_free_rate = risk_free_rate if risk_free_rate > 0 else opt_config['risk_free_rate']
-        self.annual_trading_days = annual_trading_days if annual_trading_days > 0 else opt_config['annual_trading_days']
-        self.min_data_points = min_data_points if min_data_points > 0 else opt_config['min_data_points']
-        self.scipy_method = scipy_method if scipy_method else opt_config['scipy_method']
-        self.max_weight = max_weight
-        self.min_weight = min_weight
-        self.n_restarts = max(1, n_restarts)
+        cfg = PORTFOLIO_CONFIG['optimization']
+        self.risk_free_rate = risk_free_rate if risk_free_rate is not None else cfg['risk_free_rate']
+        self.annual_trading_days = annual_trading_days if annual_trading_days is not None else cfg['annual_trading_days']
+        self.min_data_points = min_data_points if min_data_points is not None else cfg['min_data_points']
+        self.scipy_method = scipy_method if scipy_method is not None else cfg['scipy_method']
+        self.max_weight = max_weight if max_weight is not None else cfg['max_weight']
+        self.min_weight = min_weight if min_weight is not None else cfg['min_weight']
+        self.n_restarts = max(1, n_restarts if n_restarts is not None else cfg['n_restarts'])
 
     _REQUIRES_ANALYSIS = {'score', 'score_risk_adjusted', 'black_litterman'}
     _REQUIRES_RETURNS = {'score_risk_adjusted', 'markowitz', 'risk_parity', 'black_litterman'}
@@ -102,10 +89,6 @@ class WeightOptimizer:
 
         return strategies[method]()
 
-    # ─────────────────────────────────────────────
-    # Shared helpers
-    # ─────────────────────────────────────────────
-
     def _equal_weights(self, tickers: List[str]) -> Dict[str, float]:
         if not tickers:
             raise ValueError("La lista de tickers no puede estar vacía")
@@ -115,7 +98,7 @@ class WeightOptimizer:
     def _prepare_returns(
         self, tickers: List[str], returns: pd.DataFrame
     ) -> Optional[Tuple[List[str], pd.DataFrame, int, np.ndarray]]:
-        """Filter tickers, validate data, compute covariance. Returns None on failure."""
+
         available = [t for t in tickers if t in returns.columns]
         if not available:
             return None
@@ -132,11 +115,13 @@ class WeightOptimizer:
         n: int,
         bounds: tuple,
         initial_weights: np.ndarray,
-        seed: int = 42,
-        maxiter: int = 1000,
-        ftol: float = 1e-9,
+        seed: int = None,
+        maxiter: int = None,
+        ftol: float = None,
     ):
-        """Run scipy minimize from multiple starting points, return best result."""
+        seed = seed if seed is not None else _NUM['default_seed']
+        maxiter = maxiter if maxiter is not None else _NUM['default_maxiter']
+        ftol = ftol if ftol is not None else _NUM['default_ftol']
         constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
         min_bound = bounds[0][0]
 
@@ -167,21 +152,19 @@ class WeightOptimizer:
         n: int,
         fallback_weights: np.ndarray = None,
     ) -> Optional[Dict[str, float]]:
-        """Clip, normalize, and assemble weight dict from optimization result."""
+
         if result is None or not np.isfinite(result.fun):
             return None
+
         w = np.clip(result.x, 0.0, 1.0)
         default = fallback_weights if fallback_weights is not None else np.full(n, 1.0 / n)
         w = w / w.sum() if w.sum() > 0 else default
         weights = {t: float(wi) for t, wi in zip(available_tickers, w)}
+
         for t in all_tickers:
             if t not in weights:
                 weights[t] = 0.0
         return weights
-
-    # ─────────────────────────────────────────────
-    # Simple methods
-    # ─────────────────────────────────────────────
 
     def _score_weights(self, tickers: List[str], results: Dict) -> Dict[str, float]:
         raw = np.array([
@@ -190,8 +173,10 @@ class WeightOptimizer:
         ], dtype=float)
         raw = np.maximum(raw, 0.0)
         s = raw.sum()
+
         if s <= 0:
             return self._equal_weights(tickers)
+
         w = raw / s
         return {t: float(wi) for t, wi in zip(tickers, w)}
 
@@ -202,6 +187,7 @@ class WeightOptimizer:
         returns: pd.DataFrame
     ) -> Dict[str, float]:
         available_tickers = [t for t in tickers if t in returns.columns]
+
         if not available_tickers:
             return self._equal_weights(tickers)
 
@@ -232,10 +218,6 @@ class WeightOptimizer:
                 weights[t] = 0.0
         return weights
 
-    # ─────────────────────────────────────────────
-    # Markowitz (Maximum Sharpe) with Ledoit-Wolf + multiple restarts
-    # ─────────────────────────────────────────────
-
     def _markowitz_weights(self, tickers: List[str], returns: pd.DataFrame) -> Dict[str, float]:
         try:
             prep = self._prepare_returns(tickers, returns)
@@ -248,7 +230,7 @@ class WeightOptimizer:
             def neg_sharpe(w):
                 ret = np.dot(w, mean_ret)
                 vol = np.sqrt(w @ cov @ w)
-                return -(ret - self.risk_free_rate) / vol if vol > _VOL_FLOOR else _PENALTY
+                return -(ret - self.risk_free_rate) / vol if vol > _NUM['vol_floor'] else _NUM['penalty']
 
             bounds = tuple((self.min_weight, self.max_weight) for _ in range(n))
             result = self._multi_start_optimize(
@@ -260,10 +242,6 @@ class WeightOptimizer:
 
         except Exception:
             return self._equal_weights(tickers)
-
-    # ─────────────────────────────────────────────
-    # Risk Parity (Equal Risk Contribution)
-    # ─────────────────────────────────────────────
 
     def _risk_parity_weights(self, tickers: List[str], returns: pd.DataFrame) -> Dict[str, float]:
         try:
@@ -279,22 +257,20 @@ class WeightOptimizer:
                 target = np.sqrt(port_var) / n
                 return np.sum((rc - target) ** 2)
 
-            lower = max(self.min_weight, _RISK_PARITY_MIN_BOUND)
+            lower = max(self.min_weight, _NUM['risk_parity_min_bound'])
             bounds = tuple((lower, self.max_weight) for _ in range(n))
             result = self._multi_start_optimize(
                 risk_parity_obj, n, bounds,
-                initial_weights=np.full(n, 1.0 / n), seed=0,
-                maxiter=2000, ftol=1e-12,
+                initial_weights=np.full(n, 1.0 / n),
+                seed=_NUM['risk_parity_seed'],
+                maxiter=_NUM['risk_parity_maxiter'],
+                ftol=_NUM['risk_parity_ftol'],
             )
             weights = self._build_weights(result, available, tickers, n)
             return weights if weights is not None else self._equal_weights(tickers)
 
         except Exception:
             return self._equal_weights(tickers)
-
-    # ─────────────────────────────────────────────
-    # Black-Litterman with numerical stability improvements
-    # ─────────────────────────────────────────────
 
     def _black_litterman_weights(
         self,
@@ -312,34 +288,33 @@ class WeightOptimizer:
 
             market_return = (r.mean().values * self.annual_trading_days).mean()
             market_variance = float(w_mkt @ cov @ w_mkt)
-            delta = (market_return - self.risk_free_rate) / max(market_variance, _VOL_FLOOR)
-            delta = np.clip(delta, _BL_DELTA_MIN, _BL_DELTA_MAX)
+            delta = (market_return - self.risk_free_rate) / max(market_variance, _NUM['vol_floor'])
+            delta = np.clip(delta, _BL['delta_min'], _BL['delta_max'])
 
             pi = delta * (cov @ w_mkt)
 
-            tau = np.clip(1.0 / len(r), _BL_TAU_MIN, _BL_TAU_MAX)
+            tau = np.clip(1.0 / len(r), _BL['tau_min'], _BL['tau_max'])
 
             P = np.eye(n)
 
             scores = np.array([
-                float(analysis_results.get(t, {}).get('scores', {}).get('total', _BL_NEUTRAL_SCORE))
+                float(analysis_results.get(t, {}).get('scores', {}).get('total', _BL['neutral_score']))
                 for t in available
             ])
             scores = np.clip(scores, 0.0, 100.0)
 
-            score_deviations = (scores - _BL_NEUTRAL_SCORE) / _BL_NEUTRAL_SCORE
-            Q = pi + score_deviations * _BL_MAX_VIEW_RETURN
+            score_deviations = (scores - _BL['neutral_score']) / _BL['neutral_score']
+            Q = pi + score_deviations * _BL['max_view_return']
 
-            confidence = np.abs(scores - _BL_NEUTRAL_SCORE) / _BL_NEUTRAL_SCORE
-            confidence = np.clip(confidence, _BL_MIN_CONFIDENCE, 1.0)
+            confidence = np.abs(scores - _BL['neutral_score']) / _BL['neutral_score']
+            confidence = np.clip(confidence, _BL['min_confidence'], 1.0)
             base_uncertainty = np.diag(tau * (P @ cov @ P.T))
             omega = np.diag(base_uncertainty / confidence)
 
             tau_cov = tau * cov
             cond = np.linalg.cond(tau_cov)
-            if cond > _BL_COND_THRESHOLD:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
+            if cond > _BL['cond_threshold']:
+                logging.getLogger(__name__).warning(
                     "BL: ill-conditioned τΣ matrix (cond=%.1e), falling back to Markowitz", cond
                 )
                 return self._markowitz_weights(tickers, returns)
@@ -355,7 +330,7 @@ class WeightOptimizer:
             def neg_sharpe_bl(w):
                 port_return = np.dot(w, mu_bl)
                 port_vol = np.sqrt(w @ cov @ w)
-                return -(port_return - self.risk_free_rate) / port_vol if port_vol > _VOL_FLOOR else _PENALTY
+                return -(port_return - self.risk_free_rate) / port_vol if port_vol > _NUM['vol_floor'] else _NUM['penalty']
 
             bounds = tuple((self.min_weight, self.max_weight) for _ in range(n))
             result = self._multi_start_optimize(

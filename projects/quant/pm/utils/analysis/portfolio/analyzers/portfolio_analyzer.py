@@ -1,10 +1,11 @@
 import logging
-from typing import List, Dict
-from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import time
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from threading import Lock
+from typing import List, Dict
 
 from ...valuation.analyzers.company_analyzer import CompanyAnalyzer
 from ....data import DataManager
@@ -17,7 +18,7 @@ from ..components.metrics_calculator import PortfolioMetricsCalculator
 from ....tools.config import PORTFOLIO_CONFIG
 
 logger = logging.getLogger(__name__)
-
+_ANALYSIS = PORTFOLIO_CONFIG['analysis']
 
 @dataclass
 class PortfolioConfig:
@@ -52,7 +53,7 @@ class PortfolioAnalyzer:
         self.metrics_calc = PortfolioMetricsCalculator()
         self._rate_limit_lock = Lock()
         self._last_request_time = 0
-        self._min_request_interval = 0.5
+        self._min_request_interval = _ANALYSIS['rate_limit_interval']
     
     def analyze(
         self,
@@ -63,7 +64,7 @@ class PortfolioAnalyzer:
 
         start_date, end_date = self._resolve_dates(start_date, end_date)
 
-        if len(candidate_tickers) > 50:
+        if len(candidate_tickers) > _ANALYSIS['quick_analysis_threshold']:
             logger.info(
                 "Phase 1: quick analysis of %d companies to identify best candidates "
                 "(this may take several minutes due to Yahoo Finance rate limiting)...",
@@ -91,7 +92,6 @@ class PortfolioAnalyzer:
                 )
                 
                 errors = [r.get('error', 'Unknown') for r in quick_results.values() if not r.get('success')]
-                from collections import Counter
                 error_counts = Counter(errors)
                 for error, count in error_counts.most_common(5):
                     logger.warning("  Common error (%dx): %s", count, error)
@@ -105,7 +105,10 @@ class PortfolioAnalyzer:
                 logger.warning("Top available scores: %s", all_scores[:10])
                 logger.warning("Required min_score: %s", self.config.min_score)
 
-            max_candidates = max(self.config.max_companies * 3, 50)
+            max_candidates = max(
+                self.config.max_companies * _ANALYSIS['candidate_multiplier'],
+                _ANALYSIS['min_candidates'],
+            )
             top_candidates = valid_tickers[:max_candidates]
             
             logger.info("Phase 2: full analysis of %d top candidates...", len(top_candidates))
@@ -136,8 +139,7 @@ class PortfolioAnalyzer:
         logger.info("Selected %d companies: %s", len(selected_tickers), ', '.join(selected_tickers))
 
         returns_data = None
-        methods_requiring_returns = ('markowitz', 'risk_parity', 'score_risk_adjusted', 'black_litterman')
-        if self.config.weight_method in methods_requiring_returns:
+        if self.config.weight_method in WeightOptimizer._REQUIRES_RETURNS:
             logger.info("Downloading historical data for %d companies...", len(selected_tickers))
             try:
                 hist_data = self.data_manager.download_assets(
@@ -242,45 +244,48 @@ class PortfolioAnalyzer:
                 time.sleep(self._min_request_interval - time_since_last)
             self._last_request_time = time.time()
     
-    def _analyze_companies_quick(self, tickers: List[str]) -> Dict:
+    _RATE_LIMIT_ERRORS = ('401', 'Unauthorized', 'Rate limit', 'Too Many Requests')
 
+    def _analyze_with_retry(self, ticker: str, analyze_fn, retry_delay: float):
+        self._rate_limit()
+        try:
+            result = analyze_fn(ticker)
+            error_str = str(result.get('error', ''))
+            if not result.get('success') and any(e in error_str for e in self._RATE_LIMIT_ERRORS):
+                time.sleep(retry_delay)
+                result = analyze_fn(ticker)
+            return (ticker, result)
+        except Exception as e:
+            error_msg = str(e)
+            if any(e in error_msg for e in self._RATE_LIMIT_ERRORS):
+                time.sleep(retry_delay)
+                try:
+                    return (ticker, analyze_fn(ticker))
+                except Exception:
+                    pass
+            logger.warning("Analysis failed for %s: %s", ticker, error_msg)
+            return (ticker, {'success': False, 'error': error_msg})
+
+    def _analyze_companies_quick(self, tickers: List[str]) -> Dict:
         if not tickers:
             return {}
-            
+
         results = {}
-        max_workers = max(1, min(os.cpu_count() or 4, len(tickers), 10)) 
-        
-        def analyze_quick_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit()
-            try:
-                result = self.company_analyzer.analyze_quick(ticker)
-                error_str = str(result.get('error', ''))
-
-                if not result.get('success') and ('401' in error_str or 'Rate limit' in error_str or 'Too Many Requests' in error_str):
-                    time.sleep(2)  
-                    result = self.company_analyzer.analyze_quick(ticker)
-                return (ticker, result)
-            except Exception as e:
-                error_msg = str(e)
-
-                if '401' in error_msg or 'Unauthorized' in error_msg or 'Rate limit' in error_msg or 'Too Many Requests' in error_msg:
-                    time.sleep(2)
-                    try:
-                        result = self.company_analyzer.analyze_quick(ticker)
-                        return (ticker, result)
-                    except Exception:
-                        pass
-                logger.warning("Quick analysis failed for %s: %s", ticker, error_msg)
-                return (ticker, {'success': False, 'error': error_msg})
+        max_workers = max(1, min(os.cpu_count() or 4, len(tickers), _ANALYSIS['max_workers_quick']))
+        retry_delay = _ANALYSIS['retry_delay_quick']
+        log_interval = _ANALYSIS['log_interval_quick']
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_ticker = {executor.submit(analyze_quick_single, ticker): ticker for ticker in tickers}
-            
+            futures = {
+                executor.submit(self._analyze_with_retry, t, self.company_analyzer.analyze_quick, retry_delay): t
+                for t in tickers
+            }
+
             completed = 0
             successful = 0
             total = len(tickers)
 
-            for future in as_completed(future_to_ticker):
+            for future in as_completed(futures):
                 ticker, result = future.result()
                 completed += 1
                 results[ticker] = result
@@ -288,56 +293,37 @@ class PortfolioAnalyzer:
                 if result.get('success'):
                     successful += 1
 
-                if completed % 50 == 0 or completed == total:
+                if completed % log_interval == 0 or completed == total:
                     logger.info("Quick analysis: %d/%d companies (%d successful)...", completed, total, successful)
-        
-        return results
-    
-    def _analyze_companies(self, tickers: List[str]) -> Dict:
 
+        return results
+
+    def _analyze_companies(self, tickers: List[str]) -> Dict:
         if not tickers:
             return {}
-            
+
         results = {}
-        max_workers = max(1, min(3, len(tickers)))
-
-        def analyze_single(ticker: str) -> tuple[str, Dict]:
-            self._rate_limit()
-            try:
-                result = self.company_analyzer.analyze(ticker)
-
-                if not result.get('success') and '401' in str(result.get('error', '')):
-                    time.sleep(1)
-                    result = self.company_analyzer.analyze(ticker)
-                return (ticker, result)
-            except Exception as e:
-                error_msg = str(e)
-
-                if '401' in error_msg or 'Unauthorized' in error_msg:
-                    time.sleep(1)
-
-                    try:
-                        result = self.company_analyzer.analyze(ticker)
-                        return (ticker, result)
-                    except Exception:
-                        pass
-
-                logger.warning("Full analysis failed for %s: %s", ticker, error_msg)
-                return (ticker, {'success': False, 'error': error_msg})
+        max_workers = max(1, min(_ANALYSIS['max_workers_full'], len(tickers)))
+        retry_delay = _ANALYSIS['retry_delay_full']
+        log_interval = _ANALYSIS['log_interval_full']
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_ticker = {executor.submit(analyze_single, ticker): ticker for ticker in tickers}
+            futures = {
+                executor.submit(self._analyze_with_retry, t, self.company_analyzer.analyze, retry_delay): t
+                for t in tickers
+            }
+
             completed = 0
             total = len(tickers)
 
-            for future in as_completed(future_to_ticker):
+            for future in as_completed(futures):
                 ticker, result = future.result()
                 completed += 1
 
                 if result.get('success'):
                     results[ticker] = result
 
-                if completed % 10 == 0 or completed == total:
+                if completed % log_interval == 0 or completed == total:
                     logger.info("Analysis progress: %d/%d companies", completed, total)
-                    
+
         return results

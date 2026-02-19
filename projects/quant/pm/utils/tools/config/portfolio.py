@@ -29,6 +29,9 @@ PORTFOLIO_CONFIG = {
         'annual_trading_days': 252,
         'min_data_points': 30,
         'scipy_method': 'SLSQP',
+        'max_weight': 1.0,
+        'min_weight': 0.0,
+        'n_restarts': 5,
     },
     'dates': {
         'default_lookback_years': ANALYSIS_DATES['default_lookback_years'],
@@ -40,7 +43,19 @@ PORTFOLIO_CONFIG = {
     'defaults': {
         'sector_name': 'Unknown',
         'price_column': 'Close'
-    }
+    },
+    'analysis': {
+        'quick_analysis_threshold': 50,
+        'candidate_multiplier': 3,
+        'min_candidates': 50,
+        'max_workers_quick': 10,
+        'max_workers_full': 3,
+        'rate_limit_interval': 0.5,
+        'retry_delay_quick': 2,
+        'retry_delay_full': 1,
+        'log_interval_quick': 50,
+        'log_interval_full': 10,
+    },
 }
 
 TRADING_SIGNALS_CONFIG = {
