@@ -22,23 +22,23 @@ class CorrelationReporter:
     def _print_summary(self, results: Dict) -> None:
         corr_matrix = results['correlation_matrix']
 
-        print("ANÁLISIS DE CORRELACIÓN".center(60))
+        print("CORRELATION ANALYSIS".center(60))
 
-        print("MATRIZ DE CORRELACIÓN")
+        print("CORRELATION MATRIX")
         print(corr_matrix.round(3))
 
-        print("\nESTADÍSTICAS DE CORRELACIÓN")
-        print(f"  Correlación promedio:    {results['mean_correlation']:>8.3f}")
-        print(f"  Correlación máxima:      {results['max_correlation']:>8.3f}")
-        print(f"  Correlación mínima:      {results['min_correlation']:>8.3f}")
-        print(f"  Desviación estándar:     {results['std_correlation']:>8.3f}")
+        print("\nCORRELATION STATISTICS")
+        print(f"  Average correlation:     {results['mean_correlation']:>8.3f}")
+        print(f"  Maximum correlation:     {results['max_correlation']:>8.3f}")
+        print(f"  Minimum correlation:     {results['min_correlation']:>8.3f}")
+        print(f"  Standard deviation:      {results['std_correlation']:>8.3f}")
 
         flat = self._upper_triangle(corr_matrix)
 
-        print("PARES MÁS CORRELACIONADOS")
+        print("MOST CORRELATED PAIRS")
         for (a1, a2), corr in flat.nlargest(_TOP_N).items():
             print(f"  {a1} - {a2}:  {corr:>6.3f}")
 
-        print("PARES MENOS CORRELACIONADOS")
+        print("LEAST CORRELATED PAIRS")
         for (a1, a2), corr in flat.nsmallest(_TOP_N).items():
             print(f"  {a1} - {a2}:  {corr:>6.3f}")

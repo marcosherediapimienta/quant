@@ -134,8 +134,8 @@ class ESCalculator:
 
         if method not in strategies:
             raise ValueError(
-                f"Método '{method}' no válido. "
-                f"Opciones: {list(strategies.keys())}"
+                f"Method '{method}' not valid. "
+                f"Options: {list(strategies.keys())}"
             )
 
         return strategies[method]()

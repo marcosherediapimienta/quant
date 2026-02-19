@@ -20,37 +20,37 @@ class DrawdownReporter:
     @staticmethod
     def _classify_drawdown_risk(max_dd_pct: float) -> str:
         if max_dd_pct < DRAWDOWN_RISK_LEVELS['low']:
-            return "Bajo"
+            return "Low"
         if max_dd_pct < DRAWDOWN_RISK_LEVELS['moderate']:
-            return "Moderado"
+            return "Moderate"
         if max_dd_pct < DRAWDOWN_RISK_LEVELS['high']:
-            return "Alto"
-        return "Muy Alto"
+            return "High"
+        return "Very High"
 
     @staticmethod
     def _classify_calmar(calmar: float) -> str:
         t = RATIO_INTERPRETATION['calmar']
         if calmar > t['excellent']:
-            return "Excelente retorno vs drawdown"
+            return "Excellent return vs drawdown"
         if calmar > t['good']:
-            return "Buena compensación"
-        return "Riesgo elevado para el retorno"
+            return "Good compensation"
+        return "Elevated risk for the return"
 
     def _print_drawdown(self, r: Dict) -> None:
-        print("ANÁLISIS DE DRAWDOWN".center(60))
+        print("DRAWDOWN ANALYSIS".center(60))
 
         print("MAX DRAWDOWN")
-        print(f"  Magnitud:                {r['max_drawdown'] * 100:>8.2f}%")
-        print(f"  Fecha:                   {r['max_drawdown_date']}")
-        print(f"  Duración:                {r['max_underwater_duration']} días")
+        print(f"  Magnitude:               {r['max_drawdown'] * 100:>8.2f}%")
+        print(f"  Date:                    {r['max_drawdown_date']}")
+        print(f"  Duration:                {r['max_underwater_duration']} days")
 
-        print("RATIOS DE DRAWDOWN")
+        print("DRAWDOWN RATIOS")
         print(f"  Calmar Ratio:            {r['calmar_ratio']:>8.3f}")
         print(f"  Sterling Ratio:          {r['sterling_ratio']:>8.3f}")
 
-        print("RETORNO ANUAL")
-        print(f"  Retorno Anual:           {r['annual_return'] * 100:>8.2f}%")
+        print("ANNUAL RETURN")
+        print(f"  Annual Return:           {r['annual_return'] * 100:>8.2f}%")
 
-        print("INTERPRETACIÓN")
-        print(f"  Nivel de riesgo:         {self._classify_drawdown_risk(abs(r['max_drawdown']) * 100)}")
+        print("INTERPRETATION")
+        print(f"  Risk level:              {self._classify_drawdown_risk(abs(r['max_drawdown']) * 100)}")
         print(f"  Calmar:                  {self._classify_calmar(r['calmar_ratio'])}")

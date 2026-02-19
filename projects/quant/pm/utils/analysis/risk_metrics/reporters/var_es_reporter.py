@@ -63,7 +63,7 @@ class VarEsReporter:
     def _results_to_dataframe(self, method_results: Dict) -> pd.DataFrame:
         data = [
             {
-                'Método': method.capitalize(),
+                'Method': method.capitalize(),
                 'VaR_daily_%': values['var_daily_pct'],
                 'VaR_annual_%': values['var_annual_pct'],
                 'ES_daily_%': values['es_daily_pct'],
@@ -71,39 +71,39 @@ class VarEsReporter:
             }
             for method, values in method_results.items()
         ]
-        return pd.DataFrame(data).set_index('Método')
+        return pd.DataFrame(data).set_index('Method')
 
     @staticmethod
     def _classify_risk(abs_var_daily: float) -> str:
         if abs_var_daily < VAR_RISK_LEVELS['low']:
-            return "Bajo"
+            return "Low"
         if abs_var_daily < VAR_RISK_LEVELS['moderate']:
-            return "Moderado"
+            return "Moderate"
         if abs_var_daily < VAR_RISK_LEVELS['high']:
-            return "Alto"
-        return "Muy Alto"
+            return "High"
+        return "Very High"
 
     def _print_comparison(self, comparison: pd.DataFrame, confidence_level: float) -> None:
-        header = f"ANÁLISIS VaR y ES (Nivel de confianza: {confidence_level * 100:.0f}%)"
+        header = f"VaR AND ES ANALYSIS (Confidence level: {confidence_level * 100:.0f}%)"
         print(header.center(70))
 
         row_fmt = "{:<15} {:>7.2f}%      {:>7.2f}%      {:>7.2f}%      {:>7.2f}%"
-        print(f"{'Método':<15} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
+        print(f"{'Method':<15} {'Daily VaR':<15} {'Annual VaR':<15} {'Daily ES':<15} {'Annual ES':<15}")
         for method, row in comparison.iterrows():
             print(row_fmt.format(method, row['VaR_daily_%'], row['VaR_annual_%'], row['ES_daily_%'], row['ES_annual_%']))
 
         avg_var = comparison['VaR_daily_%'].mean()
         avg_es = comparison['ES_daily_%'].mean()
 
-        print("INTERPRETACIÓN")
-        print(f"  VaR promedio diario:     {avg_var:.2f}%")
-        print(f"  ES promedio diario:      {avg_es:.2f}%")
-        print(f"  Pérdida máxima esperada: {avg_es:.2f}% en un día adverso")
-        print(f"  Nivel de riesgo:         {self._classify_risk(abs(avg_var))}")
+        print("INTERPRETATION")
+        print(f"  Average daily VaR:       {avg_var:.2f}%")
+        print(f"  Average daily ES:        {avg_es:.2f}%")
+        print(f"  Max expected loss:       {avg_es:.2f}% on an adverse day")
+        print(f"  Risk level:              {self._classify_risk(abs(avg_var))}")
 
     def _print_multi_level(self, results: Dict, confidence_levels: Tuple[float, ...], method: str) -> None:
-        print(f"VaR y ES - Método: {method.capitalize()}".center(70))
-        print(f"{'Confianza':<12} {'VaR Diario':<15} {'VaR Anual':<15} {'ES Diario':<15} {'ES Anual':<15}")
+        print(f"VaR and ES - Method: {method.capitalize()}".center(70))
+        print(f"{'Confidence':<12} {'Daily VaR':<15} {'Annual VaR':<15} {'Daily ES':<15} {'Annual ES':<15}")
 
         row_fmt = "{:>5.0f}%       {:>7.2f}%      {:>7.2f}%      {:>7.2f}%      {:>7.2f}%"
         for cl in confidence_levels:

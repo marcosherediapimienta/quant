@@ -49,7 +49,7 @@ class VaRCalculator:
             recommendation = "Parametric VaR is appropriate."
             risk_level = "LOW"
         elif normality_score >= _NORM['score_questionable']:
-            conclusion = "CUESTIONABLE"
+            conclusion = "QUESTIONABLE"
             recommendation = "Parametric VaR may underestimate risk. Consider using Historical VaR as well."
             risk_level = "MEDIUM"
         else:
@@ -282,7 +282,7 @@ class VaRCalculator:
         if method not in methods:
             raise ValueError(
                 f"Method '{method}' not valid. "
-                f"Opciones: {list(methods.keys())}"
+                f"Options: {list(methods.keys())}"
             )
         
         return methods[method](returns, weights, confidence_level)

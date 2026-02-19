@@ -27,65 +27,65 @@ class BenchmarkReporter:
     def _classify_te(te_annual: float) -> str:
         te_pct = te_annual * 100
         if te_pct < TRACKING_ERROR_THRESHOLDS['very_close']:
-            return "Muy cercano al benchmark"
+            return "Very close to benchmark"
         if te_pct < TRACKING_ERROR_THRESHOLDS['moderate']:
-            return "Desviación moderada"
+            return "Moderate deviation"
         if te_pct < TRACKING_ERROR_THRESHOLDS['active']:
-            return "Gestión activa notable"
-        return "Alta desviación del benchmark"
+            return "Notable active management"
+        return "High deviation from benchmark"
 
     @staticmethod
     def _classify_ir(ir: float) -> str:
         if ir > INFORMATION_RATIO_THRESHOLDS['excellent']:
-            return "Excelente - supera al benchmark"
+            return "Excellent - outperforms benchmark"
         if ir > INFORMATION_RATIO_THRESHOLDS['positive']:
-            return "Positivo - añade valor"
+            return "Positive - adds value"
         if ir > INFORMATION_RATIO_THRESHOLDS['slightly_below']:
-            return "Ligeramente inferior"
-        return "Bajo desempeño significativo"
+            return "Slightly below"
+        return "Significant underperformance"
 
     @staticmethod
     def _classify_beta(beta: float) -> str:
         if beta > BETA_THRESHOLDS['aggressive']:
-            return "Alta sensibilidad (agresivo)"
+            return "High sensitivity (aggressive)"
         if beta > BETA_THRESHOLDS['market']:
-            return "Similar al mercado"
+            return "Similar to market"
         if beta > 0:
-            return "Baja sensibilidad (defensivo)"
-        return "Correlación inversa"
+            return "Low sensitivity (defensive)"
+        return "Inverse correlation"
 
     @staticmethod
     def _classify_alpha(alpha_annual: float) -> str:
         alpha_pct = alpha_annual * 100
         if alpha_pct > ALPHA_THRESHOLDS['excellent']:
-            return "Excelente - supera expectativas"
+            return "Excellent - exceeds expectations"
         if alpha_pct > ALPHA_THRESHOLDS['positive']:
-            return "Positivo - genera valor"
+            return "Positive - generates value"
         if alpha_pct > ALPHA_THRESHOLDS['slightly_below']:
-            return "Ligeramente por debajo"
-        return "Bajo desempeño notable"
+            return "Slightly below"
+        return "Notable underperformance"
 
     def _print_analysis(self, r: Dict) -> None:
-        print("ANÁLISIS VS BENCHMARK".center(60))
+        print("BENCHMARK ANALYSIS".center(60))
 
         print("TRACKING ERROR")
-        print(f"  Tracking Error (diario):  {r['tracking_error_daily'] * 100:>8.2f}%")
-        print(f"  Tracking Error (anual):   {r['tracking_error_annual'] * 100:>8.2f}%")
-        print(f"  Interpretación:           {self._classify_te(r['tracking_error_annual'])}")
+        print(f"  Tracking Error (daily):   {r['tracking_error_daily'] * 100:>8.2f}%")
+        print(f"  Tracking Error (annual):  {r['tracking_error_annual'] * 100:>8.2f}%")
+        print(f"  Interpretation:           {self._classify_te(r['tracking_error_annual'])}")
 
         print("INFORMATION RATIO")
         print(f"  Information Ratio:        {r['information_ratio']:>8.3f}")
-        print(f"  Interpretación:           {self._classify_ir(r['information_ratio'])}")
+        print(f"  Interpretation:           {self._classify_ir(r['information_ratio'])}")
 
         print("BETA")
         print(f"  Beta:                     {r['beta']:>8.3f}")
-        print(f"  R²:                       {r['r_squared']:>8.3f}")
-        print(f"  Correlación:              {r['correlation']:>8.3f}")
-        print(f"  Interpretación:           {self._classify_beta(r['beta'])}")
+        print(f"  R-squared:                {r['r_squared']:>8.3f}")
+        print(f"  Correlation:              {r['correlation']:>8.3f}")
+        print(f"  Interpretation:           {self._classify_beta(r['beta'])}")
 
         print("ALPHA (Jensen)")
-        print(f"  Alpha (anualizado):       {r['alpha_annual'] * 100:>8.2f}%")
-        print(f"  Retorno cartera:          {r['portfolio_return_annual'] * 100:>8.2f}%")
-        print(f"  Retorno benchmark:        {r['benchmark_return_annual'] * 100:>8.2f}%")
-        print(f"  Retorno esperado (CAPM):  {r['expected_return'] * 100:>8.2f}%")
-        print(f"  Interpretación:           {self._classify_alpha(r['alpha_annual'])}")
+        print(f"  Alpha (annualized):       {r['alpha_annual'] * 100:>8.2f}%")
+        print(f"  Portfolio return:         {r['portfolio_return_annual'] * 100:>8.2f}%")
+        print(f"  Benchmark return:         {r['benchmark_return_annual'] * 100:>8.2f}%")
+        print(f"  Expected return (CAPM):   {r['expected_return'] * 100:>8.2f}%")
+        print(f"  Interpretation:           {self._classify_alpha(r['alpha_annual'])}")
