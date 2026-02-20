@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from scipy.stats import jarque_bera, anderson
-from typing import Dict
+from scipy.stats import jarque_bera, anderson, norm
+from typing import Dict, List
 from .helpers import calculate_portfolio_returns
 from ....tools.config import SIGNIFICANCE_LEVEL, ANDERSON_DARLING
 
@@ -129,6 +129,19 @@ class DistributionMoments:
         
         ad_results = self.calculate_anderson_darling(returns, weights)
         
+        histogram = self._build_histogram(portfolio_ret, mean, std, returns)
+
+        per_ticker = {}
+        if len(returns.columns) > 1:
+            for ticker in returns.columns:
+                col = returns[ticker].dropna()
+                per_ticker[ticker] = {
+                    'mean': round(float(col.mean()), 6),
+                    'std': round(float(col.std(ddof=0)), 6),
+                    'skewness': round(float(col.skew()), 4),
+                    'excess_kurtosis': round(float(col.kurtosis()), 4),
+                }
+
         return {
             'mean': mean,
             'median': median,
@@ -145,5 +158,39 @@ class DistributionMoments:
             'percentile_1': p1,
             'percentile_5': p5,
             'percentile_95': p95,
-            'percentile_99': p99
+            'percentile_99': p99,
+            'histogram': histogram,
+            'per_ticker': per_ticker,
         }
+
+    @staticmethod
+    def _build_histogram(
+        portfolio_ret: pd.Series,
+        mu: float,
+        sigma: float,
+        returns_df: pd.DataFrame,
+        bins: int = 50,
+    ) -> List[Dict[str, float]]:
+        counts, edges = np.histogram(portfolio_ret, bins=bins, density=True)
+        centers = (edges[:-1] + edges[1:]) / 2
+        normal_pdf = norm.pdf(centers, mu, sigma)
+
+        result = []
+        tickers = list(returns_df.columns) if len(returns_df.columns) > 1 else []
+
+        ticker_densities = {}
+        for ticker in tickers:
+            t_counts, _ = np.histogram(returns_df[ticker].dropna(), bins=edges, density=True)
+            ticker_densities[ticker] = t_counts
+
+        for i, (c, d, n) in enumerate(zip(centers, counts, normal_pdf)):
+            point = {
+                'x': round(float(c) * 100, 4),
+                'density': round(float(d), 4),
+                'normal': round(float(n), 4),
+            }
+            for ticker in tickers:
+                point[ticker] = round(float(ticker_densities[ticker][i]), 4)
+            result.append(point)
+
+        return result

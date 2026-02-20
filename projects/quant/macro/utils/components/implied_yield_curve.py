@@ -66,20 +66,19 @@ class ImpliedYieldCurveCalculator:
             label = f"{tenor_short}→{tenor_long}"
             forwards[label] = fwd
 
-        if '2Y' in spot_rates and '10Y' in spot_rates:
-            fwd_2_10 = self.calculate_forward_rate(
-                spot_rates['2Y'], 2.0,
-                spot_rates['10Y'], 10.0
-            )
-            forwards['2Y→10Y'] = fwd_2_10
-        
-        if '5Y' in spot_rates and '30Y' in spot_rates:
-            fwd_5_30 = self.calculate_forward_rate(
-                spot_rates['5Y'], 5.0,
-                spot_rates['30Y'], 30.0
-            )
-            forwards['5Y→30Y'] = fwd_5_30
-        
+        wide_pairs = [
+            ('3M', '5Y'),  ('3M', '10Y'), ('3M', '30Y'),
+            ('2Y', '10Y'), ('2Y', '30Y'),  ('5Y', '30Y'),
+        ]
+        for short, long in wide_pairs:
+            if short in spot_rates and long in spot_rates:
+                label = f"{short}→{long}"
+                if label not in forwards:
+                    forwards[label] = self.calculate_forward_rate(
+                        spot_rates[short], available[short],
+                        spot_rates[long], available[long],
+                    )
+
         return forwards
     
     def estimate_term_premium(

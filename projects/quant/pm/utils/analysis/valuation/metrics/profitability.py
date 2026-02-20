@@ -3,7 +3,10 @@ import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, classify_metric, MetricSpec, WeightedScorer
-from ....tools.config import VALUATION_THRESHOLDS, SCORING_WEIGHTS, PROFITABILITY_SCORING_RANGES, ALERT_THRESHOLDS
+from ....tools.config import (
+    VALUATION_THRESHOLDS, SCORING_WEIGHTS, PROFITABILITY_SCORING_RANGES, ALERT_THRESHOLDS,
+    SECTOR_PROFITABILITY_SCORING, PROFITABILITY_SECTOR_MAP,
+)
 
 @dataclass
 class ProfitabilityThresholds:
@@ -39,24 +42,40 @@ _SCORING_SPECS = [
 class ProfitabilityMetrics:
     def __init__(self, thresholds: ProfitabilityThresholds = None):
         self.thresholds = thresholds or ProfitabilityThresholds()
-        self.weights = SCORING_WEIGHTS['profitability']
-        self.ranges = PROFITABILITY_SCORING_RANGES
-    
+        self.default_config = {
+            'weights': SCORING_WEIGHTS['profitability'],
+            'ranges': PROFITABILITY_SCORING_RANGES,
+        }
+
+    def _resolve_sector_config(self, sector: str) -> Dict:
+        sector_key = PROFITABILITY_SECTOR_MAP.get(sector)
+        if sector_key and sector_key in SECTOR_PROFITABILITY_SCORING:
+            return SECTOR_PROFITABILITY_SCORING[sector_key]
+        return self.default_config
+
     def calculate(self, data: Dict) -> Dict:
+        sector = data.get('sector', '')
+        config = self._resolve_sector_config(sector)
         metrics = self._extract_metrics(data)
+
+        if sector == 'Financial Services' and metrics.get('gross_margin') == 0:
+            metrics['gross_margin'] = np.nan
         
         classifications = {
             f'{name}_class': classify_metric(metrics[name], getattr(self.thresholds, name))
             for name in _DATA_KEYS
         }
 
-        score = WeightedScorer.calculate(metrics, _SCORING_SPECS, self.weights, self.ranges)
+        score = WeightedScorer.calculate(
+            metrics, _SCORING_SPECS,
+            config['weights'], config['ranges']
+        )
         
         return {
             'metrics': metrics,
             'classifications': classifications,
             'score': score,
-            'alerts': self._generate_alerts(metrics)
+            'alerts': self._generate_alerts(metrics, config)
         }
 
     @staticmethod
@@ -78,8 +97,8 @@ class ProfitabilityMetrics:
         ('net_margin', 'net_margin_negative', "Negative net margin: company is not profitable"),
     )
 
-    def _generate_alerts(self, metrics: Dict) -> List[str]:
-        cfg = ALERT_THRESHOLDS['profitability']
+    def _generate_alerts(self, metrics: Dict, config: Dict) -> List[str]:
+        cfg = config.get('alerts', ALERT_THRESHOLDS['profitability'])
         return [
             msg for key, threshold_key, msg in self._ALERT_SPECS
             if pd.notna(metrics[key]) and metrics[key] < cfg[threshold_key]

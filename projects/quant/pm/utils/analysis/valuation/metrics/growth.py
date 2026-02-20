@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
@@ -22,7 +23,8 @@ class GrowthThresholds:
 
 _SCORING_SPECS = [
     MetricSpec(key='revenue_growth_yoy', range_key='revenue', weight_key='revenue'),
-    MetricSpec(key='earnings_growth_yoy', range_key='earnings', weight_key='earnings'),
+    MetricSpec(key='earnings_growth_yoy', range_key='earnings_yoy', weight_key='earnings_yoy'),
+    MetricSpec(key='earnings_quarterly_growth', range_key='earnings_quarterly', weight_key='earnings_quarterly'),
 ]
 
 class GrowthMetrics:
@@ -50,6 +52,7 @@ class GrowthMetrics:
         }
 
         growth_score = WeightedScorer.calculate(metrics, _SCORING_SPECS, self.weights, self.ranges)
+        growth_score = self._apply_consistency_discount(growth_score, revenue_growth, earnings_growth, earnings_quarterly_growth)
         sustainability = self._analyze_sustainability(metrics)
         
         return {
@@ -60,6 +63,44 @@ class GrowthMetrics:
             'alerts': self._generate_alerts(metrics)
         }
     
+    @staticmethod
+    def _apply_consistency_discount(
+        score: float,
+        revenue_growth: float,
+        earnings_yoy: float,
+        earnings_quarterly: float,
+    ) -> float:
+
+        if pd.isna(score):
+            return score
+
+        rev = revenue_growth if pd.notna(revenue_growth) else None
+        if rev is None:
+            return score
+
+        earn_candidates = [
+            e for e in (earnings_yoy, earnings_quarterly)
+            if pd.notna(e)
+        ]
+        if not earn_candidates:
+            return score
+
+        best_earn = max(earn_candidates)
+
+        if rev >= 0.15 or best_earn <= 0.20:
+            return score
+
+        rev_floor = max(rev, 0.01)
+        divergence = best_earn / rev_floor
+
+        threshold = 3.0 if rev < 0.10 else 5.0
+
+        if divergence <= threshold:
+            return score
+
+        discount = min((divergence - threshold) * 0.08, 0.30)
+        return float(np.clip(score * (1.0 - discount), 0, 100))
+
     def _analyze_sustainability(self, metrics: Dict) -> Dict:
         analysis = {
             'is_sustainable': True,
