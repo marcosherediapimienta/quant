@@ -24,7 +24,7 @@ Macroeconomic analysis and its impact on portfolios.
 - Macro situation dashboard: yield curve, inflation signals, credit conditions, VIX, global bonds, risk sentiment.
 - Factor categories: equity, rates, credit, currencies, commodities, volatility.
 
-### Chatbot — WarrenAI
+### Chatbot — GalaAI
 
 AI-powered financial assistant with Retrieval-Augmented Generation (RAG).
 
@@ -63,7 +63,7 @@ quant/
     │   │   └── visualizations/
     │   └── macro_analysis.ipynb
     │
-    └── chatbot/                        # WarrenAI
+    └── chatbot/                        # GalaAI
         ├── chat_engine.py
         ├── code_indexer.py
         ├── memory/

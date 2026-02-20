@@ -41,7 +41,7 @@ class ConversationMemory:
 
         context_lines = []
         for msg in recent_messages:
-            role_label = "User" if msg['role'] == 'user' else "WarrenAI"
+            role_label = "User" if msg['role'] == 'user' else "GalaAI"
             content = msg['content']
 
             if len(content) > MAX_CONTEXT_MSG_LENGTH:
