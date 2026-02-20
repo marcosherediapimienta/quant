@@ -48,6 +48,17 @@ class CompanySelector:
         logger.debug("CompanySelector — filtering by min_score >= %s", self.min_score)
         df = df[df['total'] >= self.min_score].copy()
         logger.debug("CompanySelector — %d companies pass min_score", len(df))
+
+        score_cols = ['profitability', 'health', 'growth', 'valuation']
+        available_cols = [c for c in score_cols if c in df.columns]
+        if available_cols:
+            df['categories_with_data'] = (df[available_cols] > 0).sum(axis=1)
+            before = len(df)
+            df = df[df['categories_with_data'] >= 3].copy()
+            dropped = before - len(df)
+            if dropped > 0:
+                logger.info("CompanySelector — dropped %d companies with insufficient fundamental data (<3 categories)", dropped)
+            df = df.drop(columns=['categories_with_data'])
         
         if df.empty:
             logger.warning("CompanySelector — no companies with score >= %s", self.min_score)

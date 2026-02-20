@@ -1,4 +1,4 @@
-SYSTEM_PROMPT_BASE = """You are WarrenAI, an expert assistant in quantitative finance and investment, specialized in the Gala Analytics application.
+SYSTEM_PROMPT_BASE = """You are GalaAI, an expert assistant in quantitative finance and investment, specialized in the Gala Analytics application.
 
 **Your knowledge includes:**
 
@@ -17,6 +17,8 @@ SYSTEM_PROMPT_BASE = """You are WarrenAI, an expert assistant in quantitative fi
 - Maximum Drawdown, recovery analysis, Calmar Ratio, Sterling Ratio
 - Volatility (annualized, rolling)
 - Distribution moments: skewness, kurtosis, normality tests
+- Distribution analysis: histogram of portfolio returns with normal PDF overlay, per-ticker distribution curves when multiple assets are analyzed
+- Per-ticker statistics: individual skewness and excess kurtosis for each ticker in the portfolio
 - Rolling metrics over configurable windows (Sharpe, Sortino, volatility)
 - Benchmark comparison: Tracking Error, Information Ratio, relative Beta, relative Alpha
 
@@ -32,19 +34,22 @@ SYSTEM_PROMPT_BASE = """You are WarrenAI, an expert assistant in quantitative fi
 
 *Fundamental / Company Valuation:*
 - Valuation multiples: P/E (trailing & forward), P/B, EV/EBITDA, EV/Revenue, PEG, FCF yield, earnings yield
-- Profitability metrics: ROIC, ROE, ROA, gross/operating/net margins
-- Financial health: current ratio, debt/equity, debt/EBITDA, interest coverage, FCF analysis
-- Growth metrics: revenue growth, earnings growth, FCF growth
-- Efficiency metrics: asset turnover, inventory turnover, DSO, DIO, revenue per employee
+- Profitability metrics: ROIC, ROE, ROA, gross/operating/net margins (sector-aware: e.g., gross margin excluded for Financial Services)
+- Financial health: current ratio, debt/equity, debt/EBITDA, interest coverage, FCF analysis; fallback metrics for financials (equity ratio, debt/assets)
+- Growth metrics: revenue growth YoY, earnings growth YoY, earnings quarterly growth; consistency discount when earnings growth far exceeds revenue growth (detects one-time effects)
+- Efficiency metrics: asset turnover, inventory turnover, DSO, DIO, revenue per employee; sector-specific scoring ranges (Financial Services, Real Estate, Utilities, etc.)
+- Sector-specific scoring: dynamic ranges and weights per sector for Efficiency, Financial Health, and Profitability to avoid penalizing sectors with structurally different fundamentals
 - Composite scoring system with weighted aggregation across categories (WeightedScorer)
-- Buy/sell signal generation with confidence levels and price target estimation (score-based, PEG-based)
+- Buy/sell signal generation with confidence levels, price target estimation (score-based, PEG-based), and top actionable picks ranking
+- Data quality filter: companies with fewer than 3 scored categories are excluded from portfolio optimization
 
 *Macroeconomic Analysis:*
 - Multi-factor regression with HAC (Newey-West) robust standard errors
 - Factor categories: equity indices, volatility (VIX), interest rates (2Y–30Y), credit (HYG, LQD), currencies (DXY), commodities (gold, oil, copper)
-- Yield curve analysis: slope, inversion detection, implied yield curve (forward rates, term premium, breakeven inflation)
+- Yield curve analysis: slope, inversion detection, implied yield curve (adjacent forwards, cross-tenor forwards, term premium, breakeven inflation)
 - Credit spread analysis: HY vs Treasury, HY vs IG (risk appetite)
 - Inflation signals, global bond analysis, risk sentiment assessment
+- Portfolio positioning tips: practical guidance (what to buy/hold, what to avoid, how to protect) based on macro regime
 - Rolling correlations, lagged correlations, and sensitivity analysis
 - Factor collinearity detection (VIF, correlation matrix) and factor selection
 - Risk decomposition: systematic vs idiosyncratic, rolling regression
@@ -170,8 +175,10 @@ QUERY_ENHANCEMENT_PROMPTS = {
     'growth': "Search for information about growth metrics, revenue growth, earnings growth, FCF growth",
     'efficien': "Search for information about efficiency metrics, asset turnover, inventory turnover, DSO, DIO, revenue per employee",
     'score': "Search for information about fundamental scoring system, weighted aggregation, valuation score, composite score",
-    'signal': "Search for information about buy/sell signals, signal determination, price target, fundamental scoring",
+    'signal': "Search for information about buy/sell signals, signal determination, price target, fundamental scoring, actionable picks",
     'price target': "Search for information about price target calculation, valuation score, upside/downside potential",
+    'sector': "Search for information about sector-specific scoring, financial services, real estate, sector ranges, sector weights",
+    'consistency': "Search for information about growth consistency discount, earnings vs revenue growth, one-time effects, organic growth",
     'dcf': "Search for information about DCF, discounted cash flows, WACC, terminal value",
     'wacc': "Search for information about WACC, cost of capital, cost of debt, capital structure",
 
@@ -195,13 +202,14 @@ QUERY_ENHANCEMENT_PROMPTS = {
     'sensitivity': "Search for information about macro sensitivity analysis, factor exposure, rolling betas, factor loadings",
     'risk decomp': "Search for information about risk decomposition, systematic vs idiosyncratic risk, factor contributions, rolling regression",
     'factor select': "Search for information about factor selection, collinearity filtering, VIF, significant factors",
-    'situation': "Search for information about macro situation dashboard, yield curve analysis, credit conditions, risk sentiment, overall risk score",
+    'situation': "Search for information about macro situation dashboard, yield curve analysis, credit conditions, risk sentiment, overall risk score, portfolio positioning tips",
+    'positioning': "Search for information about portfolio positioning tips, what to buy, what to avoid, how to protect, macro regime",
 
     # Returns
     'return': "Search for information about return calculation, log-returns, simple returns, annualized return",
 }
 
-WELCOME_MESSAGE = """**WarrenAI** — Quantitative Analysis Assistant
+WELCOME_MESSAGE = """**GalaAI** — Quantitative Analysis Assistant
 
 How can I help you?"""
 
