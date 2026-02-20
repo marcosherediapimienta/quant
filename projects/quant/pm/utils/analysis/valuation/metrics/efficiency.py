@@ -1,9 +1,15 @@
+import logging
 import numpy as np
 import pandas as pd
 from typing import Dict, List
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
-from ....tools.config import VALUATION_THRESHOLDS, EFFICIENCY_SCORING, ALERT_THRESHOLDS, REPORTING_CONFIG
+from ....tools.config import (
+    VALUATION_THRESHOLDS, EFFICIENCY_SCORING, ALERT_THRESHOLDS, REPORTING_CONFIG,
+    SECTOR_EFFICIENCY_SCORING, EFFICIENCY_SECTOR_MAP,
+)
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class EfficiencyThresholds:
@@ -36,10 +42,19 @@ _CLASSIFICATION_SPECS = [
 class EfficiencyMetrics:
     def __init__(self, thresholds: EfficiencyThresholds = None):
         self.thresholds = thresholds or EfficiencyThresholds()
-        self.config = EFFICIENCY_SCORING
+        self.default_config = EFFICIENCY_SCORING
         self.days_per_year = REPORTING_CONFIG['days_per_year']
     
+    def _resolve_sector_config(self, sector: str) -> Dict:
+        sector_key = EFFICIENCY_SECTOR_MAP.get(sector)
+        if sector_key and sector_key in SECTOR_EFFICIENCY_SCORING:
+            return SECTOR_EFFICIENCY_SCORING[sector_key]
+        return self.default_config
+
     def calculate(self, data: Dict) -> Dict:
+        sector = data.get('sector', '')
+        config = self._resolve_sector_config(sector)
+
         total_revenue = nan_if_missing(data.get('totalRevenue'))
         total_assets = nan_if_missing(data.get('totalAssets'))
         inventory = nan_if_missing(data.get('inventory'))
@@ -81,19 +96,19 @@ class EfficiencyMetrics:
 
         score = WeightedScorer.calculate(
             metrics, _SCORING_SPECS,
-            self.config['weights'], self.config['ranges']
+            config['weights'], config['ranges']
         )
         
         return {
             'metrics': metrics,
             'classifications': classifications,
             'score': score,
-            'alerts': self._generate_alerts(metrics)
+            'alerts': self._generate_alerts(metrics, config)
         }
     
-    def _generate_alerts(self, metrics: Dict) -> List[str]:
+    def _generate_alerts(self, metrics: Dict, config: Dict) -> List[str]:
         alerts = []
-        alert_cfg = ALERT_THRESHOLDS['efficiency']
+        alert_cfg = config.get('alerts', ALERT_THRESHOLDS['efficiency'])
         
         dso = metrics['days_sales_outstanding']
         if pd.notna(dso) and dso > alert_cfg['dso_high']:

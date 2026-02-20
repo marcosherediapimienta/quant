@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from dataclasses import dataclass
 from ..tools.config import (
     PERIOD_WEEK,
@@ -374,23 +374,20 @@ class MacroSituationAnalyzer:
 
         bonds = {}
         regions = {
-            'GOVT_20Y': {'region': 'USA', 'tenor': '20Y'},
-            'GOVT_7_10Y': {'region': 'USA', 'tenor': '7-10Y'},
-            'GOVT_1_3Y': {'region': 'USA', 'tenor': '1-3Y'},
-            'RATE_3M': {'region': 'USA', 'tenor': '3M'},
-            'RATE_2Y': {'region': 'USA', 'tenor': '2Y'},
-            'RATE_5Y': {'region': 'USA', 'tenor': '5Y'},
-            'RATE_10Y': {'region': 'USA', 'tenor': '10Y'},
-            'RATE_30Y': {'region': 'USA', 'tenor': '30Y'},
-            'JPN_BOND': {'region': 'Japan', 'tenor': '10Y'},
-            'EUR_BOND': {'region': 'Europe', 'tenor': '10Y'},
-            'GER_BOND': {'region': 'Germany', 'tenor': '10Y'},
-            'UK_BOND': {'region': 'UK', 'tenor': '10Y'},
-            'EM_BOND': {'region': 'Emerging Markets', 'tenor': '10Y'},
-            'CHINA_BOND': {'region': 'China', 'tenor': '10Y'},
-            'CAN_BOND': {'region': 'Canada', 'tenor': '10Y'},
-            'AUS_BOND': {'region': 'Australia', 'tenor': '10Y'},
-            'INTL_BOND': {'region': 'International', 'tenor': '10Y'}
+            'RATE_3M': {'region': 'USA', 'tenor': '3M', 'unit': 'yield'},
+            'RATE_2Y': {'region': 'USA', 'tenor': '2Y', 'unit': 'yield'},
+            'RATE_5Y': {'region': 'USA', 'tenor': '5Y', 'unit': 'yield'},
+            'RATE_10Y': {'region': 'USA', 'tenor': '10Y', 'unit': 'yield'},
+            'RATE_30Y': {'region': 'USA', 'tenor': '30Y', 'unit': 'yield'},
+            'JPN_BOND': {'region': 'Japan', 'tenor': '10Y', 'unit': 'price'},
+            'EUR_BOND': {'region': 'Europe', 'tenor': '10Y', 'unit': 'price'},
+            'GER_BOND': {'region': 'Germany', 'tenor': '10Y', 'unit': 'price'},
+            'UK_BOND': {'region': 'UK', 'tenor': '10Y', 'unit': 'price'},
+            'EM_BOND': {'region': 'Emerging Markets', 'tenor': '10Y', 'unit': 'price'},
+            'CHINA_BOND': {'region': 'China', 'tenor': '10Y', 'unit': 'price'},
+            'CAN_BOND': {'region': 'Canada', 'tenor': '10Y', 'unit': 'price'},
+            'AUS_BOND': {'region': 'Australia', 'tenor': '10Y', 'unit': 'price'},
+            'INTL_BOND': {'region': 'International', 'tenor': '10Y', 'unit': 'price'}
         }
         
         logger.debug(f"[analyze_global_bonds] Available factors: {list(factors_data.keys())}")
@@ -409,6 +406,7 @@ class MacroSituationAnalyzer:
             region_name = f"{bond_info['region']} {bond_info['tenor']}"
             bonds[region_name] = {
                 'level': series.iloc[-1],
+                'unit': bond_info['unit'],
                 'change_1y': self._pct_change(series, PERIOD_YEAR),
                 'change_1m': self._pct_change(series, PERIOD_MONTH),
             }
