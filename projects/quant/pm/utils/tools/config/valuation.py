@@ -45,10 +45,10 @@ SCORING_RANGES = {
 
 SCORING_WEIGHTS = {
     'profitability': {
-        'roic': 0.30,
-        'roe': 0.20,
+        'roic': 0.40,
+        'roe': 0.15,
         'operating_margin': 0.25,
-        'net_margin': 0.25,
+        'net_margin': 0.20,
     },
     'financial_health': {
         'debt_ebitda': 0.25,
@@ -106,7 +106,7 @@ PROFITABILITY_SCORING_RANGES = {
 
 SECTOR_PROFITABILITY_SCORING = {
     'financial_services': {
-        'weights': {'roic': 0.15, 'roe': 0.40, 'operating_margin': 0.20, 'net_margin': 0.25},
+        'weights': {'roic': 0.30, 'roe': 0.25, 'operating_margin': 0.20, 'net_margin': 0.25},
         'ranges': {
             'roic': {'min': -0.05, 'max': 0.15},
             'roe': {'min': 0, 'max': 0.20},
@@ -756,8 +756,8 @@ SCORE_INTERPRETATION = {
 
 SCORE_AGGREGATION_WEIGHTS = {
     'total': {
-        'valuation': 0.40,
-        'fundamental': 0.50,
+        'valuation': 0.20,
+        'fundamental': 0.70,
         'technical': 0.10
     },
     'fundamental': {
@@ -807,12 +807,12 @@ INVESTMENT_PROFILES = {
         'description': 'Growth investing focus (high revenue growth)'
     },
     'quality': {
-        'profitability': 0.35,
+        'profitability': 0.40,
         'financial_health': 0.35,
-        'growth': 0.15,
+        'growth': 0.10,
         'efficiency': 0.10,
         'valuation': 0.05,
-        'description': 'Quality-first approach (high ROE, low debt)'
+        'description': 'Quality-first approach (high ROIC, strong margins, low debt)'
     }
 }
 
