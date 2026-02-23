@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
+
 from ..analyzers.company_analyzer import CompanyAnalyzer
 from ....data import DataManager
 from ....tools.config import TRADING_SIGNALS_CONFIG
@@ -23,7 +25,9 @@ class TradingSignal:
     price_target: float
     upside_potential: float
     reasons: list
-    technical_score: Optional[float] = None 
+    technical_score: Optional[float] = None
+    price_target_raw: Optional[float] = None
+    upside_raw: Optional[float] = None
     
 class BuySellSignalsAnalyzer:
     def __init__(
@@ -69,18 +73,21 @@ class BuySellSignalsAnalyzer:
             scores['fundamental']
         )
 
-        price_target = self.price_target.calculate(
+        price_target_clamped, price_target_raw = self.price_target.calculate(
             company_data['data'], 
             scores['valuation'], 
             current_price
         )
-        upside = self._calculate_upside(price_target, current_price)
+
+        upside_raw = self._calculate_upside(price_target_raw, current_price)
+        upside_clamped = self._calculate_upside(price_target_clamped, current_price)
         
+        upside_for_sanity = self._sanitize_upside(upside_raw)
         signal, confidence = self.signal_determiner.validate_with_upside(
-            signal, confidence, upside
+            signal, confidence, upside_for_sanity
         )
 
-        reasons = self.reason_gen.generate(analysis, scores['fundamental'], None)
+        reasons = self.reason_gen.generate(analysis, scores['fundamental'], signal, upside_for_sanity)
         
         return TradingSignal(
             ticker=ticker,
@@ -89,10 +96,12 @@ class BuySellSignalsAnalyzer:
             valuation_score=scores['valuation'],
             fundamental_score=scores['fundamental'],
             current_price=current_price,
-            price_target=price_target,
-            upside_potential=upside,
+            price_target=price_target_clamped,
+            upside_potential=upside_clamped,
             reasons=reasons,
-            technical_score=None
+            technical_score=None,
+            price_target_raw=price_target_raw,
+            upside_raw=upside_raw
         )
     
     def _resolve_dates(self, start_date: str, end_date: str) -> tuple[str, str]:
@@ -142,9 +151,14 @@ class BuySellSignalsAnalyzer:
             'fundamental': self.fundamental_agg.aggregate(profitability, health, growth)
         }
     
-    def _calculate_upside(self, price_target: float, current_price: float) -> float:
-
-        if current_price <= 0:
+    def _calculate_upside(self, price_target: Optional[float], current_price: float) -> float:
+        if price_target is None or not np.isfinite(price_target) or price_target <= 0 or current_price <= 0:
             return 0.0
-            
+
         return (price_target / current_price) - 1
+        
+    @staticmethod
+    def _sanitize_upside(upside: float, max_abs: float = 5.0) -> float:
+        if not np.isfinite(upside):
+            return 0.0
+        return max(-max_abs, min(max_abs, upside))
