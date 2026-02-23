@@ -60,7 +60,8 @@ class ReasonGenerator:
         self, 
         analysis: dict, 
         fundamental_score: float,
-        technical_score: Optional[float] = None
+        signal: Optional[str] = None,
+        upside: Optional[float] = None
     ) -> List[str]:
 
         score_map = {
@@ -80,7 +81,28 @@ class ReasonGenerator:
             reasons.extend(self._evaluate_rules(score, thresh, spec['rules']))
 
         reasons.extend(self._extract_alerts(analysis))
+
+        if signal and upside is not None:
+            reasons.extend(self._signal_reasons(signal, upside))
+
         return reasons if reasons else ["No specific reasons"]
+
+    @staticmethod
+    def _signal_reasons(signal: str, upside: float) -> List[str]:
+        pct = f"{upside:+.0%}"
+        _SIGNAL_REASONS = [
+            ("BUY",  lambda u: u > 0.30,  f"Strong upside potential ({pct})"),
+            ("BUY",  lambda u: u > 0.10,  f"Moderate upside potential ({pct})"),
+            ("SELL", lambda u: u < -0.10, f"Downside risk ({pct})"),
+            ("SELL", lambda u: u > 0.10,  f"Overvalued despite positive target ({pct})"),
+            ("HOLD", lambda u: u > 0.20,  f"Upside potential ({pct}) but mixed signals"),
+            ("HOLD", lambda u: u < -0.10, f"Downside risk ({pct}) - proceed with caution"),
+        ]
+
+        for sig, condition, message in _SIGNAL_REASONS:
+            if sig == signal and condition(upside):
+                return [message]
+        return []
     
     @staticmethod
     def _evaluate_rules(score: float, thresholds: dict, rules: list) -> List[str]:
