@@ -608,6 +608,10 @@ PRICE_TARGET_CONFIG = {
         'max_upside_factor': 1.75,
         'max_downside_factor': 0.25,
     },
+    'raw_validation': {
+        'min_factor': 0.25,
+        'max_factor': 3.0,
+    },
     'peg_method': {
         'fair_peg': 1.0,
         'adjustment_divisor_bear': 100,
