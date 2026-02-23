@@ -9,10 +9,10 @@ PORTFOLIO_CONFIG = {
     },
     'scoring_weights': {
         'balanced': {
-            'profitability': 0.25,
-            'health': 0.25,
+            'profitability': 0.30,
+            'health': 0.30,
             'growth': 0.20,
-            'valuation': 0.30
+            'valuation': 0.20
         },
         'value': {
             'total': 0.5,
@@ -21,6 +21,12 @@ PORTFOLIO_CONFIG = {
         'growth': {
             'total': 0.5,
             'growth': 0.5
+        },
+        'quality': {
+            'profitability': 0.45,
+            'health': 0.40,
+            'growth': 0.10,
+            'valuation': 0.05
         }
     },
     'optimization': {

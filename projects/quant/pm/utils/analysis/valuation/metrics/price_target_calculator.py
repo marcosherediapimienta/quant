@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import Dict, Tuple
 from ....tools.config import PRICE_TARGET_CONFIG, DEFAULT_NA_SCORE
 
 logger = logging.getLogger(__name__)
@@ -19,13 +19,7 @@ class PriceTargetCalculator:
             logger.debug(f"Price target {method} ({price_target:.2f}) clamped to {clamped:.2f}")
         return clamped
 
-    def calculate_from_peg(
-        self,
-        current_price: float,
-        pe: float,
-        peg: float
-    ) -> float:
-
+    def calculate_from_peg(self, current_price: float, pe: float, peg: float) -> float:
         if pd.isna(pe) or pe <= 0 or pd.isna(peg) or peg <= 0:
             return np.nan
         
@@ -34,24 +28,16 @@ class PriceTargetCalculator:
         implied_growth = pe / peg
         fair_peg = cfg['fair_peg']
         fair_pe = fair_peg * implied_growth
-        price_target = eps * fair_pe
-        
-        return self._clamp_price_target(price_target, current_price, 'PEG')
+        return eps * fair_pe
 
-    def calculate_from_pe(
-        self, 
-        current_price: float, 
-        pe: float, 
-        earnings_growth: float = None
-    ) -> float:
- 
+    def calculate_from_pe(self, current_price: float, pe: float, earnings_growth: float = None) -> float:
         if pd.isna(pe) or pe <= 0:
             return np.nan
         
         cfg = self.config['pe_method']
         eps = current_price / pe
 
-        if earnings_growth and earnings_growth > 0:
+        if earnings_growth is not None and pd.notna(earnings_growth) and earnings_growth > 0:
             if earnings_growth >= cfg['earnings_growth_threshold']:
                 earnings_growth = earnings_growth / 100
             
@@ -63,27 +49,15 @@ class PriceTargetCalculator:
         else:
             fair_pe = pe * cfg['fair_multiplier_base']
 
-        price_target = eps * fair_pe
-
-        return self._clamp_price_target(price_target, current_price, 'P/E')
+        return eps * fair_pe
     
-    def calculate_from_analyst_target(
-        self,
-        current_price: float,
-        target_price: float
-    ) -> float:
-
+    def calculate_from_analyst_target(self, current_price: float, target_price: float) -> float:
         if pd.isna(target_price) or target_price <= 0:
             return np.nan
 
         return float(target_price)
     
-    def calculate_from_score(
-        self, 
-        current_price: float, 
-        valuation_score: float
-    ) -> float:
-
+    def calculate_from_score(self, current_price: float, valuation_score: float) -> float:
         cfg = self.config['score_method']
 
         neutral = DEFAULT_NA_SCORE
@@ -92,39 +66,41 @@ class PriceTargetCalculator:
         
         return current_price * (1 + adjustment)
     
-    def calculate(
-        self, 
-        data: Dict, 
-        valuation_score: float, 
-        current_price: float
-    ) -> float:
+    def calculate(self, data: Dict, valuation_score: float, current_price: float) -> Tuple[float, float]:
+        raw = self._calculate_raw(data, valuation_score, current_price)
 
+        if not np.isfinite(raw) or raw <= 0:
+            raw = self.calculate_from_score(current_price, valuation_score)
+
+        clamped = self._clamp_price_target(raw, current_price, 'Final')
+        return clamped, raw
+
+    def _is_valid_raw(self, result: float, current_price: float) -> bool:
+        cfg = self.config['raw_validation']
+        return pd.notna(result) and cfg['min_factor'] * current_price <= result <= cfg['max_factor'] * current_price
+
+    def _calculate_raw(self, data: Dict, valuation_score: float, current_price: float) -> float:
         target_price = data.get('targetMeanPrice', np.nan)
         if pd.notna(target_price) and target_price > 0:
-            result = self.calculate_from_analyst_target(
-                current_price, 
-                target_price
-            )
-            if pd.notna(result):
+            result = self.calculate_from_analyst_target(current_price, target_price)
+            if self._is_valid_raw(result, current_price):
                 return result
 
         pe = data.get('trailingPE', np.nan)
         peg = data.get('pegRatio', np.nan)
-        
+
         if pd.notna(pe) and pd.notna(peg) and pe > 0 and peg > 0:
             result = self.calculate_from_peg(current_price, pe, peg)
-            if pd.notna(result):
+            if self._is_valid_raw(result, current_price):
                 return result
 
-        earnings_growth = data.get('earningsQuarterlyGrowth')
+        earnings_growth = data.get('earningsQuarterlyGrowth', np.nan)
         if pd.isna(earnings_growth):
-            earnings_growth = data.get('earningsGrowth')
-        
+            earnings_growth = data.get('earningsGrowth', np.nan)
+
         if pd.notna(pe) and pe > 0:
-            return self.calculate_from_pe(
-                current_price, 
-                pe, 
-                earnings_growth
-            )
+            result = self.calculate_from_pe(current_price, pe, earnings_growth)
+            if pd.notna(result) and result > 0:
+                return result
 
         return self.calculate_from_score(current_price, valuation_score)
