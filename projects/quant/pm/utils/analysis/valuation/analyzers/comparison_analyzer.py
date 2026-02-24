@@ -64,7 +64,8 @@ class ComparisonAnalyzer:
                     'ticker': ticker,
                     'name': result.get('company_name', ticker),
                     'score': score,
-                    'conclusion': result.get('conclusion', {}).get('overall', 'N/A')
+                    'conclusion': result.get('conclusion', {}),
+                    'conclusion_overall': result.get('conclusion', {}).get('overall', 'N/A')
                 })
 
         ranking_data.sort(key=lambda x: x['score'], reverse=True)
