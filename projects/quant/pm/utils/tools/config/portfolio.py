@@ -30,6 +30,27 @@ PORTFOLIO_CONFIG = {
             'valuation': 0.05
         }
     },
+    'selection_thresholds': {
+        'balanced': {
+            'profitability': 40.0,
+            'health': 40.0,
+            'growth': 35.0,
+            'valuation': 30.0,
+        },
+        'value': {
+            'valuation': 50.0,
+            'health': 35.0,
+        },
+        'growth': {
+            'growth': 50.0,
+            'health': 30.0,
+        },
+        'quality': {
+            'profitability': 50.0,
+            'health': 50.0,
+        },
+        'total_score': {},
+    },
     'optimization': {
         'default_method': 'score_risk_adjusted',
         'risk_free_rate': 0.045,
