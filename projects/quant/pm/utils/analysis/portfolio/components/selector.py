@@ -28,6 +28,7 @@ class CompanySelector:
         self.default_sector = default_sector if default_sector is not None else defaults['sector_name']
         self.score_extractor = ScoreExtractor()
         self.scoring_weights = PORTFOLIO_CONFIG['scoring_weights']
+        self.selection_thresholds = PORTFOLIO_CONFIG.get('selection_thresholds', {})
     
     def select(
         self,
@@ -65,6 +66,11 @@ class CompanySelector:
             return []
         
         logger.debug("CompanySelector — applying scoring method: %s", method)
+        df = self._apply_method_thresholds(df, method)
+        if df.empty:
+            logger.warning("CompanySelector — no companies left after '%s' method thresholds", method)
+            return []
+
         df = self._score_by_method(df, method)
         
         logger.debug("CompanySelector — applying diversification (max_per_sector=%d)", self.max_per_sector)
@@ -97,9 +103,31 @@ class CompanySelector:
   
         if df.empty or 'company_name' not in df.columns:
             return df
+        if 'total' not in df.columns:
+            return df.drop_duplicates(subset=['company_name'], keep='first').reset_index(drop=True)
 
-        idx_best = df.groupby('company_name')['total'].idxmax()
-        deduped = df.loc[idx_best].reset_index(drop=True)
+        work = df.copy()
+        work['total_numeric'] = pd.to_numeric(work['total'], errors='coerce')
+
+        valid = work[work['total_numeric'].notna()]
+        if valid.empty:
+            logger.warning(
+                "CompanySelector — all groups have NaN total score; keeping first ticker per company"
+            )
+            deduped = work.drop_duplicates(subset=['company_name'], keep='first').copy()
+            deduped = deduped.drop(columns=['total_numeric']).reset_index(drop=True)
+            return deduped
+
+        idx_best = valid.groupby('company_name')['total_numeric'].idxmax()
+        deduped = work.loc[idx_best].copy()
+
+        covered_companies = set(deduped['company_name'].astype(str))
+        missing_mask = ~work['company_name'].astype(str).isin(covered_companies)
+        if missing_mask.any():
+            fallback = work[missing_mask].drop_duplicates(subset=['company_name'], keep='first')
+            deduped = pd.concat([deduped, fallback], ignore_index=True)
+
+        deduped = deduped.drop(columns=['total_numeric']).reset_index(drop=True)
         
         removed = len(df) - len(deduped)
         if removed > 0:
@@ -116,6 +144,37 @@ class CompanySelector:
             df['final_score'] = df['total']
 
         return df.sort_values('final_score', ascending=False)
+
+    def _apply_method_thresholds(self, df: pd.DataFrame, method: str) -> pd.DataFrame:
+        thresholds = self.selection_thresholds.get(method, {})
+        if not thresholds:
+            return df
+
+        mask = pd.Series(True, index=df.index)
+        applied_rules = []
+
+        for metric, min_value in thresholds.items():
+            if metric not in df.columns:
+                logger.warning(
+                    "CompanySelector — threshold metric '%s' not found for method '%s'",
+                    metric, method
+                )
+                continue
+
+            numeric = pd.to_numeric(df[metric], errors='coerce')
+            mask &= numeric.notna() & (numeric >= float(min_value))
+            applied_rules.append(f"{metric}>={min_value}")
+
+        filtered = df[mask].copy()
+        dropped = len(df) - len(filtered)
+        if dropped > 0:
+            logger.info(
+                "CompanySelector — dropped %d companies by '%s' thresholds (%s)",
+                dropped,
+                method,
+                ", ".join(applied_rules) if applied_rules else "no valid rules applied",
+            )
+        return filtered
     
     def _apply_diversification(self, df: pd.DataFrame) -> List[str]:
         selected = []
