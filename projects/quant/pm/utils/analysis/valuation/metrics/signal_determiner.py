@@ -1,4 +1,5 @@
-from typing import Tuple
+import math
+from typing import Any, Mapping, Tuple
 from ....tools.config import TRADING_SIGNAL_RULES, SIGNAL_EVALUATION_ORDER, DEFAULT_NA_SCORE
 
 _SIGNAL_MAP = {'buy': 'BUY', 'sell': 'SELL', 'hold': 'HOLD'}
@@ -12,37 +13,64 @@ class SignalDeterminer:
         valuation_score: float,
         fundamental_score: float
     ) -> Tuple[str, float]:
+        valuation_score = self._normalize_score(valuation_score)
+        fundamental_score = self._normalize_score(fundamental_score)
 
         scores = {'valuation': valuation_score, 'fundamental': fundamental_score}
 
         for signal_type, rule_name in SIGNAL_EVALUATION_ORDER:
-            rule = self.rules[signal_type].get(rule_name)
+            signal_key = str(signal_type).lower()
+            bucket = (
+                self.rules.get(signal_type)
+                or self.rules.get(str(signal_type).lower())
+                or self.rules.get(str(signal_type).upper())
+                or {}
+            )
+            rule = bucket.get(rule_name)
             if rule is None or not self._matches_rule(rule, scores):
                 continue
 
-            if signal_type == 'hold':
+            if signal_key == 'hold':
                 confidence = self._calculate_hold_confidence(
                     valuation_score, fundamental_score,
                     rule.get('valuation_max', DEFAULT_NA_SCORE),
                     rule.get('fundamental_min', DEFAULT_NA_SCORE)
                 )
             else:
-                confidence = self._calculate_confidence(rule, scores, is_sell=(signal_type == 'sell'))
+                confidence = self._calculate_confidence(rule, scores, is_sell=(signal_key == 'sell'))
 
-            return _SIGNAL_MAP[signal_type], confidence
+            return _SIGNAL_MAP.get(signal_key, "HOLD"), confidence
 
         return "HOLD", self._calculate_hold_confidence(valuation_score, fundamental_score, DEFAULT_NA_SCORE, DEFAULT_NA_SCORE)
 
     @staticmethod
-    def _matches_rule(rule: dict, scores: dict) -> bool:
-        return all(
-            score >= rule.get(f'{name}_min', float('-inf')) and
-            score <= rule.get(f'{name}_max', float('inf'))
-            for name, score in scores.items()
-        )
+    def _matches_rule(rule: Mapping[str, Any], scores: Mapping[str, float]) -> bool:
+        for name, score in scores.items():
+            lo = rule.get(f'{name}_min')
+            hi = rule.get(f'{name}_max')
+
+            if lo is not None:
+                try:
+                    lo = float(lo)
+                except (TypeError, ValueError):
+                    lo = float('-inf')
+            else:
+                lo = float('-inf')
+
+            if hi is not None:
+                try:
+                    hi = float(hi)
+                except (TypeError, ValueError):
+                    hi = float('inf')
+            else:
+                hi = float('inf')
+
+            if not (lo <= score <= hi):
+                return False
+        return True
 
     @staticmethod
-    def _calculate_confidence(rule: dict, scores: dict, is_sell: bool) -> float:
+    def _calculate_confidence(rule: Mapping[str, Any], scores: Mapping[str, float], is_sell: bool) -> float:
         base = rule['confidence_base']
         confidence = base
 
@@ -56,6 +84,10 @@ class SignalDeterminer:
                 continue
             ref = hi if is_sell else lo
             if ref is not None:
+                try:
+                    ref = float(ref)
+                except (TypeError, ValueError):
+                    continue
                 excess = (ref - score) if is_sell else (score - ref)
                 confidence += excess * weight
 
@@ -67,6 +99,8 @@ class SignalDeterminer:
         confidence: float,
         upside: float
     ) -> Tuple[str, float]:
+        upside = self._normalize_upside(upside)
+        signal = signal.strip().upper()
 
         sanity = self.rules.get('sanity_check')
         if not sanity:
@@ -92,27 +126,34 @@ class SignalDeterminer:
         fund_min: float
     ) -> float:
 
-        cfg = self.rules['hold_confidence']
+        cfg = self.rules.get('hold_confidence') or {}
+        proximity_threshold = float(cfg.get('proximity_threshold', 10.0))
+        proximity_min = float(cfg.get('proximity_min', 35.0))
+        base = float(cfg.get('base', 40.0))
+        proximity_penalty = float(cfg.get('proximity_penalty', 5.0))
+        tiers = cfg.get('tiers', [])
+        avg_tiers = cfg.get('avg_tiers', [])
+        default_confidence = float(cfg.get('default_confidence', 40.0))
 
         val_distance = abs(valuation_score - val_max)
         fund_distance = abs(fundamental_score - fund_min)
         
-        if val_distance < cfg['proximity_threshold'] or fund_distance < cfg['proximity_threshold']:
-            return max(cfg['proximity_min'], cfg['base'] - cfg['proximity_penalty'])
+        if val_distance < proximity_threshold or fund_distance < proximity_threshold:
+            return max(proximity_min, base - proximity_penalty)
 
-        for tier in cfg['tiers']:
+        for tier in tiers:
             if self._matches_tier(tier, valuation_score, fundamental_score):
                 return tier['confidence']
 
         avg_score = (valuation_score + fundamental_score) / 2
-        for tier in cfg['avg_tiers']:
+        for tier in avg_tiers:
             if avg_score >= tier['min_avg']:
                 return tier['confidence']
 
-        return cfg['default_confidence']
+        return default_confidence
 
     @staticmethod
-    def _matches_tier(tier: dict, valuation_score: float, fundamental_score: float) -> bool:
+    def _matches_tier(tier: Mapping[str, Any], valuation_score: float, fundamental_score: float) -> bool:
         scores = {'val': valuation_score, 'fund': fundamental_score}
         for prefix, score in scores.items():
             if f'{prefix}_min' in tier and score < tier[f'{prefix}_min']:
@@ -124,3 +165,23 @@ class SignalDeterminer:
                 if not (lo <= score <= hi):
                     return False
         return True
+
+    @staticmethod
+    def _normalize_score(score: float) -> float:
+        try:
+            score = float(score)
+        except (TypeError, ValueError):
+            return float(DEFAULT_NA_SCORE)
+        return score if math.isfinite(score) else float(DEFAULT_NA_SCORE)
+
+    @staticmethod
+    def _normalize_upside(upside: float) -> float:
+        try:
+            upside = float(upside)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(upside):
+            return 0.0
+        if abs(upside) > 2:
+            return upside / 100.0
+        return upside

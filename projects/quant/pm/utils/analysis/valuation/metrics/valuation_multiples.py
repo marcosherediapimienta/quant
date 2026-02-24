@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+import logging
+from typing import Any, Dict, List, Mapping
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
@@ -33,13 +34,34 @@ _SCORING_SPECS = [
     MetricSpec(key='peg_ratio', range_key='peg_ratio', weight_key='peg_ratio', higher_is_better=False, require_positive=True),
 ]
 
+logger = logging.getLogger(__name__)
+
 class ValuationMultiples:
+    _MAX_ALERTS = 3
+
     def __init__(self, thresholds: ValuationThresholds = None):
         self.thresholds = thresholds or ValuationThresholds()
         self.config = VALUATION_SCORING
         self.overall_logic = OVERALL_VALUATION_LOGIC
+        self._config_validated = False
+
+    def _validate_scoring_config(self) -> None:
+        if self._config_validated:
+            return
+        weights = self.config.get('weights', {})
+        ranges = self.config.get('ranges', {})
+        missing_weights = [spec.weight_key for spec in _SCORING_SPECS if spec.weight_key not in weights]
+        missing_ranges = [spec.range_key for spec in _SCORING_SPECS if spec.range_key not in ranges]
+        if missing_weights or missing_ranges:
+            logger.warning(
+                "Valuation scoring config incomplete (missing weights=%s, missing ranges=%s)",
+                missing_weights,
+                missing_ranges,
+            )
+        self._config_validated = True
     
-    def calculate(self, data: Dict) -> Dict:
+    def calculate(self, data: Mapping[str, Any]) -> Dict[str, Any]:
+        self._validate_scoring_config()
         pe_ttm = nan_if_missing(data.get('trailingPE'))
         pe_fwd = nan_if_missing(data.get('forwardPE'))
         pb = nan_if_missing(data.get('priceToBook'))
@@ -76,10 +98,9 @@ class ValuationMultiples:
             'overall': self._overall_valuation(metrics)
         }
         
-        valuation_score = WeightedScorer.calculate(
-            metrics, _SCORING_SPECS,
-            self.config['weights'], self.config['ranges']
-        )
+        weights = self.config.get('weights', {})
+        ranges = self.config.get('ranges', {})
+        valuation_score = WeightedScorer.calculate(metrics, _SCORING_SPECS, weights, ranges)
         
         return {
             'metrics': metrics,
@@ -99,7 +120,7 @@ class ValuationMultiples:
         return classify_metric(value, thresholds, higher_is_better=False, strict=True, default=default)
 
     @staticmethod
-    def _compute_peg(peg: float, pe_ttm: float, data: Dict) -> float:
+    def _compute_peg(peg: float, pe_ttm: float, data: Mapping[str, Any]) -> float:
         if pd.notna(peg) and peg > 0:
             return peg
 
@@ -110,11 +131,11 @@ class ValuationMultiples:
         if pd.isna(pe_ttm) or pe_ttm <= 0 or pd.isna(earnings_growth) or earnings_growth <= 0:
             return np.nan
 
-        growth_pct = earnings_growth * 100 if earnings_growth <= 1 else earnings_growth
+        growth_pct = earnings_growth * 100 if earnings_growth <= 2 else earnings_growth
         peg = pe_ttm / growth_pct
         return peg if 0.1 <= peg <= 50 else np.nan
     
-    def _overall_valuation(self, metrics: Dict) -> str:
+    def _overall_valuation(self, metrics: Mapping[str, Any]) -> str:
         cheap_count = 0
         expensive_count = 0
         valid_metrics = 0
@@ -142,21 +163,22 @@ class ValuationMultiples:
         return 'FAIR_VALUE'
     
     _ALERT_SPECS = (
-        ('pe_ttm',    '>', 'pe_very_high',    "P/E very high (>{t}): possibly overvalued"),
-        ('pe_ttm',    '<', 'pe_negative',     "Negative P/E: company has losses"),
-        ('ev_ebitda', '>', 'ev_ebitda_high',  "EV/EBITDA very high (>{t})"),
-        ('fcf_yield', '<', 'fcf_yield_negative', "Negative FCF Yield: not generating free cash flow"),
-        ('peg_ratio', '>', 'peg_high',        "PEG > {t}: high price relative to growth"),
+        ('pe_ttm',    '>', 'pe_very_high',       "P/E very high (>{t}): possibly overvalued", 'multiple'),
+        ('pe_ttm',    '<', 'pe_negative',        "Negative P/E: company has losses", 'multiple'),
+        ('ev_ebitda', '>', 'ev_ebitda_high',     "EV/EBITDA very high (>{t})", 'multiple'),
+        ('fcf_yield', '<', 'fcf_yield_negative', "Negative FCF Yield: not generating free cash flow", 'ratio_pct'),
+        ('peg_ratio', '>', 'peg_high',           "PEG > {t}: high price relative to growth", 'multiple'),
     )
 
-    def _generate_alerts(self, metrics: Dict) -> List[str]:
+    def _generate_alerts(self, metrics: Mapping[str, Any]) -> List[str]:
         alerts = []
         cfg = ALERT_THRESHOLDS['valuation']
-        for key, op, threshold_key, msg in self._ALERT_SPECS:
+        for key, op, threshold_key, msg, fmt in self._ALERT_SPECS:
             value = metrics[key]
             if pd.isna(value):
                 continue
             t = cfg[threshold_key]
             if (value > t) if op == '>' else (value < t):
-                alerts.append(msg.format(t=t))
-        return alerts
+                t_str = f"{t*100:.0f}%" if fmt == 'ratio_pct' else f"{t:.1f}"
+                alerts.append(msg.format(t=t_str))
+        return alerts[:self._MAX_ALERTS]

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+import logging
+from typing import Any, Dict, List, Mapping
 from dataclasses import dataclass
 from .helpers import nan_if_missing, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
@@ -27,13 +28,30 @@ _SCORING_SPECS = [
     MetricSpec(key='earnings_quarterly_growth', range_key='earnings_quarterly', weight_key='earnings_quarterly'),
 ]
 
+logger = logging.getLogger(__name__)
+
 class GrowthMetrics:
     def __init__(self, thresholds: GrowthThresholds = None):
         self.thresholds = thresholds or GrowthThresholds()
         self.ranges = SCORING_RANGES['growth']
         self.weights = GROWTH_SCORING_WEIGHTS
+        self._config_validated = False
+
+    def _validate_scoring_config(self) -> None:
+        if self._config_validated:
+            return
+        missing_weights = [spec.weight_key for spec in _SCORING_SPECS if spec.weight_key not in self.weights]
+        missing_ranges = [spec.range_key for spec in _SCORING_SPECS if spec.range_key not in self.ranges]
+        if missing_weights or missing_ranges:
+            logger.warning(
+                "Growth scoring config incomplete (missing weights=%s, missing ranges=%s)",
+                missing_weights,
+                missing_ranges,
+            )
+        self._config_validated = True
     
-    def calculate(self, data: Dict) -> Dict:
+    def calculate(self, data: Mapping[str, Any]) -> Dict[str, Any]:
+        self._validate_scoring_config()
         revenue_growth = nan_if_missing(data.get('revenueGrowth'))
         earnings_growth = nan_if_missing(data.get('earningsGrowth'))
         earnings_quarterly_growth = nan_if_missing(data.get('earningsQuarterlyGrowth'))
@@ -87,7 +105,7 @@ class GrowthMetrics:
 
         best_earn = max(earn_candidates)
 
-        if rev >= 0.15 or best_earn <= 0.20:
+        if rev >= 0.15 or best_earn < 0.20:
             return score
 
         rev_floor = max(rev, 0.01)
@@ -101,7 +119,7 @@ class GrowthMetrics:
         discount = min((divergence - threshold) * 0.08, 0.30)
         return float(np.clip(score * (1.0 - discount), 0, 100))
 
-    def _analyze_sustainability(self, metrics: Dict) -> Dict:
+    def _analyze_sustainability(self, metrics: Mapping[str, Any]) -> Dict[str, Any]:
         analysis = {
             'is_sustainable': True,
             'concerns': []
@@ -126,12 +144,12 @@ class GrowthMetrics:
         return analysis
     
     _ALERT_SPECS = (
-        ('revenue_growth_yoy',  '<', 'revenue_decline_significant', "Significant revenue decline (>{t}%)"),
-        ('earnings_growth_yoy', '<', 'earnings_decline_strong',     "Strong earnings decline (>{t}%)"),
-        ('revenue_growth_yoy',  '>', 'growth_too_high',             "Very high growth (>{t}%) - verify sustainability"),
+        ('revenue_growth_yoy',  '<', 'revenue_decline_significant', "Significant revenue decline ({t}%)"),
+        ('earnings_growth_yoy', '<', 'earnings_decline_strong',     "Strong earnings decline ({t}%)"),
+        ('revenue_growth_yoy',  '>', 'growth_too_high',             "Very high growth ({t}%) - verify sustainability"),
     )
 
-    def _generate_alerts(self, metrics: Dict) -> List[str]:
+    def _generate_alerts(self, metrics: Mapping[str, Any]) -> List[str]:
         cfg = ALERT_THRESHOLDS['growth']
         alerts = []
         for key, op, threshold_key, msg in self._ALERT_SPECS:
@@ -140,5 +158,5 @@ class GrowthMetrics:
                 continue
             t = cfg[threshold_key]
             if (value > t) if op == '>' else (value < t):
-                alerts.append(msg.format(t=f"{abs(t)*100:.0f}"))
+                alerts.append(msg.format(t=f"{t*100:.0f}"))
         return alerts

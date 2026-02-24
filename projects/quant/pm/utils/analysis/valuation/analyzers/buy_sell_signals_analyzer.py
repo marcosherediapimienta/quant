@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -24,7 +24,7 @@ class TradingSignal:
     current_price: float
     price_target: float
     upside_potential: float
-    reasons: list
+    reasons: List[str]
     technical_score: Optional[float] = None
     price_target_raw: Optional[float] = None
     upside_raw: Optional[float] = None
@@ -46,7 +46,7 @@ class BuySellSignalsAnalyzer:
         self.start_date = start_date if start_date is not None else config['start_date']
         self.end_date = end_date if end_date is not None else config['end_date']
         self.use_current_date = config['use_current_date_as_end']
-        self.lookback_years = lookback_years if lookback_years else config['default_lookback_years']
+        self.lookback_years = lookback_years if lookback_years is not None else config['default_lookback_years']
         self.score_extractor = ScoreExtractor()
         self.fundamental_agg = FundamentalAggregator()
         self.signal_determiner = SignalDeterminer()
@@ -104,7 +104,7 @@ class BuySellSignalsAnalyzer:
             upside_raw=upside_raw
         )
     
-    def _resolve_dates(self, start_date: str, end_date: str) -> tuple[str, str]:
+    def _resolve_dates(self, start_date: str, end_date: str) -> Tuple[str, str]:
         final_start = start_date if start_date else self.start_date
         final_end = end_date if end_date else self.end_date
 
@@ -126,17 +126,29 @@ class BuySellSignalsAnalyzer:
 
         try:
             hist = self.data_manager.download_assets([ticker], start_date, end_date)
-            
+
             if not hist.empty and ticker in hist.columns:
-                return float(hist[ticker].iloc[-1])
+                last_price = hist[ticker].dropna()
+                if not last_price.empty:
+                    cp = float(last_price.iloc[-1])
+                    if np.isfinite(cp) and cp > 0:
+                        return cp
         except Exception:
-            pass 
+            pass
  
         current_price = company_data['data'].get('currentPrice', 0)
         if current_price == 0:
             current_price = company_data['data'].get('regularMarketPrice', 0)
-        
-        return float(current_price)
+
+        try:
+            cp = float(current_price)
+        except (TypeError, ValueError):
+            cp = np.nan
+
+        if not np.isfinite(cp) or cp <= 0:
+            raise ValueError(f"Could not resolve current price for {ticker}")
+
+        return cp
     
     def _extract_scores(self, analysis: dict) -> dict:
         se = self.score_extractor

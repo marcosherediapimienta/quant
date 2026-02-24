@@ -71,7 +71,7 @@ class CompanyReporter:
         w = self.config.line_width
         lines = [
             "=" * w,
-            f"ANALYSIS: {r.get('name', r['ticker'])} ({r['ticker']})",
+            f"ANALYSIS: {r.get('company_name', r['ticker'])} ({r['ticker']})",
             "=" * w,
             f"Sector: {r.get('sector') or 'N/A'} | Industry: {r.get('industry') or 'N/A'}",
             f"Country: {r.get('country') or 'N/A'} | Currency: {r.get('currency', 'USD')}",
@@ -205,15 +205,16 @@ class CompanyReporter:
             f"  P/S:              {fmt_multiple(v['ps_ratio'])}",
             f"  FCF Yield:        {fmt_pct(v['fcf_yield']):<12} {cls['fcf_yield_class']}",
             f"  PEG Ratio:        {fmt_multiple(v['peg_ratio']):<12} {cls.get('peg_class', 'N/A')}",
-            f"  Valuation:     {cls['overall']}",
+            f"  Valuation:        {cls['overall']}",
             ""
         ]
         return "\n".join(lines)
     
     def _render_alerts(self, r: Dict) -> str:
-        alerts = r.get('alerts', {})
-        
-        if not any(alerts.values()):
+        categories = ('valuation', 'profitability', 'financial_health', 'growth', 'efficiency')
+        alerts = {cat: r.get(cat, {}).get('alerts', []) for cat in categories}
+
+        if not any(alerts[cat] for cat in categories):
             return ""
         
         w = self.config.line_width
@@ -223,8 +224,8 @@ class CompanyReporter:
             separator("─", w),
         ]
         
-        for category, alert_list in alerts.items():
-            for alert in alert_list:
+        for category in categories:
+            for alert in alerts[category]:
                 lines.append(f"  ⚠️ [{category}] {alert}")
         
         lines.append("")
