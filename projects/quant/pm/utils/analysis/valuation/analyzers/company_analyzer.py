@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence
 from dataclasses import dataclass
 
 import warnings
-warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+try:
+    warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+except AttributeError:
+    pass
 
 from ..metrics import (
     ProfitabilityMetrics,
@@ -23,11 +26,25 @@ from ....tools.config import COMPANY_ANALYSIS_WEIGHTS, CONCLUSION_THRESHOLDS, RO
 
 _ANALYSIS_CATEGORIES = ('profitability', 'financial_health', 'growth', 'efficiency', 'valuation')
 
-_BALANCE_SHEET_FIELDS = {
-    'Total Assets': 'totalAssets',
-    'Inventory': 'inventory',
-    'Receivables': 'netReceivables',
-    'Stockholders Equity': 'totalStockholderEquity',
+_BALANCE_SHEET_FIELD_ALIASES = {
+    'totalAssets': ('Total Assets', 'TotalAssets'),
+    'inventory': ('Inventory',),
+    'netReceivables': ('Receivables', 'Net Receivables'),
+    'totalStockholderEquity': ('Stockholders Equity', 'Total Stockholder Equity', 'StockholdersEquity'),
+}
+
+_INCOME_STMT_FIELD_ALIASES = {
+    'costOfRevenue': ('Cost Of Revenue', 'Cost of Revenue'),
+    'operatingIncome': ('Operating Income', 'OperatingIncome'),
+    'ebit': ('EBIT',),
+    'taxProvision': ('Tax Provision', 'TaxProvision'),
+    'pretaxIncome': ('Pretax Income', 'Pre-Tax Income', 'PretaxIncome'),
+}
+
+_ROIC_BALANCE_FIELD_ALIASES = {
+    'investedCapital': ('Invested Capital', 'InvestedCapital'),
+    'totalAssets': ('Total Assets', 'TotalAssets'),
+    'currentLiabilities': ('Current Liabilities', 'CurrentLiabilities', 'Total Current Liabilities'),
 }
 
 _SUMMARY_COLUMNS = {
@@ -128,17 +145,30 @@ class CompanyAnalyzer:
             }
             
     @staticmethod
-    def _safe_float(df: 'pd.DataFrame', field: str, column) -> float:
+    def _safe_float(df: 'pd.DataFrame', field: str, column) -> Optional[float]:
         if field in df.index:
-            return float(df.loc[field, column])
+            val = df.loc[field, column]
+            if pd.isna(val):
+                return None
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _safe_float_alias(self, df: 'pd.DataFrame', fields: Sequence[str], column) -> Optional[float]:
+        for field in fields:
+            val = self._safe_float(df, field, column)
+            if val is not None:
+                return val
         return None
 
     def _enrich_from_balance_sheet(self, info: Dict, balance_sheet: 'pd.DataFrame') -> None:
         if balance_sheet.empty:
             return
         col = balance_sheet.columns[0]
-        for src, dst in _BALANCE_SHEET_FIELDS.items():
-            val = self._safe_float(balance_sheet, src, col)
+        for dst, aliases in _BALANCE_SHEET_FIELD_ALIASES.items():
+            val = self._safe_float_alias(balance_sheet, aliases, col)
             if val is not None:
                 info[dst] = val
 
@@ -146,7 +176,7 @@ class CompanyAnalyzer:
         if income_stmt.empty:
             return
         col = income_stmt.columns[0]
-        val = self._safe_float(income_stmt, 'Cost Of Revenue', col)
+        val = self._safe_float_alias(income_stmt, _INCOME_STMT_FIELD_ALIASES['costOfRevenue'], col)
         if val is not None:
             info['costOfRevenue'] = val
 
@@ -157,26 +187,31 @@ class CompanyAnalyzer:
         bs_col = balance_sheet.columns[0]
 
         operating_income = (
-            self._safe_float(income_stmt, 'Operating Income', is_col)
-            or self._safe_float(income_stmt, 'EBIT', is_col)
+            self._safe_float_alias(income_stmt, _INCOME_STMT_FIELD_ALIASES['operatingIncome'], is_col)
+            or self._safe_float_alias(income_stmt, _INCOME_STMT_FIELD_ALIASES['ebit'], is_col)
         )
         if operating_income is None:
             return
 
         tax_rate = None
-        tax_provision = self._safe_float(income_stmt, 'Tax Provision', is_col)
-        pretax_income = self._safe_float(income_stmt, 'Pretax Income', is_col)
+        tax_provision = self._safe_float_alias(income_stmt, _INCOME_STMT_FIELD_ALIASES['taxProvision'], is_col)
+        pretax_income = self._safe_float_alias(income_stmt, _INCOME_STMT_FIELD_ALIASES['pretaxIncome'], is_col)
         if tax_provision is not None and pretax_income is not None and pretax_income != 0:
             tax_rate = tax_provision / pretax_income
         if tax_rate is None:
             tax_rate = info.get('effectiveTaxRate', ROIC_CONFIG['default_tax_rate'])
+        try:
+            tax_rate = float(tax_rate)
+        except (TypeError, ValueError):
+            tax_rate = float(ROIC_CONFIG['default_tax_rate'])
+        tax_rate = max(0.0, min(1.0, tax_rate))
 
         nopat = operating_income * (1 - tax_rate)
 
-        invested_capital = self._safe_float(balance_sheet, 'Invested Capital', bs_col)
+        invested_capital = self._safe_float_alias(balance_sheet, _ROIC_BALANCE_FIELD_ALIASES['investedCapital'], bs_col)
         if invested_capital is None:
-            total_assets = self._safe_float(balance_sheet, 'Total Assets', bs_col)
-            current_liab = self._safe_float(balance_sheet, 'Current Liabilities', bs_col)
+            total_assets = self._safe_float_alias(balance_sheet, _ROIC_BALANCE_FIELD_ALIASES['totalAssets'], bs_col)
+            current_liab = self._safe_float_alias(balance_sheet, _ROIC_BALANCE_FIELD_ALIASES['currentLiabilities'], bs_col)
             if total_assets is not None and current_liab is not None:
                 invested_capital = total_assets - current_liab
 
@@ -198,7 +233,7 @@ class CompanyAnalyzer:
         return {cat: calc.calculate(data) for cat, calc in self._calculators.items()}
 
     def _build_scores(self, category_results: Dict) -> Dict:
-        scores = {cat: category_results[cat].get('score', 0) for cat in _ANALYSIS_CATEGORIES}
+        scores = {cat: category_results.get(cat, {}).get('score', np.nan) for cat in _ANALYSIS_CATEGORIES}
         scores['total'] = self._compute_total_score(scores)
         return scores
 
@@ -271,6 +306,12 @@ class CompanyAnalyzer:
     def _determine_conclusion(self, score: float) -> Dict[str, str]:
         thresholds = self.conclusion_thresholds
         labels = thresholds.labels
+
+        if score is None or not np.isfinite(score):
+            return {
+                'overall': labels.get('na', 'N/A'),
+                'score': score
+            }
         
         levels = [
             (thresholds.excellent, 'excellent'),
