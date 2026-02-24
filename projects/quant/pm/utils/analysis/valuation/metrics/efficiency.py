@@ -1,7 +1,6 @@
 import logging
-import numpy as np
 import pandas as pd
-from typing import Dict, List
+from typing import Any, Dict, List, Mapping
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
@@ -51,9 +50,25 @@ class EfficiencyMetrics:
             return SECTOR_EFFICIENCY_SCORING[sector_key]
         return self.default_config
 
-    def calculate(self, data: Dict) -> Dict:
+    def _validate_scoring_config(self, config: Dict, sector: str) -> None:
+        weights = config.get('weights', {})
+        ranges = config.get('ranges', {})
+
+        missing_weights = [spec.weight_key for spec in _SCORING_SPECS if spec.weight_key not in weights]
+        missing_ranges = [spec.range_key for spec in _SCORING_SPECS if spec.range_key not in ranges]
+
+        if missing_weights or missing_ranges:
+            logger.warning(
+                "Efficiency scoring config incomplete for sector '%s' (missing weights=%s, missing ranges=%s)",
+                sector or 'unknown',
+                missing_weights,
+                missing_ranges,
+            )
+
+    def calculate(self, data: Mapping[str, Any]) -> Dict[str, Any]:
         sector = data.get('sector', '')
         config = self._resolve_sector_config(sector)
+        self._validate_scoring_config(config, sector)
 
         total_revenue = nan_if_missing(data.get('totalRevenue'))
         total_assets = nan_if_missing(data.get('totalAssets'))
@@ -61,10 +76,12 @@ class EfficiencyMetrics:
         receivables = nan_if_missing(data.get('netReceivables'))
         cogs = nan_if_missing(data.get('costOfRevenue'))
         employees = nan_if_missing(data.get('fullTimeEmployees'))
-        asset_turnover = nan_if_missing(data.get('assetTurnover'))
+        asset_turnover_reported = nan_if_missing(data.get('assetTurnover'))
+        asset_turnover_calculated = nan_if_missing(safe_div(total_revenue, total_assets))
 
-        if pd.isna(asset_turnover) and pd.notna(total_revenue) and pd.notna(total_assets) and total_assets != 0:
-            asset_turnover = total_revenue / total_assets
+        asset_turnover = (
+            asset_turnover_reported if pd.notna(asset_turnover_reported) else asset_turnover_calculated
+        )
 
         inventory_turnover = safe_div(cogs, inventory)
         receivables_turnover = safe_div(total_revenue, receivables)
@@ -75,6 +92,8 @@ class EfficiencyMetrics:
         
         metrics = {
             'asset_turnover': asset_turnover,
+            'asset_turnover_reported': asset_turnover_reported,
+            'asset_turnover_calculated': asset_turnover_calculated,
             'inventory_turnover': inventory_turnover,
             'receivables_turnover': receivables_turnover,
             'days_sales_outstanding': dso,
@@ -84,6 +103,7 @@ class EfficiencyMetrics:
             'total_assets': total_assets,
             'employees': employees
         }
+        logger.debug("Efficiency metrics calculated for sector '%s'", sector or 'unknown')
         
         classifications = {
             cls_key: classify_metric(
@@ -94,10 +114,9 @@ class EfficiencyMetrics:
             for cls_key, metric_key, threshold_attr, higher_is_better in _CLASSIFICATION_SPECS
         }
 
-        score = WeightedScorer.calculate(
-            metrics, _SCORING_SPECS,
-            config['weights'], config['ranges']
-        )
+        weights = config.get('weights', self.default_config.get('weights', {}))
+        ranges = config.get('ranges', self.default_config.get('ranges', {}))
+        score = WeightedScorer.calculate(metrics, _SCORING_SPECS, weights, ranges)
         
         return {
             'metrics': metrics,
@@ -108,7 +127,7 @@ class EfficiencyMetrics:
     
     def _generate_alerts(self, metrics: Dict, config: Dict) -> List[str]:
         alerts = []
-        alert_cfg = config.get('alerts', ALERT_THRESHOLDS['efficiency'])
+        alert_cfg = {**ALERT_THRESHOLDS['efficiency'], **config.get('alerts', {})}
         
         dso = metrics['days_sales_outstanding']
         if pd.notna(dso) and dso > alert_cfg['dso_high']:

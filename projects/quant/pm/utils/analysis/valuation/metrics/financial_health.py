@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+from typing import Any, Dict, List, Mapping
 from dataclasses import dataclass
 from .helpers import nan_if_missing, safe_div, classify_metric, MetricSpec, WeightedScorer
 
@@ -14,11 +14,10 @@ class FinancialHealthThresholds:
     debt_ebitda: Dict[str, float] = None
     debt_equity: Dict[str, float] = None
     current_ratio: Dict[str, float] = None
-    interest_coverage: Dict[str, float] = None
     
     def __post_init__(self):
         health = VALUATION_THRESHOLDS['financial_health']
-        for field in ('debt_ebitda', 'debt_equity', 'current_ratio', 'interest_coverage'):
+        for field in ('debt_ebitda', 'debt_equity', 'current_ratio'):
             if getattr(self, field) is None:
                 setattr(self, field, health[field])
 
@@ -33,7 +32,6 @@ _SCORING_SPECS = [
     MetricSpec(key='debt_assets', range_key='debt_assets', weight_key='debt_assets', higher_is_better=False),
 ]
 
-
 class FinancialHealthMetrics:
     def __init__(self, thresholds: FinancialHealthThresholds = None):
         self.thresholds = thresholds or FinancialHealthThresholds()
@@ -45,10 +43,10 @@ class FinancialHealthMetrics:
             return SECTOR_FINANCIAL_HEALTH_SCORING[sector_key]
         return self.default_config
 
-    def calculate(self, data: Dict) -> Dict:
+    def calculate(self, data: Mapping[str, Any]) -> Dict[str, Any]:
         sector = data.get('sector', '')
         config = self._resolve_sector_config(sector)
-        alert_cfg = config.get('alerts', ALERT_THRESHOLDS['financial_health'])
+        alert_cfg = {**ALERT_THRESHOLDS['financial_health'], **config.get('alerts', {})}
 
         total_debt = nan_if_missing(data.get('totalDebt'))
         total_cash = nan_if_missing(data.get('totalCash'))
@@ -62,9 +60,10 @@ class FinancialHealthMetrics:
         total_assets = nan_if_missing(data.get('totalAssets'))
         equity = nan_if_missing(data.get('totalStockholderEquity'))
 
-        debt_ebitda = safe_div(total_debt, ebitda)
+        ebitda_non_positive = pd.notna(ebitda) and ebitda <= 0
+        debt_ebitda = np.nan if ebitda_non_positive else safe_div(total_debt, ebitda)
         net_cash = self._calculate_net_cash(total_cash, total_debt)
-        net_cash_ebitda = safe_div(net_cash, ebitda)
+        net_cash_ebitda = np.nan if ebitda_non_positive else safe_div(net_cash, ebitda)
         fcf = self._get_free_cash_flow(data)
         interest_coverage = nan_if_missing(data.get('interestCoverage'))
         equity_ratio = safe_div(equity, total_assets)
@@ -82,6 +81,7 @@ class FinancialHealthMetrics:
             'free_cash_flow': fcf,
             'interest_coverage': interest_coverage,
             'ebitda': ebitda,
+            'ebitda_non_positive': ebitda_non_positive,
             'equity_ratio': equity_ratio,
             'debt_assets': debt_assets,
         }
@@ -100,10 +100,9 @@ class FinancialHealthMetrics:
             'net_cash_class': 'positive' if pd.notna(net_cash) and net_cash > 0 else 'negative' if pd.notna(net_cash) else 'N/A'
         }
         
-        score = WeightedScorer.calculate(
-            metrics, _SCORING_SPECS,
-            config['weights'], config['ranges']
-        )
+        weights = config.get('weights', self.default_config.get('weights', {}))
+        ranges = config.get('ranges', self.default_config.get('ranges', {}))
+        score = WeightedScorer.calculate(metrics, _SCORING_SPECS, weights, ranges)
         
         return {
             'metrics': metrics,
@@ -124,15 +123,18 @@ class FinancialHealthMetrics:
             'debt_equity_conversion_factor',
             ALERT_THRESHOLDS['financial_health']['debt_equity_conversion_factor']
         )
-        if debt_equity > threshold:
+        if debt_equity >= threshold:
             debt_equity = debt_equity / factor
         return debt_equity
     
     @staticmethod
-    def _generate_alerts(metrics: Dict, alert_cfg: Dict) -> List[str]:
+    def _generate_alerts(metrics: Mapping[str, Any], alert_cfg: Mapping[str, Any]) -> List[str]:
         alerts = []
         
         debt_ebitda = metrics['debt_ebitda']
+        if metrics.get('ebitda_non_positive'):
+            alerts.append("EBITDA is non-positive: leverage ratios based on EBITDA are not informative")
+
         if pd.notna(debt_ebitda):
             if debt_ebitda > alert_cfg['debt_ebitda_danger']:
                 alerts.append(f"Debt/EBITDA very high ({debt_ebitda:.1f}x): insolvency risk")
@@ -160,7 +162,7 @@ class FinancialHealthMetrics:
         return total_cash - total_debt
     
     @staticmethod
-    def _get_free_cash_flow(data: Dict) -> float:
+    def _get_free_cash_flow(data: Mapping[str, Any]) -> float:
         fcf = nan_if_missing(data.get('freeCashflow'))
         
         if pd.isna(fcf):
