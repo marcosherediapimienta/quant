@@ -44,11 +44,12 @@ class SignalsReporter:
         print("=" * w)
         
         emoji = _SIGNAL_EMOJIS.get(signal.signal.upper(), '⚪')
+        bw = self.config.bar_width
         print(f"\n{emoji} {signal.signal} (Confidence: {signal.confidence:.1f}%)")
 
         print(f"📊 SCORES:")
-        print(f"   Valuation:    {score_emoji(signal.valuation_score)} {score_bar(signal.valuation_score)} {signal.valuation_score:.1f}")
-        print(f"   Fundamental:   {score_emoji(signal.fundamental_score)} {score_bar(signal.fundamental_score)} {signal.fundamental_score:.1f}")
+        print(f"   Valuation:    {score_emoji(signal.valuation_score)} {score_bar(signal.valuation_score, bw)} {signal.valuation_score:.1f}")
+        print(f"   Fundamental:   {score_emoji(signal.fundamental_score)} {score_bar(signal.fundamental_score, bw)} {signal.fundamental_score:.1f}")
 
         print(f"💰 PRICES:")
         print(f"   Current:       {fmt_money(signal.current_price)}")
@@ -58,7 +59,7 @@ class SignalsReporter:
         if signal.reasons:
             print(f"\n💡 REASONS:")
             max_display = self.reporting_cfg['max_reasons_display']
-            for reason in signal.reasons[:max_display + 1]: 
+            for reason in signal.reasons[:max_display]:
                 print(f"   {reason}")
         
         print("=" * w)

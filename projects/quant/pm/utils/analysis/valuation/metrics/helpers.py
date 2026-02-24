@@ -5,7 +5,11 @@ from dataclasses import dataclass
 
 
 def nan_if_missing(x) -> float:
-    return np.nan if pd.isna(x) else x
+    if pd.isna(x):
+        return np.nan
+    if isinstance(x, str) and x.strip().lower() in {'', 'n/a', 'na', 'none', 'null', 'nan'}:
+        return np.nan
+    return x
 
 def safe_div(numer, denom) -> float:
     
@@ -41,12 +45,21 @@ def classify_metric(
     return default
 
 def score_metric(value: float, min_val: float, max_val: float, higher_is_better: bool = True) -> float:
-
-    if pd.isna(value) or not np.isfinite(value):
+    try:
+        value = float(value)
+        min_val = float(min_val)
+        max_val = float(max_val)
+    except (TypeError, ValueError):
         return np.nan
+
+    if not (np.isfinite(value) and np.isfinite(min_val) and np.isfinite(max_val)):
+        return np.nan
+    if max_val <= min_val:
+        return np.nan
+
     value = np.clip(value, min_val, max_val)
-    score = (value - min_val) / (max_val - min_val) * 100
-    return score if higher_is_better else 100 - score
+    score = (value - min_val) / (max_val - min_val) * 100.0
+    return float(score) if higher_is_better else float(100.0 - score)
 
 
 @dataclass
@@ -76,11 +89,23 @@ class WeightedScorer:
 
             if pd.isna(value):
                 continue
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(value):
+                continue
             if spec.require_positive and value <= 0:
                 continue
 
             w = weights.get(spec.weight_key)
             if w is None:
+                continue
+            try:
+                w = float(w)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(w) or w <= 0:
                 continue
 
             if spec.binary_positive:
@@ -89,7 +114,10 @@ class WeightedScorer:
                 r = ranges.get(spec.range_key)
                 if r is None:
                     continue
-                s = score_metric(value, r['min'], r['max'], spec.higher_is_better)
+                s = score_metric(value, r.get('min'), r.get('max'), spec.higher_is_better)
+
+            if pd.isna(s) or not np.isfinite(s):
+                continue
 
             scores.append(s)
             weights_used.append(w)

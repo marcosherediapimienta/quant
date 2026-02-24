@@ -62,9 +62,9 @@ class ComparisonAnalyzer:
             if pd.notna(score):
                 ranking_data.append({
                     'ticker': ticker,
-                    'name': result.get('name', ticker),
+                    'name': result.get('company_name', ticker),
                     'score': score,
-                    'conclusion': result.get('conclusion')
+                    'conclusion': result.get('conclusion', {}).get('overall', 'N/A')
                 })
 
         ranking_data.sort(key=lambda x: x['score'], reverse=True)
@@ -80,7 +80,7 @@ class ComparisonAnalyzer:
         
         for cat in _SCORE_CATEGORIES:
             scores = [
-                (ticker, result.get('name', ticker), result.get('scores', {}).get(cat))
+                (ticker, result.get('company_name', ticker), result.get('scores', {}).get(cat))
                 for ticker, result in results.items()
                 if pd.notna(result.get('scores', {}).get(cat))
             ]

@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+from typing import Any, Dict, List, Mapping
 from dataclasses import dataclass
 from .helpers import nan_if_missing, classify_metric, MetricSpec, WeightedScorer
 from ....tools.config import (
@@ -53,7 +53,7 @@ class ProfitabilityMetrics:
             return SECTOR_PROFITABILITY_SCORING[sector_key]
         return self.default_config
 
-    def calculate(self, data: Dict) -> Dict:
+    def calculate(self, data: Mapping[str, Any]) -> Dict[str, Any]:
         sector = data.get('sector', '')
         config = self._resolve_sector_config(sector)
         metrics = self._extract_metrics(data)
@@ -66,10 +66,9 @@ class ProfitabilityMetrics:
             for name in _DATA_KEYS
         }
 
-        score = WeightedScorer.calculate(
-            metrics, _SCORING_SPECS,
-            config['weights'], config['ranges']
-        )
+        weights = config.get('weights', self.default_config['weights'])
+        ranges = config.get('ranges', self.default_config['ranges'])
+        score = WeightedScorer.calculate(metrics, _SCORING_SPECS, weights, ranges)
         
         return {
             'metrics': metrics,
@@ -79,7 +78,7 @@ class ProfitabilityMetrics:
         }
 
     @staticmethod
-    def _extract_metrics(data: Dict) -> Dict:
+    def _extract_metrics(data: Mapping[str, Any]) -> Dict[str, float]:
         metrics = {}
         for metric_name, source_keys in _DATA_KEYS.items():
             value = np.nan
@@ -97,8 +96,8 @@ class ProfitabilityMetrics:
         ('net_margin', 'net_margin_negative', "Negative net margin: company is not profitable"),
     )
 
-    def _generate_alerts(self, metrics: Dict, config: Dict) -> List[str]:
-        cfg = config.get('alerts', ALERT_THRESHOLDS['profitability'])
+    def _generate_alerts(self, metrics: Mapping[str, Any], config: Mapping[str, Any]) -> List[str]:
+        cfg = {**ALERT_THRESHOLDS['profitability'], **config.get('alerts', {})}
         return [
             msg for key, threshold_key, msg in self._ALERT_SPECS
             if pd.notna(metrics[key]) and metrics[key] < cfg[threshold_key]

@@ -2,13 +2,19 @@ import numpy as np
 import pandas as pd
 
 import warnings
-warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+try:
+    warnings.filterwarnings('ignore', category=pd.errors.Pandas4Warning, module='yfinance')
+except AttributeError:
+    pass
 
 from typing import Dict, List, Callable
 from dataclasses import dataclass
 
 from .company_analyzer import CompanyAnalyzer
 from ....tools.config import SECTOR_ANALYSIS_CONFIG
+
+_SCORE_CATEGORIES = ('profitability', 'financial_health', 'growth', 'efficiency', 'valuation')
+_POSITION_CATEGORIES = (*_SCORE_CATEGORIES, 'total')
 
 @dataclass
 class PercentileInterpretation:
@@ -37,7 +43,7 @@ class SectorAnalyzer:
         self.company_analyzer = company_analyzer or CompanyAnalyzer()
         self.percentile_config = percentile_config or PercentileInterpretation()
         self._peer_fetcher = peer_fetcher or self._default_peer_fetcher
-        self.max_peers = max_peers or SECTOR_ANALYSIS_CONFIG['max_peers']
+        self.max_peers = max_peers if max_peers is not None else SECTOR_ANALYSIS_CONFIG['max_peers']
     
     def _default_peer_fetcher(
         self, 
@@ -119,10 +125,9 @@ class SectorAnalyzer:
         if not valid_peers:
             return {'note': 'No peers were analyzed successfully'}
         
-        categories = ['profitability', 'financial_health', 'growth', 'efficiency', 'valuation', 'total']
         position = {}
         
-        for cat in categories:
+        for cat in _POSITION_CATEGORIES:
             company_score = company.get('scores', {}).get(cat)
             
             peer_scores = [
@@ -132,15 +137,19 @@ class SectorAnalyzer:
             ]
             
             if pd.notna(company_score) and peer_scores:
-                better_than = sum(1 for p in peer_scores if company_score > p)
+                strictly_better = sum(1 for p in peer_scores if p > company_score)
+                equal_count = sum(1 for p in peer_scores if p == company_score)
+                peer_avg = float(np.mean(peer_scores))
+                peer_median = float(np.median(peer_scores))
                 position[cat] = {
                     'company_score': company_score,
-                    'peer_avg': float(np.mean(peer_scores)),
-                    'peer_median': float(np.median(peer_scores)),
-                    'rank': better_than + 1,
+                    'peer_avg': peer_avg,
+                    'peer_median': peer_median,
+                    'rank': strictly_better + 1,
                     'total_compared': len(peer_scores) + 1,
-                    'vs_avg': company_score - float(np.mean(peer_scores)),
-                    'vs_median': company_score - float(np.median(peer_scores))
+                    'equal_count': equal_count,
+                    'vs_avg': company_score - peer_avg,
+                    'vs_median': company_score - peer_median
                 }
         
         return position
@@ -161,22 +170,22 @@ class SectorAnalyzer:
         if pd.isna(company_score):
             return {'note': 'Company score not available'}
         
-        all_scores = [company_score]
-        all_scores.extend([
+        peer_scores = [
             r.get('scores', {}).get('total')
             for r in valid_peers.values()
             if pd.notna(r.get('scores', {}).get('total'))
-        ])
+        ]
         
-        if len(all_scores) < 2:
+        if not peer_scores:
             return {'note': 'Insufficient data for percentile'}
 
-        below_count = sum(1 for s in all_scores if s < company_score)
-        percentile = (below_count / len(all_scores)) * 100
+        below_count = sum(1 for s in peer_scores if s < company_score)
+        equal_count = sum(1 for s in peer_scores if s == company_score)
+        percentile = ((below_count + 0.5 * equal_count) / len(peer_scores)) * 100
         
         return {
             'percentile': percentile,
-            'sample_size': len(all_scores),
+            'sample_size': len(peer_scores),
             'interpretation': self._interpret_percentile(percentile)
         }
     
@@ -203,6 +212,6 @@ class SectorAnalyzer:
         peers: Dict[str, Dict]
     ) -> pd.DataFrame:
     
-        all_results = {company['ticker']: company}
+        all_results = {company.get('ticker', 'COMPANY'): company}
         all_results.update(peers)
         return self.company_analyzer.get_summary_df(all_results)

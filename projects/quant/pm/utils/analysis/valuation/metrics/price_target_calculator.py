@@ -26,8 +26,7 @@ class PriceTargetCalculator:
         cfg = self.config['peg_method']
         eps = current_price / pe
         implied_growth = pe / peg
-        fair_peg = cfg['fair_peg']
-        fair_pe = fair_peg * implied_growth
+        fair_pe = cfg['fair_peg'] * implied_growth
         return eps * fair_pe
 
     def calculate_from_pe(self, current_price: float, pe: float, earnings_growth: float = None) -> float:
@@ -59,6 +58,8 @@ class PriceTargetCalculator:
     
     def calculate_from_score(self, current_price: float, valuation_score: float) -> float:
         cfg = self.config['score_method']
+        if not np.isfinite(valuation_score):
+            valuation_score = DEFAULT_NA_SCORE
 
         neutral = DEFAULT_NA_SCORE
         divisor_key = 'adjustment_divisor_bear' if valuation_score < neutral else 'adjustment_divisor_bull'
@@ -100,7 +101,7 @@ class PriceTargetCalculator:
 
         if pd.notna(pe) and pe > 0:
             result = self.calculate_from_pe(current_price, pe, earnings_growth)
-            if pd.notna(result) and result > 0:
+            if self._is_valid_raw(result, current_price):
                 return result
 
         return self.calculate_from_score(current_price, valuation_score)
