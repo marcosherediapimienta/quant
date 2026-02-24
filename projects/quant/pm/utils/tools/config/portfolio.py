@@ -1,4 +1,5 @@
 from .general import ANALYSIS_DATES
+from .indices import SP500_FALLBACK, IBEX_35, EUROSTOXX_50, NIKKEI_225
 
 PORTFOLIO_CONFIG = {
     'selection': {
@@ -76,6 +77,9 @@ INDEX_CONFIG = {
         'sp500': 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
         'nasdaq100': 'https://en.wikipedia.org/wiki/Nasdaq-100',
         'dow30': 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
+        'ibex35': 'https://en.wikipedia.org/wiki/IBEX_35',
+        'eurostoxx50': 'https://en.wikipedia.org/wiki/EURO_STOXX_50',
+        'nikkei225': 'https://en.wikipedia.org/wiki/Nikkei_225',
     },
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'etf_mapping': {
@@ -83,32 +87,29 @@ INDEX_CONFIG = {
         'VOO': 'SP500',
         'IVV': 'SP500',
         'QQQ': 'NASDAQ100',
-        'DIA': 'DOW30'
+        'DIA': 'DOW30',
+        'EWP': 'IBEX35',
+        'FEZ': 'EUROSTOXX50',
+        'EWJ': 'NIKKEI225',
+        'URTH': 'MSCI_WORLD',
     },
-    'supported_indices': ['SP500', 'NASDAQ100', 'DOW30', 'RUSSELL1000'],
+    'supported_indices': ['SP500', 'NASDAQ100', 'DOW30', 'IBEX35', 'EUROSTOXX50', 'NIKKEI225', 'MSCI_WORLD'],
     'validation': {
         'nasdaq_min_tickers': 50,
         'dow_min_tickers': 20,
         'dow_max_tickers': 35,
         'sp500_min_tickers': 400,
+        'ibex35_min_tickers': 25,
+        'ibex35_max_tickers': 40,
+        'eurostoxx50_min_tickers': 50,
+        'eurostoxx50_max_tickers': 50,
+        'nikkei225_min_tickers': 150,
+        'nikkei225_max_tickers': 260,
     },
     'fallback': {
-        'sp500_top100': [
-            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B',
-            'UNH', 'JNJ', 'XOM', 'V', 'JPM', 'WMT', 'PG', 'MA', 'HD', 'CVX',
-            'LLY', 'ABBV', 'MRK', 'AVGO', 'KO', 'PEP', 'COST', 'ADBE', 'MCD',
-            'CSCO', 'ACN', 'TMO', 'ABT', 'NFLX', 'DHR', 'VZ', 'NKE', 'WFC',
-            'DIS', 'CMCSA', 'TXN', 'PM', 'CRM', 'BMY', 'NEE', 'RTX', 'ORCL',
-            'INTC', 'UPS', 'HON', 'QCOM', 'BA', 'LOW', 'SPGI', 'BLK', 'LMT',
-            'AMD', 'INTU', 'CAT', 'DE', 'GE', 'AXP', 'ISRG', 'GILD', 'NOW',
-            'BKNG', 'ADI', 'PLD', 'MDLZ', 'SYK', 'ADP', 'REGN', 'TJX', 'VRTX',
-            'CB', 'SBUX', 'CI', 'TMUS', 'PYPL', 'MMC', 'SO', 'ZTS', 'SCHW',
-            'MO', 'BSX', 'DUK', 'AMT', 'PGR', 'LRCX', 'EOG', 'ITW', 'BDX',
-            'C', 'SLB', 'NOC', 'CME', 'MMM', 'USB', 'HUM', 'PNC', 'FI', 'TGT'
-        ],
-        'russell_additional': [
-            'SNOW', 'CRWD', 'ZS', 'DDOG', 'NET', 'OKTA', 'FTNT',
-            'IONQ', 'SMR', 'NIO', 'RIVN', 'LCID'
-        ]
+        'sp500': SP500_FALLBACK,
+        'ibex35': IBEX_35,
+        'eurostoxx50': EUROSTOXX_50,
+        'nikkei225': NIKKEI_225,
     }
 }
